@@ -46,7 +46,7 @@ class DocumentsProviderRepository(context: Context) {
         Manifest.permission.MANAGE_DOCUMENTS
     ) == PackageManager.PERMISSION_GRANTED
 
-    suspend fun discoverProviders(includeSelf: Boolean = true): List<DocumentProviderInfo> =
+    private suspend fun discoverProviders(includeSelf: Boolean): List<DocumentProviderInfo> =
         withContext(Dispatchers.IO) {
             val intent = Intent(DocumentsContract.PROVIDER_INTERFACE)
 

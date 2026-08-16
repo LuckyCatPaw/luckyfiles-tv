@@ -14,6 +14,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
+/** What a caller needs to know about the directory itself, beyond its contents. */
+internal data class DirectoryInfo(val writable: Boolean)
+
 internal class LocalBrowserCoordinator<T>(
     private val appContext: Context,
     private val modelScope: CoroutineScope,
@@ -54,7 +57,7 @@ internal class LocalBrowserCoordinator<T>(
         isCurrentPath: (String) -> Boolean,
         filter: (BrowserItem) -> T?,
         onLoading: (cachedItems: List<T>?) -> Unit,
-        onLoaded: (items: List<T>, title: String, metadata: Map<String, Any>) -> Unit,
+        onLoaded: (items: List<T>, title: String, info: DirectoryInfo) -> Unit,
         onError: (String) -> Unit
     ) {
         val generation = ++loadGeneration
@@ -84,28 +87,22 @@ internal class LocalBrowserCoordinator<T>(
                 val transformedItems = rawItems.mapNotNull(filter)
                 val title = calculateTitle(path)
 
-                val metadata = mutableMapOf<String, Any>()
-                // common metadata
-                metadata["writable"] = File(path).canWrite()
-                metadata["safRestricted"] = FileUtil.isSafRestrictedPath(path)
-
-                Triple(transformedItems, title, metadata)
+                Triple(transformedItems, title, DirectoryInfo(writable = File(path).canWrite()))
             }
 
             if (!isCurrentPath(path) || loadGeneration != generation) return@launch
 
-            val (items, title, metadata) = result.getOrElse { error ->
+            val (items, title, info) = result.getOrElse { error ->
                 onError(error.message ?: appContext.getString(R.string.folder_load_failed))
                 return@launch
             }
 
             snapshots[path] = DirectorySnapshot(
                 items = if (items.size <= maxItemsToCache) items else null,
-                gridPosition = snapshots[path]?.gridPosition ?: TvGridPosition(),
-                metadata = metadata
+                gridPosition = snapshots[path]?.gridPosition ?: TvGridPosition()
             )
 
-            onLoaded(items, title, metadata)
+            onLoaded(items, title, info)
         }
     }
 
@@ -118,9 +115,5 @@ internal class LocalBrowserCoordinator<T>(
         return File(path).name.takeIf { it.isNotBlank() } ?: path
     }
 
-    private data class DirectorySnapshot<T>(
-        val items: List<T>?,
-        val gridPosition: TvGridPosition,
-        val metadata: Map<String, Any>
-    )
+    private data class DirectorySnapshot<T>(val items: List<T>?, val gridPosition: TvGridPosition)
 }

@@ -4,6 +4,25 @@ import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import com.luckycatpaw.luckyfilestv.data.provider.model.DocumentRootInfo
 import com.luckycatpaw.luckyfilestv.data.provider.model.ProviderDocumentInfo
 
+/**
+ * Stable identity of everything the picker can display.
+ *
+ * These strings are compared against [PickerBrowserItem.key] to restore focus after a
+ * navigation, so both sides have to agree character for character. Building them in one
+ * place is what guarantees that: a caller that needs the key of a location it has not
+ * loaded yet (a freshly created folder, the directory it is navigating back out of) uses
+ * the same function the item itself uses.
+ */
+object PickerKeys {
+
+    fun local(path: String): String = "local:$path"
+
+    fun providerRoot(root: DocumentRootInfo): String = "root:${root.authority}:${root.rootId}"
+
+    fun providerDocument(document: ProviderDocumentInfo): String =
+        "document:${document.authority}:${document.documentId}"
+}
+
 sealed interface PickerBrowserItem {
 
     val key: String
@@ -13,7 +32,7 @@ sealed interface PickerBrowserItem {
 
     data class Local(val item: BrowserItem) : PickerBrowserItem {
         override val key: String
-            get() = "local:${item.path}"
+            get() = PickerKeys.local(item.path)
 
         override val name: String
             get() = item.name
@@ -27,7 +46,7 @@ sealed interface PickerBrowserItem {
 
     data class ProviderRoot(val root: DocumentRootInfo) : PickerBrowserItem {
         override val key: String
-            get() = "root:${root.authority}:${root.rootId}"
+            get() = PickerKeys.providerRoot(root)
 
         override val name: String
             get() = root.title
@@ -41,7 +60,7 @@ sealed interface PickerBrowserItem {
 
     data class ProviderDocument(val document: ProviderDocumentInfo, val root: DocumentRootInfo) : PickerBrowserItem {
         override val key: String
-            get() = "document:${document.authority}:${document.documentId}"
+            get() = PickerKeys.providerDocument(document)
 
         override val name: String
             get() = document.displayName

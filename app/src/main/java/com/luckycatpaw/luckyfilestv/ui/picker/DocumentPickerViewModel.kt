@@ -5,9 +5,9 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import com.luckycatpaw.luckyfilestv.R
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
-import com.luckycatpaw.luckyfilestv.data.common.model.FileManagerSettings
 import com.luckycatpaw.luckyfilestv.data.provider.DocumentUriMapper
 import com.luckycatpaw.luckyfilestv.data.provider.model.DocumentRootInfo
 import com.luckycatpaw.luckyfilestv.data.provider.model.ProviderDocumentInfo
@@ -21,6 +21,7 @@ import com.luckycatpaw.luckyfilestv.ui.common.model.TvGridPosition
 import com.luckycatpaw.luckyfilestv.ui.picker.model.BrowseSnapshot
 import com.luckycatpaw.luckyfilestv.ui.picker.model.DisplayMode
 import com.luckycatpaw.luckyfilestv.ui.picker.model.PickerBrowserItem
+import com.luckycatpaw.luckyfilestv.ui.picker.model.PickerKeys
 import com.luckycatpaw.luckyfilestv.ui.picker.model.PickerMode
 import com.luckycatpaw.luckyfilestv.ui.picker.model.PickerRequest
 import com.luckycatpaw.luckyfilestv.ui.picker.model.PickerUiEvent
@@ -32,11 +33,8 @@ import com.luckycatpaw.luckyfilestv.util.hasAllFilesAccess
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.LinkOption
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,7 +50,6 @@ import kotlinx.coroutines.withContext
 internal class DocumentPickerViewModel(application: Application) : AndroidViewModel(application) {
 
     private val appContext = application.applicationContext
-    private val modelScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val eventChannel = Channel<PickerUiEvent>(Channel.BUFFERED)
 
     internal val events: Flow<PickerUiEvent> = eventChannel.receiveAsFlow()
@@ -70,24 +67,39 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
     ) { state, settings ->
         state.copy(settings = settings)
     }.stateIn(
-        scope = modelScope,
+        scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = PickerUiState()
     )
 
-    internal var request = PickerRequest(
-        mode = PickerMode.OPEN_DOCUMENT,
-        allowMultiple = false,
-        acceptedMimeTypes = listOf(MimeTypes.ANY),
-        createMimeType = MimeTypes.BINARY,
-        suggestedFileName = "",
-        initialUri = null,
-        localOnly = false,
-        openableOnly = false,
-        excludeSelf = false,
-        prompt = null,
-        callerGrantFlags = 0
+    private val context = PickerContext(
+        appContext = appContext,
+        modelScope = viewModelScope,
+        uiState = _uiState,
+        documentsRepository = documentsRepository,
+        localSearchRepository = localSearchRepository,
+        providerQueryRunner = providerQueryRunner,
+        initialRequest = PickerRequest(
+            mode = PickerMode.OPEN_DOCUMENT,
+            allowMultiple = false,
+            acceptedMimeTypes = listOf(MimeTypes.ANY),
+            createMimeType = MimeTypes.BINARY,
+            suggestedFileName = "",
+            initialUri = null,
+            localOnly = false,
+            openableOnly = false,
+            excludeSelf = false,
+            prompt = null,
+            callerGrantFlags = 0
+        )
     )
+
+    internal var request: PickerRequest
+        get() = context.request
+        private set(value) {
+            context.request = value
+        }
+
     private var requestedMimeMatcher: (String) -> Boolean = { true }
     private var initialized = false
 
@@ -96,54 +108,24 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
 
     private var currentStorageRoot: String? = null
     private var pendingLocalPath: String? = null
-    private var currentSettings = FileManagerSettings()
 
     private val localCoordinator = LocalBrowserCoordinator<PickerBrowserItem>(
         appContext = appContext,
-        modelScope = modelScope,
+        modelScope = viewModelScope,
         fileRepository = fileRepository,
         storageRepository = storageRepository
     )
 
-    private val searchHandler = PickerSearchHandler(
-        appContext = appContext,
-        modelScope = modelScope,
-        uiState = _uiState,
-        documentsRepository = documentsRepository,
-        localSearchRepository = localSearchRepository,
-        providerQueryRunner = providerQueryRunner,
-        getRequest = { request },
-        getSettings = { currentSettings },
-        providerRootKey = ::providerRootKey
-    )
-
-    private val recentsHandler = PickerRecentsHandler(
-        appContext = appContext,
-        modelScope = modelScope,
-        uiState = _uiState,
-        documentsRepository = documentsRepository,
-        localSearchRepository = localSearchRepository,
-        providerQueryRunner = providerQueryRunner,
-        getRequest = { request },
-        getSettings = { currentSettings },
-        providerRootKey = ::providerRootKey
-    )
-
-    private val providerHandler = PickerProviderHandler(
-        appContext = appContext,
-        modelScope = modelScope,
-        uiState = _uiState,
-        documentsRepository = documentsRepository,
-        providerQueryRunner = providerQueryRunner,
-        getRequest = { request },
-        providerDocumentKey = ::providerDocumentKey,
-        updateUiMetadata = ::updateUiMetadata
-    )
+    private val searchHandler = PickerSearchHandler(context)
+    private val recentsHandler = PickerRecentsHandler(context)
+    private val providerHandler = PickerProviderHandler(context)
 
     init {
-        modelScope.launch {
+        context.onUiMetadataChanged = ::updateUiMetadata
+
+        viewModelScope.launch {
             settingsRepository.settings.collect { settings ->
-                currentSettings = settings
+                context.settings = settings
                 updateUiMetadata()
             }
         }
@@ -179,21 +161,35 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
         name
     )
 
-    internal fun runGlobalSearch(query: String) {
-        providerHandler.incrementNavigation()
-        saveBrowseSnapshotIfNeeded()
+    /**
+     * Every navigation starts the same way: invalidate in-flight provider queries, stop
+     * the initial-location job, and cancel search/recents. The order used to vary between
+     * call sites, which is exactly how intermittent focus bugs appear.
+     */
+    private fun beginNavigation(
+        incrementGeneration: Boolean = true,
+        stopObserving: Boolean = false,
+        clearStorageRoot: Boolean = true
+    ) {
+        if (incrementGeneration) providerHandler.incrementNavigation()
         initialLocationJob?.cancel()
-        currentStorageRoot = null
+        searchHandler.cancelSearch()
+        recentsHandler.cancelRecents()
+        if (stopObserving) providerHandler.stopObservingProviderDirectory()
+        if (clearStorageRoot) currentStorageRoot = null
+    }
+
+    internal fun runGlobalSearch(query: String) {
+        saveBrowseSnapshotIfNeeded()
+        beginNavigation()
         searchHandler.runGlobalSearch(query) {
             providerHandler.stopObservingProviderDirectory()
         }
     }
 
     internal fun runGlobalRecents() {
-        providerHandler.incrementNavigation()
         saveBrowseSnapshotIfNeeded()
-        initialLocationJob?.cancel()
-        currentStorageRoot = null
+        beginNavigation()
         recentsHandler.runGlobalRecents {
             providerHandler.stopObservingProviderDirectory()
         }
@@ -214,9 +210,7 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
     internal fun restoreBrowseSnapshot() {
         val snapshot = specialReturnSnapshot ?: return
         specialReturnSnapshot = null
-        initialLocationJob?.cancel()
-        searchHandler.cancelSearch()
-        recentsHandler.cancelRecents()
+        beginNavigation(incrementGeneration = false, clearStorageRoot = false)
 
         if (snapshot.localPath != null) {
             openLocalDirectory(snapshot.localPath, snapshot.focusKey, true)
@@ -237,9 +231,7 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
 
     internal fun openProviderResultDirectory(item: PickerBrowserItem.ProviderDocument) {
         saveBrowseSnapshotIfNeeded()
-        initialLocationJob?.cancel()
-        searchHandler.cancelSearch()
-        recentsHandler.cancelRecents()
+        beginNavigation(incrementGeneration = false, clearStorageRoot = false)
         val loc = ProviderLocation(item.root, item.document, item.document.displayName)
         _uiState.update {
             it.copy(
@@ -259,7 +251,7 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
         initialLocationJob?.cancel()
         _uiState.update { it.copy(providerLoading = true) }
 
-        initialLocationJob = modelScope.launch {
+        initialLocationJob = viewModelScope.launch {
             val localDir = withContext(Dispatchers.IO) {
                 FileUtil.runCancellable { resolveLocalInitialDirectory(initialUri) }.getOrNull()
             }
@@ -331,12 +323,7 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
     }
 
     internal fun showSourceOverview(focusKey: String? = null) {
-        providerHandler.incrementNavigation()
-        initialLocationJob?.cancel()
-        searchHandler.cancelSearch()
-        recentsHandler.cancelRecents()
-        providerHandler.stopObservingProviderDirectory()
-        currentStorageRoot = null
+        beginNavigation(stopObserving = true)
 
         _uiState.update {
             it.copy(
@@ -353,7 +340,7 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
             )
         }
 
-        modelScope.launch {
+        viewModelScope.launch {
             updateUiMetadata()
             val localResult = withContext(Dispatchers.IO) {
                 FileUtil.runCancellable {
@@ -423,13 +410,8 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
             return
         }
         pendingLocalPath = null
-        providerHandler.incrementNavigation()
-        initialLocationJob?.cancel()
-        searchHandler.cancelSearch()
-        recentsHandler.cancelRecents()
-
-        currentStorageRoot = null
-        modelScope.launch {
+        beginNavigation()
+        viewModelScope.launch {
             val storageRoot = findStorageRoot(path)
             if (_uiState.value.currentLocalPath == path) {
                 currentStorageRoot = storageRoot
@@ -447,7 +429,7 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
 
         localCoordinator.loadDirectory(
             path = path,
-            settings = currentSettings,
+            settings = context.settings,
             restoreCachedState = restoreCachedState,
             isCurrentPath = {
                 _uiState.value.displayMode == DisplayMode.BROWSE && _uiState.value.currentLocalPath == it
@@ -485,12 +467,12 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
                     )
                 }
             },
-            onLoaded = { items, title, metadata ->
+            onLoaded = { items, title, info ->
                 _uiState.update { state ->
                     state.copy(
                         pickerItems = items,
                         currentLocalTitle = title,
-                        currentLocalDirectoryWritable = (metadata["writable"] as? Boolean) ?: false,
+                        currentLocalDirectoryWritable = info.writable,
                         currentLocalTreeSelectable = isLocalTreeSelectable(
                             path = path,
                             storageRoot = currentStorageRoot
@@ -517,18 +499,12 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
 
     internal fun openProviderRoot(root: DocumentRootInfo) {
         saveBrowseSnapshotIfNeeded()
-        initialLocationJob?.cancel()
-        searchHandler.cancelSearch()
-        recentsHandler.cancelRecents()
+        beginNavigation(incrementGeneration = false, clearStorageRoot = false)
         providerHandler.openProviderRoot(root)
     }
 
     internal fun refreshProviderDirectory(location: ProviderLocation, focusKey: String? = null) {
-        providerHandler.incrementNavigation()
-        initialLocationJob?.cancel()
-        searchHandler.cancelSearch()
-        recentsHandler.cancelRecents()
-        currentStorageRoot = null
+        beginNavigation()
         providerHandler.refreshProviderDirectory(location, focusKey)
     }
 
@@ -545,25 +521,28 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
         if (state.providerStack.isNotEmpty()) {
             val newStack = state.providerStack.dropLast(1)
             if (newStack.isEmpty()) {
-                showSourceOverview(providerRootKey(state.providerStack.first().root))
+                showSourceOverview(PickerKeys.providerRoot(state.providerStack.first().root))
             } else {
                 val last = newStack.last()
                 _uiState.update { it.copy(providerStack = newStack) }
-                providerHandler.refreshProviderDirectory(last, providerDocumentKey(state.providerStack.last().document))
+                providerHandler.refreshProviderDirectory(
+                    last,
+                    PickerKeys.providerDocument(state.providerStack.last().document)
+                )
             }
             return
         }
         val path = state.currentLocalPath ?: return
-        modelScope.launch {
+        viewModelScope.launch {
             if (isStorageRoot(path)) {
-                showSourceOverview(localKey(path))
+                showSourceOverview(PickerKeys.local(path))
                 return@launch
             }
             val parent = File(path).parentFile
             if (parent == null) {
                 showSourceOverview()
             } else {
-                openLocalDirectory(parent.absolutePath, localKey(path), true)
+                openLocalDirectory(parent.absolutePath, PickerKeys.local(path), true)
             }
         }
     }
@@ -615,12 +594,17 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
         else -> null
     }
 
+    /**
+     * Reads [PickerUiState.currentLocalDirectoryWritable], which the directory load already
+     * determined off the main thread, rather than calling `File.canWrite()` here — this runs
+     * from `updateUiMetadata()` on every navigation.
+     */
     internal fun canCreateInCurrentLocation(): Boolean {
         val state = _uiState.value
         return if (state.providerStack.isNotEmpty()) {
             state.providerStack.last().root.supportsCreate
         } else {
-            state.currentLocalPath?.let { File(it).canWrite() } ?: false
+            state.currentLocalPath != null && state.currentLocalDirectoryWritable
         }
     }
 
@@ -743,10 +727,6 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
         .map { it.path }
         .firstOrNull { path == it || path.startsWith(it + File.separator) }
 
-    internal fun localKey(path: String): String = "local:$path"
-    private fun providerRootKey(root: DocumentRootInfo): String = "root:${root.authority}:${root.rootId}"
-    internal fun providerDocumentKey(doc: ProviderDocumentInfo): String = "document:${doc.authority}:${doc.documentId}"
-
     internal fun setFocusedKey(key: String?) = _uiState.update { it.copy(focusedKey = key) }
     internal fun setFocusTargetKey(key: String?) = _uiState.update { it.copy(focusTargetKey = key) }
     internal fun dismissProviderError() = _uiState.update { it.copy(providerErrorMessage = null) }
@@ -764,7 +744,7 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
             }
 
             val activeRoot = currentStorageRoot ?: return@startWatching
-            modelScope.launch {
+            viewModelScope.launch {
                 val stillMounted = storageRepository.getStorages().any {
                     samePath(it.path, activeRoot)
                 }
@@ -787,7 +767,6 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
         recentsHandler.cancelRecents()
         initialLocationJob?.cancel()
         localCoordinator.clearCache()
-        modelScope.cancel()
         storageRepository.stopWatching()
         eventChannel.close()
         super.onCleared()

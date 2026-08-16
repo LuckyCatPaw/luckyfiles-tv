@@ -153,7 +153,6 @@
     <string name="provider_read_failed">Provider konnte nicht gelesen werden.</string>
     <string name="document_not_found">Dokument wurde nicht gefunden.</string>
     <string name="provider_no_document">Provider hat kein Dokument zurückgegeben.</string>
-    <string name="document_delete_failed">Dokument konnte nicht gelöscht werden.</string>
     <string name="provider_no_data">Provider hat keine Daten zurückgegeben.</string>
     <string name="file_or_folder_missing">Datei oder Ordner existiert nicht mehr.</string>
     <string name="parent_folder_missing">Übergeordneter Ordner fehlt.</string>
@@ -196,7 +195,6 @@
     <string name="target_folder_create_failed">Zielordner konnte nicht erstellt werden.</string>
     <string name="target_folder_missing">Zielordner existiert nicht.</string>
     <string name="document_create_failed">Dokument konnte nicht erstellt werden.</string>
-    <string name="document_rename_failed">Dokument konnte nicht umbenannt werden.</string>
     <string name="target_folder_parent_missing">Zielordner fehlt.</string>
     <string name="unnamed">Unbenannt</string>
     <string name="provider_file_read_only">Datei ist schreibgeschützt: %1$s</string>

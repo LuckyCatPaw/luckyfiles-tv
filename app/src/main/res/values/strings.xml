@@ -153,7 +153,6 @@
     <string name="provider_read_failed">Provider could not be read.</string>
     <string name="document_not_found">Document was not found.</string>
     <string name="provider_no_document">Provider returned no document.</string>
-    <string name="document_delete_failed">Document could not be deleted.</string>
     <string name="provider_no_data">Provider returned no data.</string>
     <string name="file_or_folder_missing">File or folder no longer exists.</string>
     <string name="parent_folder_missing">Parent folder is missing.</string>
@@ -196,7 +195,6 @@
     <string name="target_folder_create_failed">Target folder could not be created.</string>
     <string name="target_folder_missing">Target folder does not exist.</string>
     <string name="document_create_failed">Document could not be created.</string>
-    <string name="document_rename_failed">Document could not be renamed.</string>
     <string name="target_folder_parent_missing">Target folder is missing.</string>
     <string name="unnamed">Unnamed</string>
     <string name="provider_file_read_only">File is read-only: %1$s</string>

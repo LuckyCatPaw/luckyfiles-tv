@@ -48,7 +48,6 @@ internal fun MainScreen(viewModel: MainViewModel) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val uiState by viewModel.uiState.collectAsState()
-    val actionHandler = viewModel.browserActions
 
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var focusRestoreKey by rememberSaveable { mutableIntStateOf(0) }
@@ -252,12 +251,12 @@ internal fun MainScreen(viewModel: MainViewModel) {
 
                         if (uiState.transferMode != null) {
                             if (item is BrowserItem.Folder || item is BrowserItem.Storage) {
-                                actionHandler.handleItemClick(item, selectionMode = false) {}
+                                viewModel.openItem(item)
                             }
                             return@onItemClick
                         }
 
-                        actionHandler.handleItemClick(item, selectionMode, ::toggleSelection)
+                        if (selectionMode) toggleSelection(item) else viewModel.openItem(item)
 
                         if (!selectionMode && item is BrowserItem.File) {
                             if (!FileOpener.open(context, item.path)) {
@@ -294,12 +293,12 @@ internal fun MainScreen(viewModel: MainViewModel) {
                             .toSet()
                     },
                     onSelectionCopyClick = {
-                        actionHandler.startTransfer(TransferMode.COPY, selectedItems()) {
+                        viewModel.startTransfer(TransferMode.COPY, selectedItems()) {
                             cancelSelection()
                         }
                     },
                     onSelectionMoveClick = {
-                        actionHandler.startTransfer(TransferMode.MOVE, selectedItems()) {
+                        viewModel.startTransfer(TransferMode.MOVE, selectedItems()) {
                             cancelSelection()
                         }
                     },
@@ -336,13 +335,13 @@ internal fun MainScreen(viewModel: MainViewModel) {
                         },
                         onCopy = {
                             actionMenuItem = null
-                            actionHandler.startTransfer(TransferMode.COPY, listOf(item)) {
+                            viewModel.startTransfer(TransferMode.COPY, listOf(item)) {
                                 restoreBrowserFocus(item.path)
                             }
                         },
                         onMove = {
                             actionMenuItem = null
-                            actionHandler.startTransfer(TransferMode.MOVE, listOf(item)) {
+                            viewModel.startTransfer(TransferMode.MOVE, listOf(item)) {
                                 restoreBrowserFocus(item.path)
                             }
                         },
@@ -383,7 +382,7 @@ internal fun MainScreen(viewModel: MainViewModel) {
                         initialValue = item.name,
                         confirmLabel = stringResource(R.string.save),
                         onConfirm = { newName ->
-                            actionHandler.rename(item, newName) {
+                            viewModel.renameItem(item, newName) {
                                 renameItem = null
                                 restoreBrowserFocus(newName)
                             }
@@ -405,7 +404,7 @@ internal fun MainScreen(viewModel: MainViewModel) {
                             deleteItem = null
                             operationMessage = context.getString(R.string.deleting_item, item.name)
 
-                            actionHandler.delete(listOf(item)) { successCount, failureCount ->
+                            viewModel.deleteItems(listOf(item)) { successCount, failureCount ->
                                 operationMessage = null
                                 restoreBrowserFocus()
                                 showDeleteResult(context, successCount, failureCount)
@@ -428,7 +427,7 @@ internal fun MainScreen(viewModel: MainViewModel) {
                             multiDeleteItems = null
                             clearSelection()
 
-                            actionHandler.delete(
+                            viewModel.deleteItems(
                                 items = items,
                                 onProgress = { index, total, item ->
                                     operationMessage = context.getString(
@@ -459,7 +458,7 @@ internal fun MainScreen(viewModel: MainViewModel) {
                         confirmLabel = stringResource(R.string.create),
                         onConfirm = { name ->
                             displayedPath?.let { parentPath ->
-                                actionHandler.createFolder(parentPath, name) { createdPath ->
+                                viewModel.createFolderIn(parentPath, name) { createdPath ->
                                     showNewFolderDialog = false
                                     restoreBrowserFocus(createdPath)
                                 }
@@ -515,15 +514,17 @@ internal fun MainScreen(viewModel: MainViewModel) {
                     )
                 }
 
-                uiState.transferProgress?.let { progress ->
+                uiState.transferProgress?.let { transfer ->
+                    val details = transfer.details
+
                     TransferProgressOverlay(
-                        title = progress.title,
-                        currentItem = progress.currentItem,
-                        totalItems = progress.totalItems,
-                        currentName = progress.currentName,
-                        bytesProcessed = progress.bytesProcessed,
-                        totalBytes = progress.totalBytes,
-                        bytesPerSecond = progress.bytesPerSecond,
+                        title = transfer.title,
+                        currentItem = details.currentItem,
+                        totalItems = details.totalItems,
+                        currentName = details.currentName,
+                        bytesProcessed = details.bytesProcessed,
+                        totalBytes = details.totalBytes,
+                        bytesPerSecond = details.bytesPerSecond,
                         onCancel = viewModel::cancelRunningTransfer
                     )
                 }

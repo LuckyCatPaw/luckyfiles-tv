@@ -1,10 +1,12 @@
 package com.luckycatpaw.luckyfilestv.data.common
 
+import android.app.ActivityManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.storage.StorageManager
 import android.util.Log
+import android.util.LruCache
 import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
@@ -57,6 +59,17 @@ class GeneratedThumbnailCache private constructor(context: Context) {
     private val pendingDiskWrites = ConcurrentHashMap.newKeySet<String>()
     private val writesSinceMaintenance = AtomicInteger(0)
 
+    private val memoryCache = object : LruCache<String, Bitmap>(calculateMemoryCacheSize()) {
+        override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount / 1024
+    }
+
+    private fun calculateMemoryCacheSize(): Int {
+        val am = appContext.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val memoryClass = am.memoryClass
+
+        return (memoryClass * 1024 / 16).coerceIn(4096, 32768)
+    }
+
     init {
         currentDirectory.mkdirs()
         maintenanceExecutor.execute {
@@ -68,11 +81,14 @@ class GeneratedThumbnailCache private constructor(context: Context) {
     suspend fun getOrCreate(key: String, generator: suspend () -> Bitmap?): Bitmap? {
         val hashedKey = hashKey(key)
 
+        memoryCache[hashedKey]?.let { return it }
+
         val diskBitmap = withContext(Dispatchers.IO) {
             readFromDisk(hashedKey)
         }
 
         if (diskBitmap != null) {
+            memoryCache.put(hashedKey, diskBitmap)
             return diskBitmap
         }
 
@@ -80,6 +96,8 @@ class GeneratedThumbnailCache private constructor(context: Context) {
         val generated = generator() ?: return null
 
         currentCoroutineContext().ensureActive()
+
+        memoryCache.put(hashedKey, generated)
 
         scheduleDiskWrite(
             hashedKey = hashedKey,

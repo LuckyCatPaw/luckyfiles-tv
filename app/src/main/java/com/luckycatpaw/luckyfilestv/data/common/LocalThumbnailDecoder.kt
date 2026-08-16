@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.CancellationSignal
 import android.os.ParcelFileDescriptor
 import android.util.Log
+import android.util.LruCache
 import android.util.Size
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
@@ -55,6 +56,14 @@ internal object LocalThumbnailDecoder {
             .asCoroutineDispatcher()
     }
 
+    private val memoryCache by lazy {
+        val maxMemoryKb = (Runtime.getRuntime().maxMemory() / 1024L).toInt()
+        val cacheSize = (maxMemoryKb / 16).coerceIn(4096, 16384)
+        object : LruCache<String, Bitmap>(cacheSize) {
+            override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount / 1024
+        }
+    }
+
     suspend fun decode(context: Context, type: String, path: String): Bitmap? {
         if (type == "video") return decodeVideoThumbnail(path)
 
@@ -79,19 +88,22 @@ internal object LocalThumbnailDecoder {
     }
 
     fun decodeImageThumbnail(path: String, requestedSize: Int): Bitmap? {
+        val cacheKey = "img:$requestedSize:$path"
+        memoryCache[cacheKey]?.let { return it }
+
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(path, options)
         if (options.outWidth <= 0 || options.outHeight <= 0) return null
 
-        var sampleSize = 1
-        while (options.outWidth / sampleSize > requestedSize * 2 ||
-            options.outHeight / sampleSize > requestedSize * 2
-        ) {
-            sampleSize *= 2
+        val decodeOptions = BitmapFactory.Options().apply {
+            inSampleSize = calculateInSampleSize(options, requestedSize, requestedSize)
+            inPreferredConfig = Bitmap.Config.RGB_565
         }
 
-        return BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sampleSize })?.let {
-            scaleBitmapToFit(it, requestedSize, requestedSize)
+        return BitmapFactory.decodeFile(path, decodeOptions)?.let {
+            scaleBitmapToFit(it, requestedSize, requestedSize).also { scaled ->
+                memoryCache.put(cacheKey, scaled)
+            }
         }
     }
 
@@ -155,21 +167,16 @@ internal object LocalThumbnailDecoder {
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
         if (options.outWidth <= 0 || options.outHeight <= 0) return null
 
-        var sampleSize = 1
-        while (options.outWidth / sampleSize > requestedSize * 2 ||
-            options.outHeight / sampleSize > requestedSize * 2
-        ) {
-            sampleSize *= 2
+        val decodeOptions = BitmapFactory.Options().apply {
+            inSampleSize = calculateInSampleSize(options, requestedSize, requestedSize)
+            inPreferredConfig = Bitmap.Config.RGB_565
         }
 
         return BitmapFactory.decodeByteArray(
             bytes,
             0,
             bytes.size,
-            BitmapFactory.Options().apply {
-                inSampleSize =
-                    sampleSize
-            }
+            decodeOptions
         )?.let {
             scaleBitmapToFit(it, requestedSize, requestedSize)
         }
@@ -225,6 +232,20 @@ internal object LocalThumbnailDecoder {
         ).also {
             if (it !== bitmap) bitmap.recycle()
         }
+    }
+
+    private fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
+        val (height: Int, width: Int) = options.outHeight to options.outWidth
+        var inSampleSize = 1
+
+        if (height > reqHeight || width > reqWidth) {
+            val halfHeight: Int = height / 2
+            val halfWidth: Int = width / 2
+            while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
+                inSampleSize *= 2
+            }
+        }
+        return inSampleSize
     }
 
     fun findFolderCover(directoryPath: String): String? {

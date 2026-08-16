@@ -2,6 +2,8 @@ package com.luckycatpaw.luckyfilestv.ui.main
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.luckycatpaw.luckyfilestv.R
 import com.luckycatpaw.luckyfilestv.data.common.FileTreeWalker
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import com.luckycatpaw.luckyfilestv.data.common.model.FileManagerSettings
@@ -16,10 +18,6 @@ import com.luckycatpaw.luckyfilestv.ui.main.model.MainUiState
 import com.luckycatpaw.luckyfilestv.ui.main.model.TransferConflictAnswer
 import com.luckycatpaw.luckyfilestv.ui.main.model.TransferMode
 import com.luckycatpaw.luckyfilestv.util.hasAllFilesAccess
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -32,7 +30,6 @@ import kotlinx.coroutines.launch
 internal class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val appContext = application.applicationContext
-    private val modelScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val eventChannel = Channel<MainUiEvent>(Channel.BUFFERED)
     private val fileTreeWalker = FileTreeWalker()
 
@@ -48,7 +45,7 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
     ) { state, settings ->
         state.copy(settings = settings)
     }.stateIn(
-        scope = modelScope,
+        scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = MainUiState()
     )
@@ -58,7 +55,7 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
 
     private val navigationHandler = NavigationHandler(
         appContext = appContext,
-        modelScope = modelScope,
+        modelScope = viewModelScope,
         uiState = _uiState,
         fileRepository = fileRepository,
         storageRepository = storageRepository,
@@ -69,7 +66,7 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
 
     private val transferManager = TransferManager(
         appContext = appContext,
-        modelScope = modelScope,
+        modelScope = viewModelScope,
         uiState = _uiState,
         onTransferFinished = { targetPath, resultFocusPath ->
             navigationHandler.openDirectory(targetPath, resultFocusPath)
@@ -79,16 +76,8 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
         }
     )
 
-    internal val browserActions: BrowserActionHandler by lazy {
-        BrowserActionHandler(
-            appContext = appContext,
-            modelScope = modelScope,
-            viewModel = this
-        )
-    }
-
     init {
-        modelScope.launch {
+        viewModelScope.launch {
             settingsRepository.settings.collect { settings ->
                 applySettings(settings)
             }
@@ -109,13 +98,6 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
     }
 
     internal suspend fun getProperties(path: String): Result<FileProperties> = fileRepository.getProperties(path)
-
-    internal suspend fun rename(path: String, newName: String): Result<String> = fileRepository.rename(path, newName)
-
-    internal suspend fun delete(path: String): Result<Unit> = fileRepository.delete(path)
-
-    internal suspend fun createFolder(parentPath: String, name: String): Result<String> =
-        fileRepository.createFolder(parentPath, name)
 
     // Transfer Delegation
     internal fun prepareTransfer(mode: TransferMode, sources: List<BrowserItem>) =
@@ -168,7 +150,7 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
         val activeStorage = _uiState.value.currentStorageRoot
         val state = _uiState.value
 
-        modelScope.launch {
+        viewModelScope.launch {
             val storages = storageRepository.getStorages()
 
             if (
@@ -222,9 +204,89 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
         _uiState.update { it.copy(currentStorageRoot = path) }
     }
 
+    // Browser actions
+    //
+    // These used to live in BrowserActionHandler, which held a reference to this
+    // ViewModel while the ViewModel held the handler. Failures are reported through
+    // the existing event channel instead of a Toast, so no Context is needed here.
+
+    internal fun openItem(item: BrowserItem) {
+        when (item) {
+            is BrowserItem.Storage -> {
+                setCurrentStorageRoot(item.path)
+                openDirectory(item.path)
+            }
+
+            is BrowserItem.Folder -> openDirectory(item.path)
+
+            is BrowserItem.File -> Unit
+        }
+    }
+
+    internal fun startTransfer(mode: TransferMode, items: List<BrowserItem>, onStarted: () -> Unit) {
+        if (items.isEmpty()) return
+        prepareTransfer(mode, items)
+        onStarted()
+    }
+
+    internal fun renameItem(item: BrowserItem, newName: String, onFinished: () -> Unit) {
+        viewModelScope.launch {
+            fileRepository.rename(item.path, newName)
+                .onSuccess { newPath ->
+                    onFinished()
+                    refreshCurrentDirectory(focusPath = newPath)
+                }
+                .onFailure { reportFailure(it, R.string.rename_failed) }
+        }
+    }
+
+    /**
+     * Deletes [items] one by one. [onProgress] receives the 1-based position of the item
+     * about to be deleted, letting the caller drive a progress overlay without running
+     * its own coroutine.
+     */
+    internal fun deleteItems(
+        items: List<BrowserItem>,
+        onProgress: (index: Int, total: Int, item: BrowserItem) -> Unit = { _, _, _ -> },
+        onFinished: (successCount: Int, failureCount: Int) -> Unit
+    ) {
+        if (items.isEmpty()) return
+
+        viewModelScope.launch {
+            var successCount = 0
+            var failureCount = 0
+
+            items.forEachIndexed { index, item ->
+                onProgress(index + 1, items.size, item)
+                fileRepository.delete(item.path)
+                    .onSuccess { successCount++ }
+                    .onFailure { failureCount++ }
+            }
+
+            if (successCount > 0) refreshCurrentDirectory()
+            onFinished(successCount, failureCount)
+        }
+    }
+
+    internal fun createFolderIn(parentPath: String, name: String, onFinished: (String) -> Unit) {
+        viewModelScope.launch {
+            fileRepository.createFolder(parentPath, name)
+                .onSuccess { newPath ->
+                    onFinished(newPath)
+                    refreshCurrentDirectory(focusPath = newPath)
+                }
+                .onFailure { reportFailure(it, R.string.folder_create_failed) }
+        }
+    }
+
+    private fun reportFailure(error: Throwable, fallbackResId: Int) {
+        eventChannel.trySend(
+            MainUiEvent.ShowMessage(error.message ?: appContext.getString(fallbackResId))
+        )
+    }
+
     override fun onCleared() {
         navigationHandler.clearSnapshots()
-        modelScope.cancel()
         storageRepository.stopWatching()
         eventChannel.close()
         super.onCleared()

@@ -77,7 +77,7 @@ class FileContentProvider : ContentProvider() {
         return cursor
     }
 
-    override fun insert(uri: Uri, values: ContentValues?): Uri? = throw UnsupportedOperationException()
+    override fun insert(uri: Uri, values: ContentValues?): Uri = throw UnsupportedOperationException()
 
     override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int =
         throw UnsupportedOperationException()

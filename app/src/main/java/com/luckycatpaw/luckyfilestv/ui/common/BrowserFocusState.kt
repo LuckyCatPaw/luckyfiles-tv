@@ -105,7 +105,7 @@ internal class BrowserFocusState<K, H> internal constructor(
         }
     }
 
-    fun cancelActiveJobs() {
+    private fun cancelActiveJobs() {
         focusRestoreJob?.cancel()
         focusRestoreJob = null
     }

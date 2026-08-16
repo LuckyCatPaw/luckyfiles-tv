@@ -22,6 +22,7 @@ import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import com.luckycatpaw.luckyfilestv.ui.browser.NameInputOverlay
 import com.luckycatpaw.luckyfilestv.ui.picker.model.DisplayMode
 import com.luckycatpaw.luckyfilestv.ui.picker.model.PickerBrowserItem
+import com.luckycatpaw.luckyfilestv.ui.picker.model.PickerKeys
 import com.luckycatpaw.luckyfilestv.ui.picker.model.PickerMode
 import com.luckycatpaw.luckyfilestv.ui.theme.LuckyFilesTheme
 import kotlinx.coroutines.launch
@@ -85,23 +86,17 @@ internal fun DocumentPickerScreen(viewModel: DocumentPickerViewModel) {
             ) {
                 val browsing = uiState.displayMode == DisplayMode.BROWSE
 
+                // Only the multi-select count depends on state the ViewModel cannot see.
+                // Everything else comes from uiState.primaryActionLabel, which is the one
+                // place that knows whether the current location is selectable or writable —
+                // for provider locations as well as local ones.
                 val primaryActionLabel = when {
                     viewModel.request.allowMultiple ->
                         context.getString(R.string.select_count, selectedItems.size)
 
-                    (
-                        browsing &&
-                            (viewModel.pickerMode == PickerMode.CREATE_DOCUMENT) &&
-                            uiState.currentLocalDirectoryWritable
-                        ) ->
-                        context.getString(R.string.save_here)
+                    browsing -> uiState.primaryActionLabel
 
-                    browsing &&
-                        viewModel.pickerMode == PickerMode.OPEN_DOCUMENT_TREE &&
-                        uiState.currentLocalTreeSelectable ->
-                        context.getString(R.string.select_this_folder)
-
-                    else -> uiState.primaryActionLabel
+                    else -> null
                 }
 
                 val displayedLocalPath = uiState.currentLocalPath
@@ -115,7 +110,7 @@ internal fun DocumentPickerScreen(viewModel: DocumentPickerViewModel) {
                     focusRequestKey = focusRestoreKey,
                     gridStateKey = when {
                         displayedLocalPath != null ->
-                            "local:$displayedLocalPath"
+                            PickerKeys.local(displayedLocalPath)
 
                         uiState.providerStack.isNotEmpty() ->
                             uiState.providerStack.last().document.uri
@@ -133,11 +128,9 @@ internal fun DocumentPickerScreen(viewModel: DocumentPickerViewModel) {
                     selectedKeys = selectedItems.keys,
                     canCreateFolder = uiState.canCreateFolder,
                     primaryActionLabel = primaryActionLabel,
-                    showSearchAction = true,
                     showRecentsAction =
                         viewModel.pickerMode == PickerMode.OPEN_DOCUMENT ||
                             viewModel.pickerMode == PickerMode.GET_CONTENT,
-                    showCancelAction = true,
                     onSearchClick = {
                         showSearchDialog = true
                     },
@@ -219,26 +212,21 @@ internal fun DocumentPickerScreen(viewModel: DocumentPickerViewModel) {
                             showCreateFolderDialog = true
                         }
                     },
-                    onPrimaryActionClick = primary@{
+                    onPrimaryActionClick = {
                         when {
                             viewModel.request.allowMultiple -> {
                                 finishMultipleSelection()
                             }
 
                             viewModel.pickerMode == PickerMode.OPEN_DOCUMENT_TREE -> {
-                                scope.launch {
-                                    val uri = viewModel.currentTreeUri()
-                                        ?: return@launch
-
-                                    viewModel.finishWithUris(listOf(uri))
+                                viewModel.currentTreeUri()?.let {
+                                    viewModel.finishWithUris(listOf(it))
                                 }
                             }
 
                             viewModel.pickerMode == PickerMode.CREATE_DOCUMENT -> {
-                                scope.launch {
-                                    if (viewModel.canCreateInCurrentLocation()) {
-                                        showCreateFileDialog = true
-                                    }
+                                if (viewModel.canCreateInCurrentLocation()) {
+                                    showCreateFileDialog = true
                                 }
                             }
                         }
@@ -299,7 +287,7 @@ internal fun DocumentPickerScreen(viewModel: DocumentPickerViewModel) {
                                             showCreateFolderDialog = false
                                             viewModel.openLocalDirectory(
                                                 parent,
-                                                viewModel.localKey(newPath)
+                                                PickerKeys.local(newPath)
                                             )
                                             focusRestoreKey++
                                         }.onFailure {
@@ -325,7 +313,7 @@ internal fun DocumentPickerScreen(viewModel: DocumentPickerViewModel) {
                                             showCreateFolderDialog = false
                                             viewModel.refreshProviderDirectory(
                                                 location,
-                                                viewModel.providerDocumentKey(created)
+                                                PickerKeys.providerDocument(created)
                                             )
                                             focusRestoreKey++
                                         }.onFailure { error ->

@@ -203,11 +203,21 @@ private fun CommonBrowserGridItem(
             modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Box(modifier = Modifier.fillMaxWidth().height(116.dp), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(116.dp),
+                contentAlignment = Alignment.Center
+            ) {
                 preview()
             }
             Spacer(modifier = Modifier.height(6.dp))
-            Box(modifier = Modifier.fillMaxWidth().height(56.dp), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                contentAlignment = Alignment.Center
+            ) {
                 Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                     MarqueeNameLine(text = primaryText, selected = selected, color = contentColor, fontSize = 15)
                     if (!secondLine.isNullOrBlank()) {
@@ -233,9 +243,11 @@ private fun MarqueeNameLine(text: String, selected: Boolean, color: ComposeColor
         maxLines = 1,
         softWrap = false,
         overflow = if (selected) TextOverflow.Clip else TextOverflow.Ellipsis,
-        modifier = Modifier.fillMaxWidth().then(
-            if (selected) Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 700) else Modifier
-        )
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (selected) Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 700) else Modifier
+            )
     )
 }
 
@@ -293,7 +305,9 @@ private fun LocalItemPreview(item: BrowserItem, selected: Boolean, useFolderJpgA
             bitmap = it,
             contentDescription = null,
             contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize().padding(3.dp)
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(3.dp)
         )
     } ?: Icon(
         imageVector = localFallbackIcon(item),
@@ -326,7 +340,9 @@ private fun ProviderItemPreview(item: PickerBrowserItem, selected: Boolean) {
             bitmap = it,
             contentDescription = null,
             contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize().padding(3.dp)
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(3.dp)
         )
     } ?: Icon(
         imageVector = providerFallbackIcon(item),

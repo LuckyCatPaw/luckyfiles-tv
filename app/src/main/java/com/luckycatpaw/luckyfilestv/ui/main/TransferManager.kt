@@ -9,7 +9,6 @@ import com.luckycatpaw.luckyfilestv.data.transfer.TransferSessionState
 import com.luckycatpaw.luckyfilestv.ui.main.model.MainUiState
 import com.luckycatpaw.luckyfilestv.ui.main.model.TransferCompletion
 import com.luckycatpaw.luckyfilestv.ui.main.model.TransferConflictAnswer
-import com.luckycatpaw.luckyfilestv.ui.main.model.TransferConflictRequest
 import com.luckycatpaw.luckyfilestv.ui.main.model.TransferMode
 import com.luckycatpaw.luckyfilestv.ui.main.model.TransferUiProgress
 import kotlinx.coroutines.CoroutineScope
@@ -97,21 +96,10 @@ internal class TransferManager(
                         title = appContext.getString(
                             if (operation == TransferMode.COPY) R.string.copying else R.string.moving
                         ),
-                        currentItem = progress.currentItem,
-                        totalItems = progress.totalItems,
-                        currentName = progress.currentName,
-                        bytesProcessed = progress.bytesProcessed,
-                        totalBytes = progress.totalBytes,
-                        bytesPerSecond = progress.bytesPerSecond
+                        details = progress
                     )
                 },
-                conflictRequest = session.conflict?.let { conflict ->
-                    TransferConflictRequest(
-                        sourceName = conflict.sourceName,
-                        targetDirectory = conflict.targetDirectory,
-                        multipleItems = conflict.multipleItems
-                    )
-                }
+                conflictRequest = session.conflict
             )
         }
 
