@@ -1,8 +1,6 @@
 package com.luckycatpaw.luckyfilestv.ui.browser
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,38 +15,22 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Text
 import com.luckycatpaw.luckyfilestv.R
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
-import com.luckycatpaw.luckyfilestv.ui.common.BrowserHeaderButton
+import com.luckycatpaw.luckyfilestv.ui.common.BrowserHeader
+import com.luckycatpaw.luckyfilestv.ui.common.HeaderButtonConfig
+import com.luckycatpaw.luckyfilestv.ui.common.HeaderFocusTarget
 import com.luckycatpaw.luckyfilestv.ui.common.TvFileGrid
 import com.luckycatpaw.luckyfilestv.ui.common.TvFileGridDefaults
 import com.luckycatpaw.luckyfilestv.ui.common.model.TvGridPosition
 import com.luckycatpaw.luckyfilestv.ui.common.rememberBrowserFocusState
 import com.luckycatpaw.luckyfilestv.ui.common.rememberTvFileGridFocusState
 
-private enum class HeaderFocusTarget {
-    CREATE_FOLDER,
-    TRANSFER_CANCEL,
-    TRANSFER_HERE,
-    SELECT_ALL,
-    SELECTION_COPY,
-    SELECTION_MOVE,
-    SELECTION_DELETE,
-    SELECTION_CANCEL,
-    CANCEL,
-    SETTINGS
-}
 
 @Composable
 internal fun BrowserScreen(
@@ -224,6 +206,7 @@ internal fun BrowserScreen(
                 settingsFocusRequester.takeIf {
                     !selectionMode && showSettingsAction
                 }
+            else -> null
         }
     }
 
@@ -254,37 +237,80 @@ internal fun BrowserScreen(
         BrowserHeader(
             title = title,
             focusEnabled = focusEnabled,
-            selectionMode = selectionMode,
-            canCreateFolder = canCreateFolder,
-            transferActionLabel = transferActionLabel,
-            showCancelAction = showCancelAction,
-            showSettingsAction = showSettingsAction,
-            createFolderFocusRequester = createFolderFocusRequester,
-            transferCancelFocusRequester = transferCancelFocusRequester,
-            transferHereFocusRequester = transferHereFocusRequester,
-            selectAllFocusRequester = selectAllFocusRequester,
-            selectionCopyFocusRequester = selectionCopyFocusRequester,
-            selectionMoveFocusRequester = selectionMoveFocusRequester,
-            selectionDeleteFocusRequester = selectionDeleteFocusRequester,
-            selectionCancelFocusRequester = selectionCancelFocusRequester,
-            cancelFocusRequester = cancelFocusRequester,
-            settingsFocusRequester = settingsFocusRequester,
-            onHeaderFocused = { target ->
-                focusState.onHeaderFocused(target)
-            },
-            onHeaderDown = {
-                focusState.restoreGridFocus(focusEnabled)
-            },
-            onCreateFolderClick = onCreateFolderClick,
-            onTransferHereClick = onTransferHereClick,
-            onTransferCancelClick = onTransferCancelClick,
-            onSelectAllClick = onSelectAllClick,
-            onSelectionCopyClick = onSelectionCopyClick,
-            onSelectionMoveClick = onSelectionMoveClick,
-            onSelectionDeleteClick = onSelectionDeleteClick,
-            onSelectionCancelClick = onSelectionCancelClick,
-            onCancelClick = onTransferCancelClick,
-            onSettingsClick = onSettingsClick
+            buttons = listOf(
+                HeaderButtonConfig(
+                    text = stringResource(R.string.all),
+                    focusRequester = selectAllFocusRequester,
+                    onFocused = { focusState.onHeaderFocused(HeaderFocusTarget.SELECT_ALL) },
+                    onClick = onSelectAllClick,
+                    visible = selectionMode
+                ),
+                HeaderButtonConfig(
+                    text = stringResource(R.string.copy),
+                    focusRequester = selectionCopyFocusRequester,
+                    onFocused = { focusState.onHeaderFocused(HeaderFocusTarget.SELECTION_COPY) },
+                    onClick = onSelectionCopyClick,
+                    visible = selectionMode
+                ),
+                HeaderButtonConfig(
+                    text = stringResource(R.string.move),
+                    focusRequester = selectionMoveFocusRequester,
+                    onFocused = { focusState.onHeaderFocused(HeaderFocusTarget.SELECTION_MOVE) },
+                    onClick = onSelectionMoveClick,
+                    visible = selectionMode
+                ),
+                HeaderButtonConfig(
+                    text = stringResource(R.string.delete),
+                    focusRequester = selectionDeleteFocusRequester,
+                    onFocused = { focusState.onHeaderFocused(HeaderFocusTarget.SELECTION_DELETE) },
+                    onClick = onSelectionDeleteClick,
+                    visible = selectionMode
+                ),
+                HeaderButtonConfig(
+                    text = stringResource(R.string.cancel),
+                    focusRequester = selectionCancelFocusRequester,
+                    onFocused = { focusState.onHeaderFocused(HeaderFocusTarget.SELECTION_CANCEL) },
+                    onClick = onSelectionCancelClick,
+                    visible = selectionMode
+                ),
+                HeaderButtonConfig(
+                    text = stringResource(R.string.new_folder),
+                    focusRequester = createFolderFocusRequester,
+                    onFocused = { focusState.onHeaderFocused(HeaderFocusTarget.CREATE_FOLDER) },
+                    onClick = onCreateFolderClick,
+                    visible = !selectionMode && canCreateFolder
+                ),
+                HeaderButtonConfig(
+                    text = stringResource(R.string.cancel),
+                    focusRequester = transferCancelFocusRequester,
+                    onFocused = { focusState.onHeaderFocused(HeaderFocusTarget.TRANSFER_CANCEL) },
+                    onClick = onTransferCancelClick,
+                    visible = !selectionMode && transferActionLabel != null
+                ),
+                HeaderButtonConfig(
+                    text = transferActionLabel,
+                    focusRequester = transferHereFocusRequester,
+                    onFocused = { focusState.onHeaderFocused(HeaderFocusTarget.TRANSFER_HERE) },
+                    onClick = onTransferHereClick,
+                    visible = !selectionMode && transferActionLabel != null
+                ),
+                HeaderButtonConfig(
+                    text = stringResource(R.string.cancel),
+                    focusRequester = cancelFocusRequester,
+                    onFocused = { focusState.onHeaderFocused(HeaderFocusTarget.CANCEL) },
+                    onClick = onTransferCancelClick,
+                    visible = !selectionMode && showCancelAction && transferActionLabel == null
+                ),
+                HeaderButtonConfig(
+                    icon = Icons.Filled.Settings,
+                    contentDescription = stringResource(R.string.settings),
+                    focusRequester = settingsFocusRequester,
+                    onFocused = { focusState.onHeaderFocused(HeaderFocusTarget.SETTINGS) },
+                    onClick = onSettingsClick,
+                    visible = !selectionMode && showSettingsAction
+                )
+            ),
+            onDown = { focusState.restoreGridFocus(focusEnabled) }
         )
 
         Spacer(
@@ -347,154 +373,3 @@ internal fun BrowserScreen(
     }
 }
 
-@Composable
-private fun BrowserHeader(
-    title: String,
-    focusEnabled: Boolean,
-    selectionMode: Boolean,
-    canCreateFolder: Boolean,
-    transferActionLabel: String?,
-    showCancelAction: Boolean,
-    showSettingsAction: Boolean,
-    createFolderFocusRequester: FocusRequester,
-    transferCancelFocusRequester: FocusRequester,
-    transferHereFocusRequester: FocusRequester,
-    selectAllFocusRequester: FocusRequester,
-    selectionCopyFocusRequester: FocusRequester,
-    selectionMoveFocusRequester: FocusRequester,
-    selectionDeleteFocusRequester: FocusRequester,
-    selectionCancelFocusRequester: FocusRequester,
-    cancelFocusRequester: FocusRequester,
-    settingsFocusRequester: FocusRequester,
-    onHeaderFocused: (HeaderFocusTarget) -> Unit,
-    onHeaderDown: () -> Unit,
-    onCreateFolderClick: () -> Unit,
-    onTransferHereClick: () -> Unit,
-    onTransferCancelClick: () -> Unit,
-    onSelectAllClick: () -> Unit,
-    onSelectionCopyClick: () -> Unit,
-    onSelectionMoveClick: () -> Unit,
-    onSelectionDeleteClick: () -> Unit,
-    onSelectionCancelClick: () -> Unit,
-    onCancelClick: () -> Unit,
-    onSettingsClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(42.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Text(
-            text = title,
-            modifier = Modifier.weight(1f),
-            color = MaterialTheme.colorScheme.onBackground,
-            fontSize = 21.sp,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-
-        if (selectionMode) {
-            BrowserHeaderButton(
-                text = stringResource(R.string.all),
-                focusEnabled = focusEnabled,
-                focusRequester = selectAllFocusRequester,
-                onFocused = { onHeaderFocused(HeaderFocusTarget.SELECT_ALL) },
-                onDown = onHeaderDown,
-                onClick = onSelectAllClick
-            )
-
-            BrowserHeaderButton(
-                text = stringResource(R.string.copy),
-                focusEnabled = focusEnabled,
-                focusRequester = selectionCopyFocusRequester,
-                onFocused = { onHeaderFocused(HeaderFocusTarget.SELECTION_COPY) },
-                onDown = onHeaderDown,
-                onClick = onSelectionCopyClick
-            )
-
-            BrowserHeaderButton(
-                text = stringResource(R.string.move),
-                focusEnabled = focusEnabled,
-                focusRequester = selectionMoveFocusRequester,
-                onFocused = { onHeaderFocused(HeaderFocusTarget.SELECTION_MOVE) },
-                onDown = onHeaderDown,
-                onClick = onSelectionMoveClick
-            )
-
-            BrowserHeaderButton(
-                text = stringResource(R.string.delete),
-                focusEnabled = focusEnabled,
-                focusRequester = selectionDeleteFocusRequester,
-                onFocused = { onHeaderFocused(HeaderFocusTarget.SELECTION_DELETE) },
-                onDown = onHeaderDown,
-                onClick = onSelectionDeleteClick
-            )
-
-            BrowserHeaderButton(
-                text = stringResource(R.string.cancel),
-                focusEnabled = focusEnabled,
-                focusRequester = selectionCancelFocusRequester,
-                onFocused = { onHeaderFocused(HeaderFocusTarget.SELECTION_CANCEL) },
-                onDown = onHeaderDown,
-                onClick = onSelectionCancelClick
-            )
-
-            return@Row
-        }
-
-        if (canCreateFolder) {
-            BrowserHeaderButton(
-                text = stringResource(R.string.new_folder),
-                focusEnabled = focusEnabled,
-                focusRequester = createFolderFocusRequester,
-                onFocused = { onHeaderFocused(HeaderFocusTarget.CREATE_FOLDER) },
-                onDown = onHeaderDown,
-                onClick = onCreateFolderClick
-            )
-        }
-
-        if (transferActionLabel != null) {
-            BrowserHeaderButton(
-                text = stringResource(R.string.cancel),
-                focusEnabled = focusEnabled,
-                focusRequester = transferCancelFocusRequester,
-                onFocused = { onHeaderFocused(HeaderFocusTarget.TRANSFER_CANCEL) },
-                onDown = onHeaderDown,
-                onClick = onTransferCancelClick
-            )
-
-            BrowserHeaderButton(
-                text = transferActionLabel,
-                focusEnabled = focusEnabled,
-                focusRequester = transferHereFocusRequester,
-                onFocused = { onHeaderFocused(HeaderFocusTarget.TRANSFER_HERE) },
-                onDown = onHeaderDown,
-                onClick = onTransferHereClick
-            )
-        } else if (showCancelAction) {
-            BrowserHeaderButton(
-                text = stringResource(R.string.cancel),
-                focusEnabled = focusEnabled,
-                focusRequester = cancelFocusRequester,
-                onFocused = { onHeaderFocused(HeaderFocusTarget.CANCEL) },
-                onDown = onHeaderDown,
-                onClick = onCancelClick
-            )
-        }
-
-        if (showSettingsAction) {
-            BrowserHeaderButton(
-                icon = Icons.Filled.Settings,
-                contentDescription = stringResource(R.string.settings),
-                focusEnabled = focusEnabled,
-                focusRequester = settingsFocusRequester,
-                onFocused = { onHeaderFocused(HeaderFocusTarget.SETTINGS) },
-                onDown = onHeaderDown,
-                onClick = onSettingsClick
-            )
-        }
-    }
-}

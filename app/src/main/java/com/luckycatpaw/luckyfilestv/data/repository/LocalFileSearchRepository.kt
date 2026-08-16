@@ -2,6 +2,7 @@ package com.luckycatpaw.luckyfilestv.data.repository
 
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import com.luckycatpaw.luckyfilestv.data.common.model.FileManagerSettings
+import com.luckycatpaw.luckyfilestv.util.FileUtil
 import com.luckycatpaw.luckyfilestv.util.MimeTypes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -29,7 +30,6 @@ internal class LocalFileSearchRepository(
         val pendingDirectories = ArrayDeque<File>()
         val visitedDirectories = HashSet<String>()
         val storageRoots = storageRoots()
-        val restrictedRoots = restrictedRoots(storageRoots)
         val mimeMatcher = MimeTypes.matcher(acceptedMimeTypes)
         var scannedEntries = 0
 
@@ -45,37 +45,27 @@ internal class LocalFileSearchRepository(
 
             if (!directory.isDirectory) continue
             if (!visitedDirectories.add(directory.absolutePath)) continue
-            if (isSafRestricted(directory, restrictedRoots)) continue
+            if (FileUtil.isSafRestrictedPath(directory.path)) continue
 
             for (child in directory.listFilesSafely()) {
                 currentCoroutineContext().ensureActive()
                 if (++scannedEntries >= MAX_SCAN_ENTRIES) break
 
                 val file = child.canonicalOrNull() ?: continue
-
-                if (file.name.startsWith('.') || isSafRestricted(file, restrictedRoots)) continue
+                if (FileUtil.isHiddenFile(file.name, settings.hideFolderJpg) || FileUtil.isSafRestrictedPath(file.path)) continue
 
                 if (file.isDirectory) {
                     pendingDirectories.add(file)
-
                     if (file.name.contains(query, ignoreCase = true)) {
-                        results += BrowserItem.Folder(
-                            name = file.name,
-                            path = file.absolutePath
-                        )
+                        results += BrowserItem.Folder(file.name, file.absolutePath)
                     }
-                } else if (
-                    !directoriesOnly &&
-                    shouldInclude(file, settings, mimeMatcher) &&
-                    file.name.contains(query, ignoreCase = true)
-                ) {
+                } else if (!directoriesOnly && shouldInclude(file, settings, mimeMatcher) && file.name.contains(query, ignoreCase = true)) {
                     results += file.toBrowserItem()
                 }
 
                 if (results.size >= MAX_SEARCH_RESULTS) break
             }
         }
-
         results
     }
 
@@ -84,27 +74,18 @@ internal class LocalFileSearchRepository(
         acceptedMimeTypes: List<String>
     ): List<RecentBrowserItem> = withContext(Dispatchers.IO) {
         val storageRoots = storageRoots()
-        val restrictedRoots = restrictedRoots(storageRoots)
         val mimeMatcher = MimeTypes.matcher(acceptedMimeTypes)
-
         val results = mutableListOf<RecentBrowserItem>()
 
         for (storageRoot in storageRoots) {
             currentCoroutineContext().ensureActive()
-            results += loadRecentsFromStorage(
-                storageRoot,
-                restrictedRoots,
-                settings,
-                mimeMatcher
-            )
+            results += loadRecentsFromStorage(storageRoot, settings, mimeMatcher)
         }
-
         results
     }
 
     private suspend fun loadRecentsFromStorage(
         storageRoot: File,
-        restrictedRoots: List<File>,
         settings: FileManagerSettings,
         mimeMatcher: (String) -> Boolean
     ): List<RecentBrowserItem> {
@@ -119,15 +100,14 @@ internal class LocalFileSearchRepository(
 
             if (!directory.isDirectory) continue
             if (!visitedDirectories.add(directory.absolutePath)) continue
-            if (isSafRestricted(directory, restrictedRoots)) continue
+            if (FileUtil.isSafRestrictedPath(directory.path)) continue
 
             for (child in directory.listFilesSafely()) {
                 currentCoroutineContext().ensureActive()
                 if (++scannedEntries >= MAX_SCAN_ENTRIES) break
 
                 val file = child.canonicalOrNull() ?: continue
-
-                if (file.name.startsWith('.') || isSafRestricted(file, restrictedRoots)) continue
+                if (FileUtil.isHiddenFile(file.name, settings.hideFolderJpg) || FileUtil.isSafRestrictedPath(file.path)) continue
 
                 if (file.isDirectory) {
                     pendingDirectories.add(file)
@@ -136,81 +116,43 @@ internal class LocalFileSearchRepository(
 
                 if (!shouldInclude(file, settings, mimeMatcher)) continue
 
-                val candidate = RecentCandidate(
-                    file = file,
-                    modified = file.lastModified()
-                )
-
+                val candidate = RecentCandidate(file, file.lastModified())
                 if (newestFiles.size < MAX_RECENTS_PER_STORAGE) {
                     newestFiles.add(candidate)
-                } else if (candidate.modified > newestFiles.peek().modified) {
-                    newestFiles.poll()
-                    newestFiles.add(candidate)
+                } else {
+                    val oldest = newestFiles.peek()
+                    if (oldest != null && candidate.modified > oldest.modified) {
+                        newestFiles.poll()
+                        newestFiles.add(candidate)
+                    }
                 }
             }
         }
 
         return buildList(newestFiles.size) {
             while (newestFiles.isNotEmpty()) {
-                val candidate = newestFiles.poll()
-                add(
-                    RecentBrowserItem(
-                        candidate.file.toBrowserItem(),
-                        candidate.modified
-                    )
-                )
+                newestFiles.poll()?.let { add(RecentBrowserItem(it.file.toBrowserItem(), it.modified)) }
             }
-        }
+        }.asReversed()
     }
 
-    private fun shouldInclude(
-        file: File,
-        settings: FileManagerSettings,
-        mimeMatcher: (String) -> Boolean
-    ): Boolean {
+    private fun shouldInclude(file: File, settings: FileManagerSettings, mimeMatcher: (String) -> Boolean): Boolean {
         if (!file.isFile) return false
-        if (settings.hideFolderJpg && file.name.equals(FOLDER_COVER_NAME, true)) return false
-
-        val actualMimeType = MimeTypes.forFileName(file.name)
-        return mimeMatcher(actualMimeType)
+        if (FileUtil.isHiddenFile(file.name, settings.hideFolderJpg)) return false
+        return mimeMatcher(MimeTypes.forFileName(file.name))
     }
 
-    private fun isSafRestricted(file: File, restrictedRoots: List<File>): Boolean {
-        val filePath = file.path
-
-        return restrictedRoots.any { restrictedRoot ->
-            filePath == restrictedRoot.path ||
-                    filePath.startsWith(restrictedRoot.path + File.separator)
-        }
-    }
-
-    private suspend fun storageRoots(): List<File> {
-        return storageRepository.getStorages().map { File(it.path) }
-    }
-
-    private fun restrictedRoots(storageRoots: List<File>): List<File> {
-        return storageRoots.flatMap { root ->
-            listOf(File(root, "Android/data"), File(root, "Android/obb"))
-        }.mapNotNull { it.canonicalOrNull() }
-    }
+    private suspend fun storageRoots(): List<File> = storageRepository.getStorages().map { File(it.path) }
 
     private fun File.canonicalOrNull(): File? = runCatching { canonicalFile }.getOrNull()
 
-    private fun File.listFilesSafely(): Array<out File> {
-        return runCatching { listFiles().orEmpty() }.getOrDefault(emptyArray())
-    }
+    private fun File.listFilesSafely(): Array<out File> = runCatching { listFiles().orEmpty() }.getOrDefault(emptyArray())
 
-    private fun File.toBrowserItem(): BrowserItem.File {
-        return BrowserItem.File(name = name, path = absolutePath)
-    }
+    private fun File.toBrowserItem(): BrowserItem.File = BrowserItem.File(name = name, path = absolutePath)
 
-    private data class RecentCandidate(
-        val file: File,
-        val modified: Long
-    )
+    private data class RecentCandidate(val file: File, val modified: Long)
 
     private companion object {
-        const val FOLDER_COVER_NAME = "folder.jpg"
         const val MAX_SEARCH_RESULTS = 300
         const val MAX_RECENTS_PER_STORAGE = 64
         const val MAX_SCAN_ENTRIES = 100_000

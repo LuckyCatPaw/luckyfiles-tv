@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">LuckyFiles TV</string>
-    <string name="action_failed">Aktion fehlgeschlagen.</string>
     <string name="no_items_selected">Keine Elemente ausgewählt.</string>
     <string name="no_files_selected">Keine Dateien ausgewählt.</string>
     <string name="properties_read_failed">Eigenschaften konnten nicht gelesen werden.</string>
@@ -41,13 +40,7 @@
     <string name="provider_load_errors">%1$d Speicherquelle(n) konnten nicht geladen werden.</string>
     <string name="no_recent_files">Keine zuletzt verwendeten Dateien.</string>
     <string name="storage_source_open_failed">Speicherquelle konnte nicht geöffnet werden.</string>
-    <string name="provider_open_failed">Provider konnte nicht geöffnet werden.</string>
     <string name="folder_load_failed">Ordner konnte nicht geladen werden.</string>
-    <string name="picker_title_multiple">Dateien auswählen</string>
-    <string name="picker_title_create">Speicherort auswählen</string>
-    <string name="picker_title_tree">Ordner auswählen</string>
-    <string name="picker_title_get_content">Datei auswählen</string>
-    <string name="picker_title_document">Dokument auswählen</string>
     <string name="file_create_failed">Datei konnte nicht erstellt werden.</string>
     <string name="new_file_default">Neue Datei</string>
     <string name="storage">Speicher</string>
@@ -112,8 +105,8 @@
     <string name="descending">Absteigend</string>
     <string name="folders_first">Ordner zuerst</string>
     <string name="folders_first_desc">Zeigt Ordner unabhängig vom gewählten Sortiermerkmal vor normalen Dateien an.</string>
-    <string name="on">Ein</string>
-    <string name="off">Aus</string>
+    <string name="state_on">Ein</string>
+    <string name="state_off">Aus</string>
     <string name="active">Aktiv</string>
     <string name="sort_name_ascending_desc">Sortiert Namen von A bis Z.</string>
     <string name="sort_name_descending_desc">Sortiert Namen von Z bis A.</string>
@@ -151,8 +144,6 @@
     <string name="folder_named_create_failed">Ordner „%1$s“ konnte nicht erstellt werden.</string>
     <string name="folder_named_read_failed">Ordner „%1$s“ konnte nicht gelesen werden.</string>
     <string name="target_read_only">Zielordner ist schreibgeschützt.</string>
-    <string name="name_empty">Name darf nicht leer sein.</string>
-    <string name="name_invalid_chars">Der Name enthält ungültige Zeichen.</string>
     <string name="read_only_access">Nur Lesezugriff erlaubt.</string>
     <string name="path_outside_storage">Pfad außerhalb erlaubter Speichergeräte.</string>
     <string name="search_title_query">Suche: %1$s</string>
@@ -160,7 +151,6 @@
     <string name="target_folder_missing">Zielordner existiert nicht.</string>
     <string name="document_create_failed">Dokument konnte nicht erstellt werden.</string>
     <string name="document_rename_failed">Dokument konnte nicht umbenannt werden.</string>
-    <string name="provider_required_column">Provider liefert die erforderliche Spalte „%1$s“ nicht.</string>
     <string name="target_folder_parent_missing">Zielordner fehlt.</string>
     <string name="unnamed">Unbenannt</string>
     <string name="provider_file_read_only">Datei ist schreibgeschützt: %1$s</string>

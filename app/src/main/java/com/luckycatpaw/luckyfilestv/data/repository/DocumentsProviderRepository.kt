@@ -18,7 +18,12 @@ import com.luckycatpaw.luckyfilestv.data.provider.model.DocumentRootsResult
 import com.luckycatpaw.luckyfilestv.data.provider.model.ProviderChildrenResult
 import com.luckycatpaw.luckyfilestv.data.provider.model.ProviderDocumentPath
 import com.luckycatpaw.luckyfilestv.data.provider.model.ProviderDocumentInfo
+import com.luckycatpaw.luckyfilestv.util.FileUtil
 import com.luckycatpaw.luckyfilestv.util.MimeTypes
+import com.luckycatpaw.luckyfilestv.util.string
+import com.luckycatpaw.luckyfilestv.util.requiredString
+import com.luckycatpaw.luckyfilestv.util.int
+import com.luckycatpaw.luckyfilestv.util.longOrNull
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -29,6 +34,7 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
+import kotlin.time.Duration.Companion.milliseconds
 
 class DocumentsProviderRepository(context: Context) {
 
@@ -150,7 +156,7 @@ class DocumentsProviderRepository(context: Context) {
         requireCreate: Boolean
     ): RootQueryOutcome {
         return try {
-            val roots = withTimeoutOrNull(PROVIDER_QUERY_TIMEOUT_MS) {
+            val roots = withTimeoutOrNull(PROVIDER_QUERY_TIMEOUT) {
                 ProviderCallRunner.run { signal ->
                     queryProviderRoots(
                         provider = provider,
@@ -192,23 +198,20 @@ class DocumentsProviderRepository(context: Context) {
     }
 
     suspend fun queryRootDocument(
-        root: DocumentRootInfo,
-        cancellationSignal: CancellationSignal? = null
+        root: DocumentRootInfo
     ): Result<ProviderDocumentInfo> {
         return queryDocument(
             authority = root.authority,
-            documentId = root.documentId,
-            cancellationSignal = cancellationSignal
+            documentId = root.documentId
         )
     }
 
     suspend fun queryDocument(
         authority: String,
         documentId: String,
-        parentDocumentId: String? = null,
-        cancellationSignal: CancellationSignal? = null
-    ): Result<ProviderDocumentInfo> = cancellableResult {
-        ProviderCallRunner.run(cancellationSignal) { signal ->
+        parentDocumentId: String? = null
+    ): Result<ProviderDocumentInfo> = FileUtil.runCancellable {
+        ProviderCallRunner.run { signal ->
             val uri = DocumentsContract.buildDocumentUri(authority, documentId)
 
             resolver.query(
@@ -232,7 +235,7 @@ class DocumentsProviderRepository(context: Context) {
         }
     }
 
-    suspend fun findDocumentPath(uri: Uri): Result<ProviderDocumentPath> = cancellableResult {
+    suspend fun findDocumentPath(uri: Uri): Result<ProviderDocumentPath> = FileUtil.runCancellable {
         ProviderCallRunner.run { _ ->
             val path = DocumentsContract.findDocumentPath(
                 resolver,
@@ -240,16 +243,18 @@ class DocumentsProviderRepository(context: Context) {
             ) ?: error(appContext.getString(R.string.document_not_found))
 
             ProviderDocumentPath(
+                authority = uri.authority ?: error("No authority in URI"),
                 rootId = path.rootId,
                 documentIds = path.path
             )
         }
     }
 
+    @Suppress("unused") // Part of the core DocumentsProvider API operations
     suspend fun isChildDocument(
         root: DocumentRootInfo,
         childDocumentId: String
-    ): Result<Boolean> = cancellableResult {
+    ): Result<Boolean> = FileUtil.runCancellable {
         ProviderCallRunner.run { _ ->
             DocumentsContract.isChildDocument(
                 resolver,
@@ -363,7 +368,7 @@ class DocumentsProviderRepository(context: Context) {
         parentDocumentId: String,
         mimeType: String,
         displayName: String
-    ): Result<ProviderDocumentInfo> = cancellableResult {
+    ): Result<ProviderDocumentInfo> = FileUtil.runCancellable {
         ProviderCallRunner.run { _ ->
             val parentUri = DocumentsContract.buildDocumentUri(
                 authority,
@@ -388,23 +393,20 @@ class DocumentsProviderRepository(context: Context) {
         authority: String,
         uri: Uri
     ): ProviderDocumentInfo {
-        resolver.query(
-            uri,
-            DOCUMENT_PROJECTION,
-            null,
-            null,
-            null
-        )?.use { cursor ->
-            if (!cursor.moveToFirst()) {
+        val cursor = resolver.query(uri, DOCUMENT_PROJECTION, null, null, null) 
+            ?: error(appContext.getString(R.string.provider_no_document))
+
+        return cursor.use { 
+            if (!it.moveToFirst()) {
                 error(appContext.getString(R.string.document_not_found))
             }
 
-            return documentFromCursor(
-                cursor = cursor,
+            documentFromCursor(
+                cursor = it,
                 authority = authority,
                 parentDocumentId = null
             )
-        } ?: error(appContext.getString(R.string.provider_no_document))
+        }
     }
 
     suspend fun createDirectory(
@@ -420,7 +422,8 @@ class DocumentsProviderRepository(context: Context) {
         )
     }
 
-    suspend fun deleteDocument(document: ProviderDocumentInfo): Result<Unit> = cancellableResult {
+    @Suppress("unused") // Part of the core DocumentsProvider API operations
+    suspend fun deleteDocument(document: ProviderDocumentInfo): Result<Unit> = FileUtil.runCancellable {
         ProviderCallRunner.run { _ ->
             check(
                 DocumentsContract.deleteDocument(
@@ -433,10 +436,11 @@ class DocumentsProviderRepository(context: Context) {
         }
     }
 
+    @Suppress("unused") // Part of the core DocumentsProvider API operations
     suspend fun renameDocument(
         document: ProviderDocumentInfo,
         newName: String
-    ): Result<ProviderDocumentInfo> = cancellableResult {
+    ): Result<ProviderDocumentInfo> = FileUtil.runCancellable {
         ProviderCallRunner.run { _ ->
             val uri = DocumentsContract.renameDocument(
                 resolver,
@@ -451,6 +455,7 @@ class DocumentsProviderRepository(context: Context) {
         }
     }
 
+    @Suppress("unused") // Helper for building document URIs externally
     fun documentUri(
         authority: String,
         documentId: String
@@ -458,6 +463,7 @@ class DocumentsProviderRepository(context: Context) {
         return DocumentsContract.buildDocumentUri(authority, documentId)
     }
 
+    @Suppress("unused") // Helper for building tree URIs externally
     fun treeUri(
         authority: String,
         documentId: String
@@ -474,7 +480,7 @@ class DocumentsProviderRepository(context: Context) {
         openableOnly: Boolean,
         sortMode: ListSortMode,
         cancellationSignal: CancellationSignal? = null
-    ): Result<ProviderChildrenResult> = cancellableResult {
+    ): Result<ProviderChildrenResult> = FileUtil.runCancellable {
         ProviderCallRunner.run(cancellationSignal) { signal ->
             val documents = mutableListOf<ProviderDocumentInfo>()
             val mimeMatcher = MimeTypes.matcher(acceptedMimeTypes)
@@ -598,13 +604,11 @@ class DocumentsProviderRepository(context: Context) {
         provider: DocumentProviderInfo,
         cursor: Cursor
     ): DocumentRootInfo {
-        val title = cursor.string(
-            DocumentsContract.Root.COLUMN_TITLE
-        )?.takeIf { it.isNotBlank() } ?: provider.label
+        val title = cursor.string(DocumentsContract.Root.COLUMN_TITLE)
+            ?.takeIf { it.isNotBlank() } ?: provider.label
 
-        val mimeTypes = cursor.string(
-            DocumentsContract.Root.COLUMN_MIME_TYPES
-        )?.split('\n')
+        val mimeTypes = cursor.string(DocumentsContract.Root.COLUMN_MIME_TYPES)
+            ?.split('\n')
             ?.map { it.trim().lowercase(Locale.ROOT) }
             ?.filter { it.isNotBlank() }
             ?.takeIf { it.isNotEmpty() }
@@ -612,22 +616,12 @@ class DocumentsProviderRepository(context: Context) {
         return DocumentRootInfo(
             packageName = provider.packageName,
             authority = provider.authority,
-            rootId = cursor.requiredString(
-                DocumentsContract.Root.COLUMN_ROOT_ID
-            ),
-            documentId = cursor.requiredString(
-                DocumentsContract.Root.COLUMN_DOCUMENT_ID
-            ),
+            rootId = cursor.requiredString(DocumentsContract.Root.COLUMN_ROOT_ID),
+            documentId = cursor.requiredString(DocumentsContract.Root.COLUMN_DOCUMENT_ID),
             title = title,
-            summary = cursor.string(
-                DocumentsContract.Root.COLUMN_SUMMARY
-            ),
-            flags = cursor.int(
-                DocumentsContract.Root.COLUMN_FLAGS
-            ),
-            iconResId = cursor.int(
-                DocumentsContract.Root.COLUMN_ICON
-            ),
+            summary = cursor.string(DocumentsContract.Root.COLUMN_SUMMARY),
+            flags = cursor.int(DocumentsContract.Root.COLUMN_FLAGS),
+            iconResId = cursor.int(DocumentsContract.Root.COLUMN_ICON),
             mimeTypes = mimeTypes
         )
     }
@@ -639,28 +633,16 @@ class DocumentsProviderRepository(context: Context) {
     ): ProviderDocumentInfo {
         return ProviderDocumentInfo(
             authority = authority,
-            documentId = cursor.requiredString(
-                DocumentsContract.Document.COLUMN_DOCUMENT_ID
-            ),
+            documentId = cursor.requiredString(DocumentsContract.Document.COLUMN_DOCUMENT_ID),
             parentDocumentId = parentDocumentId,
-            displayName = cursor.string(
-                DocumentsContract.Document.COLUMN_DISPLAY_NAME
-            ) ?: appContext.getString(R.string.unnamed),
-            mimeType = cursor.string(
-                DocumentsContract.Document.COLUMN_MIME_TYPE
-            ) ?: MimeTypes.BINARY,
-            flags = cursor.int(
-                DocumentsContract.Document.COLUMN_FLAGS
-            ),
-            iconResId = cursor.int(
-                DocumentsContract.Document.COLUMN_ICON
-            ),
-            size = cursor.longOrNull(
-                DocumentsContract.Document.COLUMN_SIZE
-            ),
-            lastModified = cursor.longOrNull(
-                DocumentsContract.Document.COLUMN_LAST_MODIFIED
-            )
+            displayName = cursor.string(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                ?: appContext.getString(R.string.unnamed),
+            mimeType = cursor.string(DocumentsContract.Document.COLUMN_MIME_TYPE)
+                ?: MimeTypes.BINARY,
+            flags = cursor.int(DocumentsContract.Document.COLUMN_FLAGS),
+            iconResId = cursor.int(DocumentsContract.Document.COLUMN_ICON),
+            size = cursor.longOrNull(DocumentsContract.Document.COLUMN_SIZE),
+            lastModified = cursor.longOrNull(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
         )
     }
 
@@ -693,41 +675,6 @@ class DocumentsProviderRepository(context: Context) {
         }
     }
 
-    private fun Cursor.requiredString(column: String): String {
-        return string(column)
-            ?: error(appContext.getString(R.string.provider_required_column, column))
-    }
-
-    private fun Cursor.string(column: String): String? {
-        val index = getColumnIndex(column)
-        if (index < 0 || isNull(index)) return null
-        return getString(index)
-    }
-
-    private fun Cursor.int(column: String): Int {
-        val index = getColumnIndex(column)
-        if (index < 0 || isNull(index)) return 0
-        return getInt(index)
-    }
-
-    private fun Cursor.longOrNull(column: String): Long? {
-        val index = getColumnIndex(column)
-        if (index < 0 || isNull(index)) return null
-        return getLong(index)
-    }
-
-    private suspend fun <T> cancellableResult(
-        block: suspend () -> T
-    ): Result<T> {
-        return try {
-            Result.success(block())
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: Exception) {
-            Result.failure(error)
-        }
-    }
-
     private enum class ListSortMode {
         CHILDREN,
         PROVIDER_ORDER,
@@ -741,7 +688,7 @@ class DocumentsProviderRepository(context: Context) {
 
     companion object {
         private const val MAX_PARALLEL_ROOT_QUERIES = 4
-        private const val PROVIDER_QUERY_TIMEOUT_MS = 5_000L
+        private val PROVIDER_QUERY_TIMEOUT = 5000.milliseconds
         private val ROOT_PROJECTION = arrayOf(
             DocumentsContract.Root.COLUMN_ROOT_ID,
             DocumentsContract.Root.COLUMN_DOCUMENT_ID,
@@ -763,3 +710,4 @@ class DocumentsProviderRepository(context: Context) {
         )
     }
 }
+

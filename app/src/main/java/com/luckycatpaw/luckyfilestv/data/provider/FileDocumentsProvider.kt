@@ -14,6 +14,7 @@ import com.luckycatpaw.luckyfilestv.data.transfer.model.TransferConflictDecision
 import com.luckycatpaw.luckyfilestv.data.transfer.TransferCoordinator
 import com.luckycatpaw.luckyfilestv.data.transfer.model.TransferOperation
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
+import com.luckycatpaw.luckyfilestv.util.FileUtil
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.io.FileNotFoundException
@@ -141,7 +142,7 @@ class FileDocumentsProvider : DocumentsProvider() {
 
         val safeName = sanitizeFileName(displayName)
         val isDir = mimeType == DocumentsContract.Document.MIME_TYPE_DIR
-        val destination = createUniqueDestination(parent, safeName, isDir)
+        val destination = FileUtil.createUniqueDestination(parent, safeName, isDir)
 
         val created = if (isDir) destination.mkdir() else destination.createNewFile()
         if (!created) {
@@ -164,7 +165,7 @@ class FileDocumentsProvider : DocumentsProvider() {
 
         securityGuard.requireWritable(parent)
 
-        val deleted = runCatching { runBlocking { fileTreeWalker.delete(file) } }.isSuccess
+        val deleted = file.deleteRecursively()
         if (!deleted) {
             throw FileNotFoundException(
                 requireNotNull(context).getString(R.string.provider_could_not_delete, file.absolutePath)
@@ -312,14 +313,13 @@ class FileDocumentsProvider : DocumentsProvider() {
         return destination
     }
 
-    private fun currentStorages(): List<BrowserItem.Storage> = runBlocking {
-        storageRepository.getStorages().filter { storage ->
+    private fun currentStorages(): List<BrowserItem.Storage> =
+        storageRepository.getStoragesSync().filter { storage ->
             runCatching {
                 val file = File(storage.path).canonicalFile
                 file.exists() && file.isDirectory
             }.getOrDefault(false)
         }
-    }
 
     private fun managedStorageSnapshot(): DocumentIdResolver.ManagedStorageSnapshot {
         val rootEntries = currentStorages().mapNotNull { storage ->
@@ -331,31 +331,12 @@ class FileDocumentsProvider : DocumentsProvider() {
         )
     }
 
-    private fun createUniqueDestination(parent: File, requestedName: String, directory: Boolean): File {
-        var candidate = File(parent, requestedName)
-        if (!candidate.exists()) return candidate
-
-        val (baseName, extension) = if (!directory) {
-            val dot = requestedName.lastIndexOf('.')
-            if (dot in 1 until requestedName.lastIndex) {
-                requestedName.substring(0, dot) to requestedName.substring(dot)
-            } else requestedName to ""
-        } else requestedName to ""
-
-        var number = 1
-        while (candidate.exists()) {
-            candidate = File(parent, "$baseName ($number)$extension")
-            number++
-        }
-        return candidate
-    }
-
     private fun sanitizeFileName(name: String): String {
-        val cleaned = name.replace('/', '_').replace('\\', '_').replace("\u0000", "").trim()
-        if (cleaned.isBlank() || cleaned == "." || cleaned == "..") {
+        val clean = FileUtil.sanitizeFileName(name)
+        if (clean == "unnamed") {
             throw FileNotFoundException(requireNotNull(context).getString(R.string.provider_invalid_file_name))
         }
-        return cleaned
+        return clean
     }
 
     private fun notifyDirectoryChanged(directory: File, storageSnapshot: DocumentIdResolver.ManagedStorageSnapshot) {

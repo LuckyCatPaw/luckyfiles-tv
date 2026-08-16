@@ -295,7 +295,7 @@ internal fun DocumentPickerScreen(viewModel: DocumentPickerViewModel) {
 
                                         result.onSuccess { newPath ->
                                             showCreateFolderDialog = false
-                                            viewModel.refreshLocalDirectory(
+                                            viewModel.openLocalDirectory(
                                                 parent,
                                                 viewModel.localKey(newPath)
                                             )

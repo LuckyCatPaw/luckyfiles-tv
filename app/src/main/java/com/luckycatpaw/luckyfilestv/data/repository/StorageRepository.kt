@@ -19,7 +19,11 @@ class StorageRepository(
     private var storageCallback: StorageManager.StorageVolumeCallback? = null
 
     suspend fun getStorages(): List<BrowserItem.Storage> = withContext(Dispatchers.IO) {
-        storageManager.storageVolumes
+        getStoragesSync()
+    }
+
+    fun getStoragesSync(): List<BrowserItem.Storage> {
+        return storageManager.storageVolumes
             .filter { volume ->
                 volume.state == Environment.MEDIA_MOUNTED ||
                         volume.state == Environment.MEDIA_MOUNTED_READ_ONLY

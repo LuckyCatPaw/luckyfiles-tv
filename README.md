@@ -1,12 +1,12 @@
-<p align="center">
+<p>
   <img src="app/src/main/res/mipmap-xhdpi/tv_banner.png" alt="LuckyFiles TV" width="320">
 </p>
 
-<p align="center">
+<p>
   <strong>A remote friendly file manager for Android TV</strong>
 </p>
 
-<p align="center">
+<p>
   <img src="https://img.shields.io/badge/Android_TV-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Android TV">
   <img src="https://img.shields.io/badge/Kotlin-7F52FF?style=flat-square&logo=kotlin&logoColor=white" alt="Kotlin">
   <img src="https://img.shields.io/badge/Jetpack_Compose-4285F4?style=flat-square&logo=jetpackcompose&logoColor=white" alt="Jetpack Compose">
@@ -18,21 +18,21 @@ LuckyFiles TV is built for the television instead of adapting a touch interface 
 
 <table>
   <tr>
-    <td width="50%">
+    <td>
       <strong>Browse and search</strong><br>
       Navigate local and connected storage sources, search for files and access recently used documents.
     </td>
-    <td width="50%">
+    <td>
       <strong>Manage files</strong><br>
       Copy, move, rename and delete files or folders. Multiple selections and name conflicts are handled directly in the TV interface.
     </td>
   </tr>
   <tr>
-    <td width="50%">
+    <td>
       <strong>Preview content</strong><br>
       Display previews for images, videos, PDF files and audio files. Folder artwork can be loaded from <code>folder.jpg</code>.
     </td>
-    <td width="50%">
+    <td>
       <strong>Choose your layout</strong><br>
       Sort by name, date, size or file type, keep folders at the top and clean up release style file names for easier reading.
     </td>
@@ -106,16 +106,16 @@ Open the complete project in Android Studio and let Gradle finish syncing. The a
 To create a debug APK from the project root:
 
 ```bash
-./gradlew assembleDebug
+./gradlew assemblePlayDebug
 ```
 
 ## Project structure
 
 | Path | Contents |
 | :--- | :--- |
-| `src/main/java` | Kotlin application code |
-| `src/main/res` | App resources, translations, icons and TV banner |
-| `src/system` | Resource overlay for the optional system document picker |
+| `app/src/main/java` | Kotlin application code (`data`, `ui`, `util`) |
+| `app/src/main/res` | App resources, translations, icons and TV banner |
+| `app/src/system` | Flavor specific resources for the system document picker |
 
 ## Contributing
 

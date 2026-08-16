@@ -46,6 +46,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 internal fun <T> TvFileGrid(
@@ -74,7 +75,6 @@ internal fun <T> TvFileGrid(
 ) {
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
-    val currentEnabled by rememberUpdatedState(enabled)
     val currentItems by rememberUpdatedState(items)
     val currentSelectedIndex by rememberUpdatedState(selectedIndex)
     val currentOnItemLongClick by rememberUpdatedState(onItemLongClick)
@@ -124,10 +124,6 @@ internal fun <T> TvFileGrid(
 
         navigationJob = scope.launch {
             while (isActive) {
-                if (!currentEnabled) {
-                    break
-                }
-
                 val target = pendingNavigationIndex
                 if (target !in currentItems.indices) {
                     break
@@ -160,7 +156,7 @@ internal fun <T> TvFileGrid(
                     withFrameNanos { }
                 }
 
-                if (!currentEnabled || target != pendingNavigationIndex) {
+                if (target != pendingNavigationIndex) {
                     continue
                 }
 
@@ -173,7 +169,7 @@ internal fun <T> TvFileGrid(
                     withFrameNanos { }
                 }
 
-                if (!currentEnabled || target != pendingNavigationIndex) {
+                if (target != pendingNavigationIndex) {
                     continue
                 }
 
@@ -247,20 +243,18 @@ internal fun <T> TvFileGrid(
                             event.nativeKeyEvent.repeatCount == 0 &&
                             activationJob?.isActive != true
                         ) {
-                            val pressedIndex = selectedIndex
-
                             longPressTriggered = false
                             activationJob = scope.launch {
-                                delay(LONG_PRESS_DELAY_MILLIS)
+                                delay(LONG_PRESS_DELAY)
 
                                 if (
                                     isActive &&
-                                    pressedIndex == currentSelectedIndex &&
-                                    pressedIndex in currentItems.indices
+                                    selectedIndex == currentSelectedIndex &&
+                                    selectedIndex in currentItems.indices
                                 ) {
                                     longPressTriggered = true
                                     currentOnItemLongClick(
-                                        currentItems[pressedIndex]
+                                        currentItems[selectedIndex]
                                     )
                                 }
                             }
@@ -485,4 +479,4 @@ private val activationKeyCodes = setOf(
     AndroidKeyEvent.KEYCODE_BUTTON_A
 )
 
-private const val LONG_PRESS_DELAY_MILLIS = 550L
+private val LONG_PRESS_DELAY = 550.milliseconds

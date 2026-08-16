@@ -20,7 +20,6 @@
 
     <application
         android:name=".LuckyFilesTVApplication"
-        android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:banner="@mipmap/tv_banner"
         android:enableOnBackInvokedCallback="true"

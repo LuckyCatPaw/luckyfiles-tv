@@ -22,5 +22,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "TV Filemanager Plus"
+rootProject.name = "LuckyFiles TV"
 include(":app")

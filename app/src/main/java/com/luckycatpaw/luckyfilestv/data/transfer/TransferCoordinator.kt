@@ -14,6 +14,7 @@ import com.luckycatpaw.luckyfilestv.data.transfer.model.TransferOperation
 import com.luckycatpaw.luckyfilestv.data.transfer.model.TransferProgress
 import com.luckycatpaw.luckyfilestv.data.transfer.model.TransferResult
 import com.luckycatpaw.luckyfilestv.data.common.FileTreeWalker
+import com.luckycatpaw.luckyfilestv.util.FileUtil
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -496,13 +497,7 @@ class TransferCoordinator(
         return candidate
     }
 
-    private fun isSameOrChild(parent: File, child: File): Boolean {
-        val parentPath = parent.canonicalFile.path
-        val childPath = child.canonicalFile.path
-
-        return childPath == parentPath ||
-                childPath.startsWith(parentPath + File.separator)
-    }
+    private fun isSameOrChild(parent: File, child: File): Boolean = FileUtil.isSameOrChild(parent, child)
 
     private fun readableMessage(error: Throwable): String {
         return when (error) {

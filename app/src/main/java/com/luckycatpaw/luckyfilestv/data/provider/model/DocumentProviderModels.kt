@@ -65,9 +65,11 @@ data class ProviderDocumentInfo(
     val supportsThumbnail: Boolean
         get() = flags and DocumentsContract.Document.FLAG_SUPPORTS_THUMBNAIL != 0
 
+    @Suppress("unused") // Part of SAF capability flags mapping
     val supportsCreate: Boolean
         get() = flags and DocumentsContract.Document.FLAG_DIR_SUPPORTS_CREATE != 0
 
+    @Suppress("unused") // Part of SAF capability flags mapping
     val blocksOpenDocumentTree: Boolean
         get() = flags and DocumentsContract.Document.FLAG_DIR_BLOCKS_OPEN_DOCUMENT_TREE != 0
 }
@@ -85,6 +87,7 @@ data class ProviderChildrenResult(
 )
 
 data class ProviderDocumentPath(
+    val authority: String,
     val rootId: String?,
     val documentIds: List<String>
 )

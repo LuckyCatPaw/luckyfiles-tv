@@ -7,6 +7,10 @@ internal object MimeTypes {
     const val ANY = "*/*"
     const val BINARY = "application/octet-stream"
 
+    val VIDEO_EXTENSIONS = setOf("avi", "mkv", "mp4", "m4v", "mov", "webm", "mpeg", "mpg", "ts", "m2ts", "wmv", "flv", "vob")
+    val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif", "avif")
+    val AUDIO_EXTENSIONS = setOf("mp3", "m4a", "mka", "aac", "flac", "ogg", "oga", "opus", "wav", "wma", "ape", "alac", "ac3", "dts")
+
     fun normalize(value: String?): String? {
         val mimeType = value
             ?.trim()

@@ -43,14 +43,10 @@ internal class DocumentCursorBuilder(
         val documentId = idResolver.toDocumentId(canonicalFile)
         val isDirectory = canonicalFile.isDirectory
         val isRoot = securityGuard.isRootFile(canonicalFile, storageSnapshot)
-        var flags = 0
-
-        if (isDirectory && canonicalFile.canWrite()) {
-            flags = flags or DocumentsContract.Document.FLAG_DIR_SUPPORTS_CREATE
-        }
-
-        if (!isDirectory && canonicalFile.canWrite()) {
-            flags = flags or DocumentsContract.Document.FLAG_SUPPORTS_WRITE
+        var flags = when {
+            isDirectory && canonicalFile.canWrite() -> DocumentsContract.Document.FLAG_DIR_SUPPORTS_CREATE
+            !isDirectory && canonicalFile.canWrite() -> DocumentsContract.Document.FLAG_SUPPORTS_WRITE
+            else -> 0
         }
 
         if (isDirectory && securityGuard.blocksOpenDocumentTree(documentId, storageSnapshot)) {

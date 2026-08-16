@@ -190,7 +190,7 @@ internal class MainViewModel(
             if (state.currentPath == null) {
                 val previousFocus = state.focusedPath
 
-                _uiState.update { it.copy(
+                _uiState.update { currentState -> currentState.copy(
                     browserItems = storages,
                     focusTargetPath = previousFocus?.takeIf { path ->
                         storages.any { it.path == path }

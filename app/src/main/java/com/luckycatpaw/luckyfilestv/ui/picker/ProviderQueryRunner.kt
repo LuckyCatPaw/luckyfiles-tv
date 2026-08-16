@@ -15,6 +15,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
+import kotlin.time.Duration.Companion.milliseconds
 
 internal class ProviderQueryRunner(context: Context) {
     private val appContext = context.applicationContext
@@ -31,7 +32,7 @@ internal class ProviderQueryRunner(context: Context) {
             val signal = CancellationSignal()
             val queryResult = try {
                 try {
-                    withTimeoutOrNull(QUERY_TIMEOUT_MS) {
+                    withTimeoutOrNull(QUERY_TIMEOUT) {
                         query(signal)
                     }
                 } finally {
@@ -64,9 +65,9 @@ internal class ProviderQueryRunner(context: Context) {
             }
 
             result = queryResult.getOrThrow()
-            onUpdate(requireNotNull(result))
+            onUpdate(result)
 
-            if (!requireNotNull(result).loading) {
+            if (!result.loading) {
                 return ProviderQueryOutcome(
                     result = result,
                     failure = null,
@@ -75,7 +76,7 @@ internal class ProviderQueryRunner(context: Context) {
             }
 
             if (attempt < MAX_LOADING_ATTEMPTS - 1) {
-                withTimeoutOrNull(LOADING_RETRY_DELAY_MS) {
+                withTimeoutOrNull(LOADING_RETRY_DELAY) {
                     awaitProviderChange(observedUri)
                 }
             }
@@ -135,8 +136,8 @@ internal class ProviderQueryRunner(context: Context) {
 
     private companion object {
         const val MAX_LOADING_ATTEMPTS = 6
-        const val LOADING_RETRY_DELAY_MS = 750L
-        const val QUERY_TIMEOUT_MS = 8_000L
+        val LOADING_RETRY_DELAY = 750.milliseconds
+        val QUERY_TIMEOUT = 8000.milliseconds
     }
 }
 

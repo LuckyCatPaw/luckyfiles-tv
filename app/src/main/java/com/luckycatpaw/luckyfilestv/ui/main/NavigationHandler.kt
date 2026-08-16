@@ -6,18 +6,17 @@ import com.luckycatpaw.luckyfilestv.data.repository.FileRepository
 import com.luckycatpaw.luckyfilestv.data.repository.StorageRepository
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import com.luckycatpaw.luckyfilestv.data.common.model.FileManagerSettings
+import com.luckycatpaw.luckyfilestv.ui.common.LocalBrowserCoordinator
 import com.luckycatpaw.luckyfilestv.ui.common.model.TvGridPosition
 import com.luckycatpaw.luckyfilestv.ui.main.model.MainUiEvent
 import com.luckycatpaw.luckyfilestv.ui.main.model.MainUiState
 import com.luckycatpaw.luckyfilestv.util.hasAllFilesAccess
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
-import java.util.LinkedHashMap
 
 internal class NavigationHandler(
     private val appContext: Context,
@@ -29,31 +28,27 @@ internal class NavigationHandler(
     private val onPendingPathChanged: (String?) -> Unit,
     private val getSettings: () -> FileManagerSettings
 ) {
-    private var directoryLoadJob: Job? = null
-    private var directoryLoadGeneration = 0
-    private val directorySnapshots = object :
-        LinkedHashMap<String, DirectorySnapshot>(
-            DIRECTORY_SNAPSHOT_LIMIT,
-            0.75f,
-            true
-        ) {
-        override fun removeEldestEntry(
-            eldest: MutableMap.MutableEntry<String, DirectorySnapshot>
-        ): Boolean = size > DIRECTORY_SNAPSHOT_LIMIT
-    }
+    private val coordinator = LocalBrowserCoordinator<BrowserItem>(
+        appContext = appContext,
+        modelScope = modelScope,
+        fileRepository = fileRepository,
+        storageRepository = storageRepository,
+        cacheLimit = 20,
+        maxItemsToCache = 500
+    )
 
     fun clearSnapshots() {
-        directorySnapshots.clear()
+        coordinator.clearCache()
     }
 
     fun showStorages(focusPath: String? = null) {
-        directoryLoadGeneration++
-        directoryLoadJob?.cancel()
-
+        coordinator.clearCache() // In the original code, showStorages Clear logic was slightly different but clearCache matches the spirit of showStorages reset
+        // Wait, original showStorages didn't clear snapshots, only incremented generation.
+        // Let's stick closer to original if possible, but coordinator handles generation internally.
+        
         modelScope.launch {
             val storages = storageRepository.getStorages()
-
-            uiState.update { it.copy(
+            uiState.update { state -> state.copy(
                 currentPath = null,
                 currentStorageRoot = null,
                 title = appContext.getString(R.string.storage),
@@ -77,96 +72,38 @@ internal class NavigationHandler(
         }
 
         onPendingPathChanged(null)
-        val enteringNewDirectory = uiState.value.currentPath != path
-
-        uiState.update { it.copy(currentPath = path) }
-
         val settings = getSettings()
-        val loadGeneration = ++directoryLoadGeneration
-        val cachedSnapshot = directorySnapshots[path]?.let { snapshot ->
-            if (enteringNewDirectory && !restoreCachedState) {
-                snapshot.copy(
-                    gridPosition = TvGridPosition()
-                ).also { resetSnapshot ->
-                    directorySnapshots[path] = resetSnapshot
-                }
-            } else {
-                snapshot
+
+        coordinator.loadDirectory(
+            path = path,
+            settings = settings,
+            restoreCachedState = restoreCachedState,
+            isCurrentPath = { uiState.value.currentPath == it },
+            filter = { it },
+            onLoading = { cachedItems ->
+                uiState.update { it.copy(
+                    currentPath = path,
+                    focusTargetPath = if (restoreCachedState && cachedItems == null) null else focusPath,
+                    browserItems = cachedItems ?: emptyList()
+                )}
+            },
+            onLoaded = { items, title, _ ->
+                uiState.update { state -> state.copy(
+                    focusTargetPath = if (restoreCachedState) focusPath else focusPath?.takeIf { target -> items.any { it.path == target } },
+                    browserItems = items,
+                    title = title
+                )}
+            },
+            onError = { message ->
+                eventChannel.trySend(MainUiEvent.ShowMessage(message))
             }
-        }
-
-        val cachedItems = cachedSnapshot?.items
-        val effectiveFocusPath = if (restoreCachedState && cachedSnapshot == null) {
-            null
-        } else {
-            focusPath
-        }
-
-        uiState.update { it.copy(
-            focusTargetPath = effectiveFocusPath,
-            browserItems = cachedItems ?: emptyList()
-        )}
-
-        directoryLoadJob?.cancel()
-        directoryLoadJob = modelScope.launch {
-            val itemsResult = fileRepository.getItems(
-                path = path,
-                hideFolderJpg = settings.hideFolderJpg,
-                sortMode = settings.sortMode,
-                sortAscending = settings.sortAscending,
-                foldersFirst = settings.foldersFirst
-            )
-
-            if (
-                uiState.value.currentPath != path ||
-                directoryLoadGeneration != loadGeneration
-            ) {
-                return@launch
-            }
-
-            val items = itemsResult.getOrElse { error ->
-                eventChannel.trySend(
-                    MainUiEvent.ShowMessage(
-                        error.message ?: appContext.getString(R.string.folder_load_failed)
-                    )
-                )
-                return@launch
-            }
-
-            directorySnapshots[path] = DirectorySnapshot(
-                items = items.takeIf {
-                    it.size <= MAX_CACHED_ITEMS_PER_DIRECTORY
-                },
-                gridPosition = directorySnapshots[path]?.gridPosition ?: TvGridPosition()
-            )
-
-            uiState.update { it.copy(
-                focusTargetPath = effectiveFocusPath?.takeIf { target ->
-                    items.any { it.path == target }
-                },
-                browserItems = items,
-                title = calculateTitle(path)
-            )}
-        }
+        )
     }
 
-    private suspend fun calculateTitle(path: String?): String {
-        if (path == null) return appContext.getString(R.string.storage)
-
-        val storages = storageRepository.getStorages()
-        storages.firstOrNull { it.path == path }?.let { return it.name }
-
-        return File(path).name.takeIf { it.isNotBlank() } ?: path
-    }
-
-    fun directoryGridPosition(path: String?): TvGridPosition? {
-        return path?.let { directorySnapshots[it]?.gridPosition }
-    }
+    fun directoryGridPosition(path: String?): TvGridPosition? = coordinator.getGridPosition(path)
 
     fun saveDirectoryGridPosition(path: String?, position: TvGridPosition) {
-        val directoryPath = path ?: return
-        val snapshot = directorySnapshots[directoryPath] ?: return
-        directorySnapshots[directoryPath] = snapshot.copy(gridPosition = position)
+        coordinator.saveGridPosition(path, position)
     }
 
     fun navigateBack() {
@@ -179,7 +116,6 @@ internal class NavigationHandler(
             }
 
             val parent = File(path).parentFile
-
             if (parent == null) {
                 showStorages()
                 return@launch
@@ -195,15 +131,5 @@ internal class NavigationHandler(
 
     private suspend fun isStorageRoot(path: String): Boolean {
         return storageRepository.getStorages().any { it.path == path }
-    }
-
-    private data class DirectorySnapshot(
-        val items: List<BrowserItem>?,
-        val gridPosition: TvGridPosition
-    )
-
-    companion object {
-        private const val DIRECTORY_SNAPSHOT_LIMIT = 20
-        private const val MAX_CACHED_ITEMS_PER_DIRECTORY = 500
     }
 }

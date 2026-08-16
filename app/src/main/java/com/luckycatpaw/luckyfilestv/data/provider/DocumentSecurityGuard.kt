@@ -2,6 +2,7 @@ package com.luckycatpaw.luckyfilestv.data.provider
 
 import android.content.Context
 import com.luckycatpaw.luckyfilestv.R
+import com.luckycatpaw.luckyfilestv.util.FileUtil
 import java.io.File
 import java.io.FileNotFoundException
 
@@ -19,7 +20,7 @@ internal class DocumentSecurityGuard(
             throw FileNotFoundException(appContext.getString(R.string.provider_outside_managed))
         }
 
-        if (isSafRestrictedPath(file, storageSnapshot)) {
+        if (isSafRestrictedPath(file.path, storageSnapshot)) {
             throw FileNotFoundException(appContext.getString(R.string.provider_outside_managed))
         }
 
@@ -67,7 +68,7 @@ internal class DocumentSecurityGuard(
         storageSnapshot: DocumentIdResolver.ManagedStorageSnapshot
     ): Boolean {
         return storageSnapshot.roots.any { root ->
-            isSameOrChildPath(root.path, canonicalPath)
+            FileUtil.isSameOrChildPath(root.path, canonicalPath)
         }
     }
 
@@ -79,30 +80,14 @@ internal class DocumentSecurityGuard(
         return storageSnapshot.roots.any { it.path == canonical.path }
     }
 
-    fun isSameOrChild(parent: File, child: File): Boolean {
-        val parentPath = runCatching { parent.canonicalPath }.getOrNull() ?: return false
-        val childPath = runCatching { child.canonicalPath }.getOrNull() ?: return false
-        return isSameOrChildPath(parentPath, childPath)
-    }
-
-    fun isSameOrChildPath(parentPath: String, childPath: String): Boolean {
-        return childPath == parentPath || childPath.startsWith(parentPath + File.separator)
-    }
-
-    fun isSafRestrictedPath(
-        file: File,
-        storageSnapshot: DocumentIdResolver.ManagedStorageSnapshot
-    ): Boolean {
-        val canonical = runCatching { file.canonicalFile }.getOrNull() ?: return false
-        return isSafRestrictedPath(canonical.path, storageSnapshot)
-    }
+    fun isSameOrChild(parent: File, child: File): Boolean = FileUtil.isSameOrChild(parent, child)
 
     fun isSafRestrictedPath(
         canonicalPath: String,
         storageSnapshot: DocumentIdResolver.ManagedStorageSnapshot
     ): Boolean {
         return storageSnapshot.restrictedRoots.any { root ->
-            isSameOrChildPath(root.path, canonicalPath)
+            FileUtil.isSameOrChildPath(root.path, canonicalPath)
         }
     }
 

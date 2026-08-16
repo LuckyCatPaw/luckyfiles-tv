@@ -24,10 +24,8 @@ internal object TvFileGridDefaults {
 
 @Stable
 internal class TvFileGridFocusState internal constructor(
-    itemCount: Int
+    private val itemCount: Int
 ) {
-    private val itemCount = itemCount
-
     // Lazy grids only compose a small window. Keep requesters for that window
     // instead of allocating one object for every file in a huge directory.
     private val requesters = mutableMapOf<Int, FocusRequester>()

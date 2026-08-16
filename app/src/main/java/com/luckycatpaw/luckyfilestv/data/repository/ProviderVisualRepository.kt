@@ -18,6 +18,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration.Companion.milliseconds
 
 class ProviderVisualRepository private constructor(context: Context) {
 
@@ -38,7 +39,7 @@ class ProviderVisualRepository private constructor(context: Context) {
             currentCoroutineContext().ensureActive()
 
             try {
-                withTimeoutOrNull(PROVIDER_THUMBNAIL_TIMEOUT_MS) {
+                withTimeoutOrNull(PROVIDER_THUMBNAIL_TIMEOUT) {
                     ProviderCallRunner.run { signal ->
                         resolver.loadThumbnail(
                             document.uri,
@@ -121,7 +122,7 @@ class ProviderVisualRepository private constructor(context: Context) {
     }
 
     companion object {
-        private const val PROVIDER_THUMBNAIL_TIMEOUT_MS = 8_000L
+        private val PROVIDER_THUMBNAIL_TIMEOUT = 8000.milliseconds
 
         @Volatile
         private var instance: ProviderVisualRepository? = null

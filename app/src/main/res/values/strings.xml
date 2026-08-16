@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">LuckyFiles TV</string>
-    <string name="action_failed">Action failed.</string>
     <string name="no_items_selected">No items selected.</string>
     <string name="no_files_selected">No files selected.</string>
     <string name="properties_read_failed">Properties could not be read.</string>
@@ -41,13 +40,7 @@
     <string name="provider_load_errors">%1$d storage source(s) could not be loaded.</string>
     <string name="no_recent_files">No recently used files.</string>
     <string name="storage_source_open_failed">Storage source could not be opened.</string>
-    <string name="provider_open_failed">Provider could not be opened.</string>
     <string name="folder_load_failed">Folder could not be loaded.</string>
-    <string name="picker_title_multiple">Select files</string>
-    <string name="picker_title_create">Select save location</string>
-    <string name="picker_title_tree">Select folder</string>
-    <string name="picker_title_get_content">Select file</string>
-    <string name="picker_title_document">Select document</string>
     <string name="file_create_failed">File could not be created.</string>
     <string name="new_file_default">New file</string>
     <string name="storage">Storage</string>
@@ -112,8 +105,8 @@
     <string name="descending">Descending</string>
     <string name="folders_first">Folders first</string>
     <string name="folders_first_desc">Shows folders before regular files regardless of the selected sort property.</string>
-    <string name="on">On</string>
-    <string name="off">Off</string>
+    <string name="state_on">On</string>
+    <string name="state_off">Off</string>
     <string name="active">Active</string>
     <string name="sort_name_ascending_desc">Sorts names from A to Z.</string>
     <string name="sort_name_descending_desc">Sorts names from Z to A.</string>
@@ -151,8 +144,6 @@
     <string name="folder_named_create_failed">Folder “%1$s” could not be created.</string>
     <string name="folder_named_read_failed">Folder “%1$s” could not be read.</string>
     <string name="target_read_only">Target folder is read-only.</string>
-    <string name="name_empty">Name must not be empty.</string>
-    <string name="name_invalid_chars">The name contains invalid characters.</string>
     <string name="read_only_access">Read-only access only.</string>
     <string name="path_outside_storage">Path is outside permitted storage.</string>
     <string name="search_title_query">Search: %1$s</string>
@@ -160,7 +151,6 @@
     <string name="target_folder_missing">Target folder does not exist.</string>
     <string name="document_create_failed">Document could not be created.</string>
     <string name="document_rename_failed">Document could not be renamed.</string>
-    <string name="provider_required_column">Provider does not return the required column “%1$s”.</string>
     <string name="target_folder_parent_missing">Target folder is missing.</string>
     <string name="unnamed">Unnamed</string>
     <string name="provider_file_read_only">File is read-only: %1$s</string>

@@ -320,8 +320,8 @@ fun SettingsOverlay(
                                 stringResource(R.string.settings_hide_folder_jpg_desc),
                             checked =
                                 settings.hideFolderJpg,
-                            checkedLabel = stringResource(R.string.on),
-                            uncheckedLabel = stringResource(R.string.off),
+                            checkedLabel = stringResource(R.string.state_on),
+                            uncheckedLabel = stringResource(R.string.state_off),
                             focusRequester =
                                 hideFolderJpgFocus,
                             onFocused = {
@@ -346,8 +346,8 @@ fun SettingsOverlay(
                                 stringResource(R.string.settings_use_folder_jpg_desc),
                             checked =
                                 settings.useFolderJpgAsIcon,
-                            checkedLabel = stringResource(R.string.on),
-                            uncheckedLabel = stringResource(R.string.off),
+                            checkedLabel = stringResource(R.string.state_on),
+                            uncheckedLabel = stringResource(R.string.state_off),
                             focusRequester =
                                 useFolderJpgFocus,
                             onFocused = {
@@ -386,8 +386,8 @@ fun SettingsOverlay(
                                 stringResource(R.string.settings_optimize_names_desc),
                             checked =
                                 settings.optimizeFileNames,
-                            checkedLabel = stringResource(R.string.on),
-                            uncheckedLabel = stringResource(R.string.off),
+                            checkedLabel = stringResource(R.string.state_on),
+                            uncheckedLabel = stringResource(R.string.state_off),
                             focusRequester =
                                 optimizeNamesFocus,
                             onFocused = {
@@ -601,8 +601,8 @@ fun SettingsOverlay(
                                 stringResource(R.string.folders_first_desc),
                             checked =
                                 settings.foldersFirst,
-                            checkedLabel = stringResource(R.string.on),
-                            uncheckedLabel = stringResource(R.string.off),
+                            checkedLabel = stringResource(R.string.state_on),
+                            uncheckedLabel = stringResource(R.string.state_off),
                             focusRequester =
                                 foldersFirstFocus,
                             onFocused = {

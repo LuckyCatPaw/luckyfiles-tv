@@ -8,6 +8,7 @@ internal class DocumentIdResolver {
         return DocumentUriMapper.documentId(file.canonicalPath)
     }
 
+    @Suppress("unused") // Core utility for document ID generation from known paths
     fun toDocumentIdFromCanonicalPath(canonicalPath: String): String {
         return DocumentUriMapper.documentId(canonicalPath)
     }
