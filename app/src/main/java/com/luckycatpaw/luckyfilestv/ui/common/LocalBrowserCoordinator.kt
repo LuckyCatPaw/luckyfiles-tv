@@ -40,6 +40,12 @@ internal class LocalBrowserCoordinator<T>(
         snapshots.clear()
     }
 
+    fun cancelLoading() {
+        loadGeneration++
+        loadJob?.cancel()
+        loadJob = null
+    }
+
     fun loadDirectory(
         path: String,
         settings: FileManagerSettings,

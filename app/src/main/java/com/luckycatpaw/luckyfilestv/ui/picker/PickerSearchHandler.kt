@@ -33,8 +33,7 @@ internal class PickerSearchHandler(
     private val providerQueryRunner: ProviderQueryRunner,
     private val getRequest: () -> PickerRequest,
     private val getSettings: () -> FileManagerSettings,
-    private val providerRootKey: (DocumentRootInfo) -> String,
-    private val onRootsLoaded: (List<DocumentRootInfo>) -> Unit
+    private val providerRootKey: (DocumentRootInfo) -> String
 ) {
     private var searchJob: Job? = null
 
@@ -66,7 +65,12 @@ internal class PickerSearchHandler(
                 localSearchRepository.search(query, directoriesOnly, settings, request.acceptedMimeTypes).map { PickerBrowserItem.Local(it) }
             }
             val rootsDeferred = if (hasProviderAccess) async {
-                documentsRepository.queryRoots(request.acceptedMimeTypes, request.localOnly, request.mode == PickerMode.CREATE_DOCUMENT, true)
+                documentsRepository.queryRoots(
+                    request.acceptedMimeTypes,
+                    request.localOnly,
+                    request.mode == PickerMode.CREATE_DOCUMENT,
+                    request.excludeSelf
+                )
             } else null
 
             val localResults = localResultsDeferred.await()
@@ -86,7 +90,6 @@ internal class PickerSearchHandler(
             val rootsResult = rootsDeferred.await()
             if (!isCurrentSearch(query)) return@launch
 
-            onRootsLoaded(rootsResult.roots)
             var providerErrors = rootsResult.errors.size
             var loadingTimeouts = 0
             val searchableRoots = rootsResult.roots.filter { it.supportsSearch }

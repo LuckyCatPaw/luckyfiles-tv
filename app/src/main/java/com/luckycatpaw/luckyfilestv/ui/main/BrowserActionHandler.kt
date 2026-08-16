@@ -11,12 +11,7 @@ import kotlinx.coroutines.launch
 internal class BrowserActionHandler(
     private val appContext: Context,
     private val modelScope: CoroutineScope,
-    private val viewModel: MainViewModel,
-    private val onShowProperties: (BrowserItem) -> Unit,
-    @Suppress("unused") // Kept for future rename integration
-    private val onShowRename: (BrowserItem) -> Unit,
-    @Suppress("unused") // Kept for future delete integration
-    private val onShowDelete: (BrowserItem) -> Unit
+    private val viewModel: MainViewModel
 ) {
     fun handleItemClick(item: BrowserItem, selectionMode: Boolean, toggleSelection: (BrowserItem) -> Unit) {
         if (selectionMode) {
@@ -25,9 +20,12 @@ internal class BrowserActionHandler(
         }
 
         when (item) {
-            is BrowserItem.Storage -> viewModel.openDirectory(item.path)
+            is BrowserItem.Storage -> {
+                viewModel.setCurrentStorageRoot(item.path)
+                viewModel.openDirectory(item.path)
+            }
             is BrowserItem.Folder -> viewModel.openDirectory(item.path)
-            is BrowserItem.File -> onShowProperties(item)
+            is BrowserItem.File -> Unit
         }
     }
 
@@ -56,17 +54,20 @@ internal class BrowserActionHandler(
         }
     }
 
-    fun delete(items: List<BrowserItem>, onFinished: () -> Unit) {
+    fun delete(items: List<BrowserItem>, onFinished: (successCount: Int, failureCount: Int) -> Unit) {
         if (items.isEmpty()) return
         modelScope.launch {
             var successCount = 0
+            var failureCount = 0
             items.forEach { item ->
-                viewModel.delete(item.path).onSuccess { successCount++ }
+                viewModel.delete(item.path)
+                    .onSuccess { successCount++ }
+                    .onFailure { failureCount++ }
             }
             if (successCount > 0) {
-                onFinished()
                 viewModel.refreshCurrentDirectory()
             }
+            onFinished(successCount, failureCount)
         }
     }
 

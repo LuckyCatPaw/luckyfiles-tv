@@ -28,6 +28,8 @@ internal class NavigationHandler(
     private val onPendingPathChanged: (String?) -> Unit,
     private val getSettings: () -> FileManagerSettings
 ) {
+    private var navigationGeneration = 0
+
     private val coordinator = LocalBrowserCoordinator<BrowserItem>(
         appContext = appContext,
         modelScope = modelScope,
@@ -42,12 +44,14 @@ internal class NavigationHandler(
     }
 
     fun showStorages(focusPath: String? = null) {
-        coordinator.clearCache() // In the original code, showStorages Clear logic was slightly different but clearCache matches the spirit of showStorages reset
-        // Wait, original showStorages didn't clear snapshots, only incremented generation.
-        // Let's stick closer to original if possible, but coordinator handles generation internally.
-        
+        val generation = ++navigationGeneration
+        coordinator.cancelLoading()
+        coordinator.clearCache()
+
         modelScope.launch {
             val storages = storageRepository.getStorages()
+            if (generation != navigationGeneration) return@launch
+
             uiState.update { state -> state.copy(
                 currentPath = null,
                 currentStorageRoot = null,
@@ -72,6 +76,7 @@ internal class NavigationHandler(
         }
 
         onPendingPathChanged(null)
+        navigationGeneration++
         val settings = getSettings()
 
         coordinator.loadDirectory(

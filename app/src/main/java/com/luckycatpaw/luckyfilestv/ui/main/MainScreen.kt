@@ -95,10 +95,7 @@ internal fun MainScreen(viewModel: MainViewModel) {
         BrowserActionHandler(
             appContext = context,
             modelScope = scope,
-            viewModel = viewModel,
-            onShowProperties = { openProperties(it) },
-            onShowRename = { renameItem = it },
-            onShowDelete = { deleteItem = it }
+            viewModel = viewModel
         )
     }
 
@@ -224,7 +221,31 @@ internal fun MainScreen(viewModel: MainViewModel) {
                 }
 
                 deleteItem?.let { item ->
-                    DeleteConfirmOverlay(item = item, onConfirm = { deleteItem = null; operationMessage = context.getString(R.string.deleting_item, item.name); actionHandler.delete(listOf(item)) { operationMessage = null; restoreBrowserFocus(); Toast.makeText(context, context.getString(R.string.deleted), Toast.LENGTH_SHORT).show() } }, onDismiss = { deleteItem = null; restoreBrowserFocus(item.path) })
+                    DeleteConfirmOverlay(
+                        item = item,
+                        onConfirm = {
+                            deleteItem = null
+                            operationMessage = context.getString(R.string.deleting_item, item.name)
+                            actionHandler.delete(listOf(item)) { successCount, failureCount ->
+                                operationMessage = null
+                                restoreBrowserFocus()
+                                val message = if (failureCount == 0) {
+                                    context.getString(R.string.deleted)
+                                } else {
+                                    context.getString(R.string.delete_summary, successCount, failureCount)
+                                }
+                                Toast.makeText(
+                                    context,
+                                    message,
+                                    if (failureCount == 0) Toast.LENGTH_SHORT else Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        },
+                        onDismiss = {
+                            deleteItem = null
+                            restoreBrowserFocus(item.path)
+                        }
+                    )
                 }
 
                 multiDeleteItems?.let { items ->

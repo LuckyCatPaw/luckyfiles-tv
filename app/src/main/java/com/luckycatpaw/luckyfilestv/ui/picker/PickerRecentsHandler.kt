@@ -34,8 +34,7 @@ internal class PickerRecentsHandler(
     private val providerQueryRunner: ProviderQueryRunner,
     private val getRequest: () -> PickerRequest,
     private val getSettings: () -> FileManagerSettings,
-    private val providerRootKey: (DocumentRootInfo) -> String,
-    private val onRootsLoaded: (List<DocumentRootInfo>) -> Unit
+    private val providerRootKey: (DocumentRootInfo) -> String
 ) {
     private var recentsJob: Job? = null
 
@@ -70,7 +69,12 @@ internal class PickerRecentsHandler(
             }
             
             val rootsDeferred = if (hasProviderAccess) async {
-                documentsRepository.queryRoots(request.acceptedMimeTypes, request.localOnly, requireCreate = false, excludeSelf = true)
+                documentsRepository.queryRoots(
+                    request.acceptedMimeTypes,
+                    request.localOnly,
+                    requireCreate = false,
+                    excludeSelf = request.excludeSelf
+                )
             } else null
 
             val localEntries = localEntriesDeferred.await()
@@ -90,7 +94,6 @@ internal class PickerRecentsHandler(
             val rootsResult = rootsDeferred.await()
             if (uiState.value.displayMode != DisplayMode.RECENTS) return@launch
 
-            onRootsLoaded(rootsResult.roots)
             var providerErrors = rootsResult.errors.size
             var loadingTimeouts = 0
             val recentRoots = rootsResult.roots.filter { it.supportsRecents }

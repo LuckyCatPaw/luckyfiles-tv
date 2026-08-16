@@ -41,8 +41,16 @@ object FileUtil {
      * Checks if a file path is within a SAF restricted directory (e.g. Android/data).
      */
     fun isSafRestrictedPath(path: String): Boolean {
-        return path.contains("/Android/data", ignoreCase = true) || 
-               path.contains("/Android/obb", ignoreCase = true)
+        val segments = path
+            .replace('\\', '/')
+            .split('/')
+            .filter(String::isNotEmpty)
+
+        return segments.windowed(size = 2).any { pair ->
+            pair[0].equals("Android", ignoreCase = true) &&
+                    (pair[1].equals("data", ignoreCase = true) ||
+                            pair[1].equals("obb", ignoreCase = true))
+        }
     }
 
     /**

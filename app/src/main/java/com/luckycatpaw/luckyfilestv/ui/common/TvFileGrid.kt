@@ -397,10 +397,14 @@ private fun targetIndex(
 
     return when (keyCode) {
         AndroidKeyEvent.KEYCODE_DPAD_LEFT ->
-            (currentIndex - 1).takeIf { it >= 0 }
+            (currentIndex - 1).takeIf {
+                currentIndex % columnCount != 0
+            }
 
         AndroidKeyEvent.KEYCODE_DPAD_RIGHT ->
-            (currentIndex + 1).takeIf { it < itemCount }
+            (currentIndex + 1).takeIf {
+                currentIndex % columnCount != columnCount - 1 && it < itemCount
+            }
 
         AndroidKeyEvent.KEYCODE_DPAD_UP ->
             (currentIndex - columnCount).takeIf { it >= 0 }

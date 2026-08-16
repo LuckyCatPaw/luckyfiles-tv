@@ -99,6 +99,10 @@ internal class FileTransferEngine(
             ?: error(appContext.getString(R.string.target_folder_parent_missing))
 
         val temporary = createTemporaryDestination(parent)
+        val preparation = replacementTransactionStore.prepareReplacement(
+            target = target,
+            preparedReplacement = temporary
+        )
 
         try {
             copyTo(
@@ -111,13 +115,12 @@ internal class FileTransferEngine(
             currentCoroutineContext().ensureActive()
 
             return withContext(NonCancellable) {
-                replacementTransactionStore.installReplacement(
-                    target = target,
-                    preparedReplacement = temporary
-                )
+                replacementTransactionStore.installReplacement(preparation)
             }
         } finally {
-            deleteForCleanup(temporary)
+            withContext(NonCancellable) {
+                replacementTransactionStore.finishPreparation(preparation)
+            }
         }
     }
 

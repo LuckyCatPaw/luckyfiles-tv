@@ -122,11 +122,20 @@ internal class PickerProviderHandler(
         stopObservingProviderDirectory()
         val uri = DocumentsContract.buildChildDocumentsUri(location.root.authority, location.document.documentId)
         observedProviderUri = uri
-        providerObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(self: Boolean) = scheduleProviderRefresh()
             override fun onChange(self: Boolean, uri: Uri?) = scheduleProviderRefresh()
         }
-        appContext.contentResolver.registerContentObserver(uri, true, providerObserver!!)
+        val registered = runCatching {
+            appContext.contentResolver.registerContentObserver(uri, true, observer)
+        }.isSuccess
+
+        if (registered) {
+            providerObserver = observer
+        } else {
+            observedProviderUri = null
+            providerObserver = null
+        }
     }
 
     private fun scheduleProviderRefresh() {
@@ -138,7 +147,9 @@ internal class PickerProviderHandler(
     }
 
     fun stopObservingProviderDirectory() {
-        providerObserver?.let { appContext.contentResolver.unregisterContentObserver(it) }
+        providerObserver?.let {
+            runCatching { appContext.contentResolver.unregisterContentObserver(it) }
+        }
         providerObserver = null
         observedProviderUri = null
     }

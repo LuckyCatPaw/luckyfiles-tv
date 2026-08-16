@@ -25,11 +25,16 @@ internal class FileRepository(
         foldersFirst: Boolean
     ): Result<List<BrowserItem>> = FileUtil.runCancellable {
         withContext(Dispatchers.IO) {
-            val directory = JavaFile(path)
-            if (!directory.exists() || !directory.isDirectory) return@withContext emptyList()
+            val directory = JavaFile(path).canonicalFile
+            require(directory.exists() && directory.isDirectory) {
+                context.getString(R.string.target_folder_missing)
+            }
 
-            directory.listFiles()
-                ?.mapNotNull { file ->
+            val children = directory.listFiles()
+                ?: error(context.getString(R.string.folder_load_failed))
+
+            children
+                .mapNotNull { file ->
                     if (FileUtil.isHiddenFile(file.name, hideFolderJpg)) {
                         return@mapNotNull null
                     }
@@ -46,15 +51,14 @@ internal class FileRepository(
                         extension = file.extension.lowercase()
                     )
                 }
-                ?.sortedWith(fileComparator(sortMode, sortAscending, foldersFirst))
-                ?.map { file ->
+                .sortedWith(fileComparator(sortMode, sortAscending, foldersFirst))
+                .map { file ->
                     if (file.isDirectory) {
                         BrowserItem.Folder(file.name, file.absolutePath)
                     } else {
                         BrowserItem.File(file.name, file.absolutePath)
                     }
                 }
-                .orEmpty()
         }
     }
 

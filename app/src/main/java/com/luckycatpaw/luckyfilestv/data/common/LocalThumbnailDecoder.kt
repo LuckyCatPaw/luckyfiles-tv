@@ -19,7 +19,9 @@ import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
 import com.luckycatpaw.luckyfilestv.util.MimeTypes
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration.Companion.milliseconds
 import java.io.File
@@ -42,13 +44,15 @@ internal object LocalThumbnailDecoder {
     }
 
     suspend fun decode(context: Context, type: String, path: String): Bitmap? {
-        return when (type) {
-            "folder", "image" -> decodeImageThumbnail(path, 384)
-            "video" -> decodeVideoThumbnail(path)
-            "pdf" -> decodePdfThumbnail(path)
-            "audio" -> decodeAudioArtwork(path)
-            "apk" -> decodeApkIcon(context, path)
-            else -> null
+        return withContext(Dispatchers.IO) {
+            when (type) {
+                "folder", "image" -> decodeImageThumbnail(path, 384)
+                "video" -> decodeVideoThumbnail(path)
+                "pdf" -> decodePdfThumbnail(path)
+                "audio" -> decodeAudioArtwork(path)
+                "apk" -> decodeApkIcon(context, path)
+                else -> null
+            }
         }
     }
 
@@ -84,10 +88,16 @@ internal object LocalThumbnailDecoder {
         return decodeVideoWithAndroid(file, cancellationSignal)
     }
 
-    private suspend fun decodeVideoThumbnail(path: String): Bitmap? = withTimeoutOrNull(15_000.milliseconds) {
+    private suspend fun decodeVideoThumbnail(path: String): Bitmap? {
         val signal = CancellationSignal()
-        runInterruptible(videoThumbnailDispatcher) {
-            decodeVideoThumbnailBlocking(path, signal)
+        return try {
+            withTimeoutOrNull(15_000.milliseconds) {
+                runInterruptible(videoThumbnailDispatcher) {
+                    decodeVideoThumbnailBlocking(path, signal)
+                }
+            }
+        } finally {
+            signal.cancel()
         }
     }
 

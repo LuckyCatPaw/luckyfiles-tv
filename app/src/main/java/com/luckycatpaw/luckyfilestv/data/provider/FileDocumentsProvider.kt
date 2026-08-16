@@ -15,9 +15,11 @@ import com.luckycatpaw.luckyfilestv.data.transfer.TransferCoordinator
 import com.luckycatpaw.luckyfilestv.data.transfer.model.TransferOperation
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import com.luckycatpaw.luckyfilestv.util.FileUtil
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.io.FileNotFoundException
+import java.nio.file.Files
 
 class FileDocumentsProvider : DocumentsProvider() {
 
@@ -85,6 +87,7 @@ class FileDocumentsProvider : DocumentsProvider() {
         securityGuard.requireDirectory(parent)
 
         parent.listFiles()?.mapNotNull { child ->
+            if (Files.isSymbolicLink(child.toPath())) return@mapNotNull null
             val canonical = runCatching { child.canonicalFile }.getOrNull() ?: return@mapNotNull null
             if (!securityGuard.isInsideManagedStoragePath(canonical.path, storageSnapshot) ||
                 securityGuard.isSafRestrictedPath(canonical.path, storageSnapshot)
@@ -165,7 +168,11 @@ class FileDocumentsProvider : DocumentsProvider() {
 
         securityGuard.requireWritable(parent)
 
-        val deleted = file.deleteRecursively()
+        val deleted = runCatching {
+            runBlocking(Dispatchers.IO) {
+                fileTreeWalker.delete(file)
+            }
+        }.isSuccess
         if (!deleted) {
             throw FileNotFoundException(
                 requireNotNull(context).getString(R.string.provider_could_not_delete, file.absolutePath)

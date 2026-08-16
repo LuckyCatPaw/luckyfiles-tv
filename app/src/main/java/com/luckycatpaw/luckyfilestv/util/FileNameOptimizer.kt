@@ -9,10 +9,10 @@ object FileNameOptimizer {
 
     // Supports S01E02, S01E01-E02, S01E01-S02E01, 1x02, and 1x02-03.
     private val seasonEpisodeRegex = Regex(
-        """(?i)S(\d{1,2})E(\d{1,3})(?:(?:-)?(?:S(\d{1,2}))?E?(\d{1,3}))?"""
+        """(?i)(?<!\d)S(\d{1,2})E(\d{1,3})(?:(?:-)?(?:S(\d{1,2}))?E?(\d{1,3}))?(?!\d)"""
     )
     private val xEpisodeRegex = Regex(
-        """(?i)(\d{1,2})x(\d{1,3})(?:-(?:(\d{1,2})x)?(\d{1,3}))?"""
+        """(?i)(?<!\d)(\d{1,2})x(\d{1,3})(?:-(?:(\d{1,2})x)?(\d{1,3}))?(?!\d)"""
     )
 
     // Known scene-release prefixes that are not part of a series title.

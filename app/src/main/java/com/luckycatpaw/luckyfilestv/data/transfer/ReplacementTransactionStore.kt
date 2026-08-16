@@ -31,15 +31,15 @@ internal class ReplacementTransactionStore(
         }
     }
 
-    suspend fun installReplacement(
+    suspend fun prepareReplacement(
         target: File,
         preparedReplacement: File
-    ): Boolean {
+    ): ReplacementPreparation {
         return transactionMutex.withLock {
             recoverPendingLocked()
 
             require(exists(target))
-            require(exists(preparedReplacement))
+            require(!exists(preparedReplacement))
             require(target.parentFile?.canonicalFile == preparedReplacement.parentFile?.canonicalFile)
 
             val transactionId = UUID.randomUUID().toString()
@@ -53,16 +53,35 @@ internal class ReplacementTransactionStore(
             )
 
             writeJournal(journal, transaction)
+            activeJournals += journal.absolutePath
 
-            if (!target.renameTo(backup)) {
-                journal.delete()
+            ReplacementPreparation(
+                target = transaction.target,
+                preparedReplacement = transaction.preparedReplacement,
+                backup = transaction.backup,
+                journal = journal
+            )
+        }
+    }
+
+    suspend fun installReplacement(
+        preparation: ReplacementPreparation
+    ): Boolean {
+        return transactionMutex.withLock {
+            require(preparation.journal.absolutePath in activeJournals)
+            require(preparation.journal.isFile)
+            require(exists(preparation.target))
+            require(exists(preparation.preparedReplacement))
+
+            if (!preparation.target.renameTo(preparation.backup)) {
+                preparation.journal.delete()
                 error(appContext.getString(R.string.replace_prepare_failed))
             }
 
-            if (!preparedReplacement.renameTo(target)) {
-                val restored = backup.renameTo(target)
+            if (!preparation.preparedReplacement.renameTo(preparation.target)) {
+                val restored = preparation.backup.renameTo(preparation.target)
                 if (restored) {
-                    journal.delete()
+                    preparation.journal.delete()
                 }
                 error(
                     appContext.getString(
@@ -75,14 +94,27 @@ internal class ReplacementTransactionStore(
                 )
             }
 
-            val backupDeleted = deleteOwnedPath(backup)
-            val replacementDeleted = deleteOwnedPath(preparedReplacement)
+            val backupDeleted = deleteOwnedPath(preparation.backup)
+            val replacementDeleted = deleteOwnedPath(preparation.preparedReplacement)
 
             if (backupDeleted && replacementDeleted) {
-                journal.delete()
+                preparation.journal.delete()
             }
 
             !backupDeleted || !replacementDeleted
+        }
+    }
+
+    suspend fun finishPreparation(preparation: ReplacementPreparation) {
+        transactionMutex.withLock {
+            try {
+                deleteOwnedPath(preparation.preparedReplacement)
+                if (!exists(preparation.preparedReplacement) && !exists(preparation.backup)) {
+                    preparation.journal.delete()
+                }
+            } finally {
+                activeJournals -= preparation.journal.absolutePath
+            }
         }
     }
 
@@ -92,6 +124,8 @@ internal class ReplacementTransactionStore(
             .orEmpty()
 
         for (journal in journals) {
+            if (journal.absolutePath in activeJournals) continue
+
             val transaction = readJournal(journal)
             if (transaction == null || !transaction.isValid()) {
                 journal.delete()
@@ -113,11 +147,7 @@ internal class ReplacementTransactionStore(
                 deleteOwnedPath(transaction.backup)
             }
 
-            if (
-                exists(transaction.target) &&
-                !exists(transaction.preparedReplacement) &&
-                !exists(transaction.backup)
-            ) {
+            if (!exists(transaction.preparedReplacement) && !exists(transaction.backup)) {
                 journal.delete()
             }
         }
@@ -197,9 +227,17 @@ internal class ReplacementTransactionStore(
         }
     }
 
+    internal data class ReplacementPreparation(
+        val target: File,
+        val preparedReplacement: File,
+        val backup: File,
+        val journal: File
+    )
+
     private companion object {
         const val JOURNAL_DIRECTORY = "replacement_transactions"
         const val JOURNAL_VERSION = 1
         val transactionMutex = Mutex()
+        val activeJournals = mutableSetOf<String>()
     }
 }

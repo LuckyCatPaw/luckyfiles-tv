@@ -41,11 +41,9 @@ data class PickerRequest(
                 listOf(baseMimeType)
             }
 
-            val createMimeType = if (
-                mode == PickerMode.CREATE_DOCUMENT &&
-                baseMimeType != MimeTypes.ANY
-            ) {
-                baseMimeType
+            val createMimeType = if (mode == PickerMode.CREATE_DOCUMENT) {
+                acceptedMimeTypes.firstOrNull { it != MimeTypes.ANY }
+                    ?: MimeTypes.BINARY
             } else {
                 MimeTypes.BINARY
             }
