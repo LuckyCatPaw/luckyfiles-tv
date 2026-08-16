@@ -13,17 +13,9 @@ enum class TransferOperation {
     MOVE
 }
 
-data class TransferConflict(
-    val sourceName: String,
-    val targetDirectory: String,
-    val multipleItems: Boolean
-)
+data class TransferConflict(val sourceName: String, val targetDirectory: String, val multipleItems: Boolean)
 
-data class TransferConflictDecision(
-    val policy: FileConflictPolicy?,
-    val applyToAll: Boolean,
-    val cancelled: Boolean
-)
+data class TransferConflictDecision(val policy: FileConflictPolicy?, val applyToAll: Boolean, val cancelled: Boolean)
 
 data class TransferProgress(
     val currentItem: Int,
@@ -34,10 +26,7 @@ data class TransferProgress(
     val bytesPerSecond: Long?
 )
 
-data class TransferIssue(
-    val sourcePath: String,
-    val message: String
-)
+data class TransferIssue(val sourcePath: String, val message: String)
 
 data class TransferResult(
     val completedPaths: List<String>,
@@ -48,10 +37,8 @@ data class TransferResult(
     val cancelled: Boolean
 )
 
-class TransferCancelledException(
-    val partialResult: TransferResult,
-    cause: CancellationException
-) : CancellationException(cause.message) {
+class TransferCancelledException(val partialResult: TransferResult, cause: CancellationException) :
+    CancellationException(cause.message) {
     init {
         initCause(cause)
     }

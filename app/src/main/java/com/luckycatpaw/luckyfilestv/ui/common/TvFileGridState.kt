@@ -14,18 +14,14 @@ internal object TvFileGridDefaults {
     val HorizontalSpacing = 18.dp
     val VerticalSpacing = 18.dp
 
-    fun columnCount(availableWidth: Dp): Int {
-        return (
-                (availableWidth.value + HorizontalSpacing.value) /
-                        (ItemMinWidth.value + HorizontalSpacing.value)
-                ).toInt().coerceAtLeast(1)
-    }
+    fun columnCount(availableWidth: Dp): Int = (
+        (availableWidth.value + HorizontalSpacing.value) /
+            (ItemMinWidth.value + HorizontalSpacing.value)
+        ).toInt().coerceAtLeast(1)
 }
 
 @Stable
-internal class TvFileGridFocusState internal constructor(
-    private val itemCount: Int
-) {
+internal class TvFileGridFocusState internal constructor(private val itemCount: Int) {
     // Lazy grids only compose a small window. Keep requesters for that window
     // instead of allocating one object for every file in a huge directory.
     private val requesters = mutableMapOf<Int, FocusRequester>()
@@ -67,10 +63,6 @@ internal class TvFileGridFocusState internal constructor(
 }
 
 @Composable
-internal fun rememberTvFileGridFocusState(
-    itemKeys: List<*>
-): TvFileGridFocusState {
-    return remember(itemKeys) {
-        TvFileGridFocusState(itemKeys.size)
-    }
+internal fun rememberTvFileGridFocusState(itemKeys: List<*>): TvFileGridFocusState = remember(itemKeys) {
+    TvFileGridFocusState(itemKeys.size)
 }

@@ -11,9 +11,7 @@ sealed interface PickerBrowserItem {
     val isDirectory: Boolean
     val isFile: Boolean
 
-    data class Local(
-        val item: BrowserItem
-    ) : PickerBrowserItem {
+    data class Local(val item: BrowserItem) : PickerBrowserItem {
         override val key: String
             get() = "local:${item.path}"
 
@@ -27,9 +25,7 @@ sealed interface PickerBrowserItem {
             get() = item is BrowserItem.File
     }
 
-    data class ProviderRoot(
-        val root: DocumentRootInfo
-    ) : PickerBrowserItem {
+    data class ProviderRoot(val root: DocumentRootInfo) : PickerBrowserItem {
         override val key: String
             get() = "root:${root.authority}:${root.rootId}"
 
@@ -43,10 +39,7 @@ sealed interface PickerBrowserItem {
             get() = false
     }
 
-    data class ProviderDocument(
-        val document: ProviderDocumentInfo,
-        val root: DocumentRootInfo
-    ) : PickerBrowserItem {
+    data class ProviderDocument(val document: ProviderDocumentInfo, val root: DocumentRootInfo) : PickerBrowserItem {
         override val key: String
             get() = "document:${document.authority}:${document.documentId}"
 

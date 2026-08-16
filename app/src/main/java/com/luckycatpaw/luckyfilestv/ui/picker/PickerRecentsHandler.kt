@@ -45,37 +45,43 @@ internal class PickerRecentsHandler(
         recentsJob?.cancel()
         onRecentsStarted()
 
-        uiState.update { it.copy(
-            displayMode = DisplayMode.RECENTS,
-            currentLocalPath = null,
-            currentLocalTitle = null,
-            currentLocalDirectoryWritable = false,
-            currentLocalTreeSelectable = false,
-            providerStack = emptyList(),
-            pickerItems = emptyList(),
-            providerLoading = true,
-            providerInfoMessage = appContext.getString(R.string.recents_loading),
-            providerErrorMessage = null
-        )}
+        uiState.update {
+            it.copy(
+                displayMode = DisplayMode.RECENTS,
+                currentLocalPath = null,
+                currentLocalTitle = null,
+                currentLocalDirectoryWritable = false,
+                currentLocalTreeSelectable = false,
+                providerStack = emptyList(),
+                pickerItems = emptyList(),
+                providerLoading = true,
+                providerInfoMessage = appContext.getString(R.string.recents_loading),
+                providerErrorMessage = null
+            )
+        }
 
         recentsJob = modelScope.launch {
             val settings = getSettings()
             val hasProviderAccess = documentsRepository.hasSystemDocumentAccess()
-            
+
             val localEntriesDeferred = async(Dispatchers.IO) {
                 localSearchRepository.loadRecents(settings, request.acceptedMimeTypes).map { recent ->
                     RecentEntry(PickerBrowserItem.Local(recent.item), recent.modified)
                 }
             }
-            
-            val rootsDeferred = if (hasProviderAccess) async {
-                documentsRepository.queryRoots(
-                    request.acceptedMimeTypes,
-                    request.localOnly,
-                    requireCreate = false,
-                    excludeSelf = request.excludeSelf
-                )
-            } else null
+
+            val rootsDeferred = if (hasProviderAccess) {
+                async {
+                    documentsRepository.queryRoots(
+                        request.acceptedMimeTypes,
+                        request.localOnly,
+                        requireCreate = false,
+                        excludeSelf = request.excludeSelf
+                    )
+                }
+            } else {
+                null
+            }
 
             val localEntries = localEntriesDeferred.await()
             if (uiState.value.displayMode != DisplayMode.RECENTS) return@launch
@@ -84,10 +90,18 @@ internal class PickerRecentsHandler(
             publishRecentResults(localEntries, providerEntries)
 
             if (!hasProviderAccess || rootsDeferred == null) {
-                uiState.update { it.copy(
-                    providerLoading = false,
-                    providerInfoMessage = if (it.pickerItems.isEmpty()) appContext.getString(R.string.no_recent_files) else null
-                )}
+                uiState.update {
+                    it.copy(
+                        providerLoading = false,
+                        providerInfoMessage = if (it.pickerItems.isEmpty()) {
+                            appContext.getString(
+                                R.string.no_recent_files
+                            )
+                        } else {
+                            null
+                        }
+                    )
+                }
                 return@launch
             }
 
@@ -106,19 +120,39 @@ internal class PickerRecentsHandler(
                             val outcome = providerQueryRunner.queryUntilSettled(
                                 observedUri = DocumentsContract.buildRecentDocumentsUri(root.authority, root.rootId),
                                 query = { signal ->
-                                    documentsRepository.queryRecentDocuments(root, request.acceptedMimeTypes, request.openableOnly, signal)
+                                    documentsRepository.queryRecentDocuments(
+                                        root,
+                                        request.acceptedMimeTypes,
+                                        request.openableOnly,
+                                        signal
+                                    )
                                 }
                             ) { recent ->
                                 if (uiState.value.displayMode == DisplayMode.RECENTS) {
                                     providerEntries[providerRootKey(root)] = recent.documents.asSequence()
                                         .filterNot { it.isDirectory }
-                                        .map { document -> RecentEntry(PickerBrowserItem.ProviderDocument(document, root), document.lastModified ?: 0L) }
+                                        .map { document ->
+                                            RecentEntry(
+                                                PickerBrowserItem.ProviderDocument(document, root),
+                                                document.lastModified ?: 0L
+                                            )
+                                        }
                                         .toList()
 
                                     publishRecentResults(localEntries, providerEntries)
-                                    uiState.update { it.copy(
-                                        providerInfoMessage = recent.info ?: if (recent.loading) appContext.getString(R.string.providers_still_loading) else appContext.getString(R.string.recents_loading)
-                                    )}
+                                    uiState.update {
+                                        it.copy(
+                                            providerInfoMessage =
+                                                recent.info
+                                                    ?: if (recent.loading) {
+                                                        appContext.getString(
+                                                            R.string.providers_still_loading
+                                                        )
+                                                    } else {
+                                                        appContext.getString(R.string.recents_loading)
+                                                    }
+                                        )
+                                    }
                                 }
                             }
                             if (uiState.value.displayMode == DisplayMode.RECENTS) {
@@ -131,12 +165,24 @@ internal class PickerRecentsHandler(
             }
 
             if (uiState.value.displayMode != DisplayMode.RECENTS) return@launch
-            uiState.update { it.copy(providerLoading = false, providerInfoMessage = when {
-                providerErrors > 0 -> appContext.resources.getQuantityString(R.plurals.provider_load_errors, providerErrors, providerErrors)
-                it.pickerItems.isEmpty() -> appContext.getString(R.string.no_recent_files)
-                loadingTimeouts > 0 -> appContext.getString(R.string.providers_still_loading)
-                else -> null
-            })}
+            uiState.update {
+                it.copy(
+                    providerLoading = false,
+                    providerInfoMessage = when {
+                        providerErrors > 0 -> appContext.resources.getQuantityString(
+                            R.plurals.provider_load_errors,
+                            providerErrors,
+                            providerErrors
+                        )
+
+                        it.pickerItems.isEmpty() -> appContext.getString(R.string.no_recent_files)
+
+                        loadingTimeouts > 0 -> appContext.getString(R.string.providers_still_loading)
+
+                        else -> null
+                    }
+                )
+            }
         }
     }
 

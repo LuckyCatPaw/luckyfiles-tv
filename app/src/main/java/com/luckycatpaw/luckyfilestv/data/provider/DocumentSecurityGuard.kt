@@ -6,14 +6,8 @@ import com.luckycatpaw.luckyfilestv.util.FileUtil
 import java.io.File
 import java.io.FileNotFoundException
 
-internal class DocumentSecurityGuard(
-    private val appContext: Context,
-    private val idResolver: DocumentIdResolver
-) {
-    fun requireManagedFile(
-        documentId: String,
-        storageSnapshot: DocumentIdResolver.ManagedStorageSnapshot
-    ): File {
+internal class DocumentSecurityGuard(private val appContext: Context, private val idResolver: DocumentIdResolver) {
+    fun requireManagedFile(documentId: String, storageSnapshot: DocumentIdResolver.ManagedStorageSnapshot): File {
         val file = idResolver.fromDocumentId(documentId)
 
         if (!isInsideManagedStorage(file, storageSnapshot)) {
@@ -55,10 +49,7 @@ internal class DocumentSecurityGuard(
         }
     }
 
-    fun isInsideManagedStorage(
-        file: File,
-        storageSnapshot: DocumentIdResolver.ManagedStorageSnapshot
-    ): Boolean {
+    fun isInsideManagedStorage(file: File, storageSnapshot: DocumentIdResolver.ManagedStorageSnapshot): Boolean {
         val canonical = runCatching { file.canonicalFile }.getOrNull() ?: return false
         return isInsideManagedStoragePath(canonical.path, storageSnapshot)
     }
@@ -66,37 +57,27 @@ internal class DocumentSecurityGuard(
     fun isInsideManagedStoragePath(
         canonicalPath: String,
         storageSnapshot: DocumentIdResolver.ManagedStorageSnapshot
-    ): Boolean {
-        return storageSnapshot.roots.any { root ->
-            FileUtil.isSameOrChildPath(root.path, canonicalPath)
-        }
+    ): Boolean = storageSnapshot.roots.any { root ->
+        FileUtil.isSameOrChildPath(root.path, canonicalPath)
     }
 
-    fun isRootFile(
-        file: File,
-        storageSnapshot: DocumentIdResolver.ManagedStorageSnapshot
-    ): Boolean {
+    fun isRootFile(file: File, storageSnapshot: DocumentIdResolver.ManagedStorageSnapshot): Boolean {
         val canonical = runCatching { file.canonicalFile }.getOrNull() ?: return false
-        return storageSnapshot.roots.any { it.path == canonical.path }
+        return isRootPath(canonical.path, storageSnapshot)
     }
 
-    fun isSameOrChild(parent: File, child: File): Boolean = FileUtil.isSameOrChild(parent, child)
+    fun isRootPath(canonicalPath: String, storageSnapshot: DocumentIdResolver.ManagedStorageSnapshot): Boolean =
+        canonicalPath in storageSnapshot.rootPaths
 
     fun isSafRestrictedPath(
         canonicalPath: String,
         storageSnapshot: DocumentIdResolver.ManagedStorageSnapshot
-    ): Boolean {
-        return storageSnapshot.restrictedRoots.any { root ->
-            FileUtil.isSameOrChildPath(root.path, canonicalPath)
-        }
+    ): Boolean = storageSnapshot.restrictedRoots.any { root ->
+        FileUtil.isSameOrChildPath(root.path, canonicalPath)
     }
 
     fun blocksOpenDocumentTree(
-        documentId: String,
+        canonicalPath: String,
         storageSnapshot: DocumentIdResolver.ManagedStorageSnapshot
-    ): Boolean {
-        val file = idResolver.fromDocumentId(documentId)
-        val canonicalPath = runCatching { file.canonicalPath }.getOrNull() ?: return true
-        return storageSnapshot.blockedTreePaths.contains(canonicalPath)
-    }
+    ): Boolean = storageSnapshot.blockedTreePaths.contains(canonicalPath)
 }

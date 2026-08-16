@@ -16,13 +16,13 @@ import com.luckycatpaw.luckyfilestv.ui.picker.model.PickerMode
 import com.luckycatpaw.luckyfilestv.ui.picker.model.PickerRequest
 import com.luckycatpaw.luckyfilestv.ui.picker.model.PickerUiState
 import com.luckycatpaw.luckyfilestv.ui.picker.model.ProviderLocation
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlin.time.Duration.Companion.milliseconds
 
 internal class PickerProviderHandler(
     private val appContext: Context,
@@ -52,14 +52,16 @@ internal class PickerProviderHandler(
         stopObservingProviderDirectory()
         providerQueryJob?.cancel()
 
-        uiState.update { it.copy(
-            displayMode = DisplayMode.BROWSE,
-            currentLocalPath = null,
-            providerStack = emptyList(),
-            providerLoading = true,
-            providerErrorMessage = null,
-            providerInfoMessage = null
-        )}
+        uiState.update {
+            it.copy(
+                displayMode = DisplayMode.BROWSE,
+                currentLocalPath = null,
+                providerStack = emptyList(),
+                providerLoading = true,
+                providerErrorMessage = null,
+                providerInfoMessage = null
+            )
+        }
 
         providerQueryJob = modelScope.launch {
             updateUiMetadata()
@@ -70,10 +72,13 @@ internal class PickerProviderHandler(
                 uiState.update { it.copy(providerStack = listOf(loc)) }
                 refreshProviderDirectory(loc)
             } else if (generation == navigationGeneration) {
-                uiState.update { it.copy(
-                    providerLoading = false,
-                    providerErrorMessage = result.exceptionOrNull()?.message ?: appContext.getString(R.string.folder_load_failed)
-                )}
+                uiState.update {
+                    it.copy(
+                        providerLoading = false,
+                        providerErrorMessage =
+                            result.exceptionOrNull()?.message ?: appContext.getString(R.string.folder_load_failed)
+                    )
+                }
             }
         }
     }
@@ -88,26 +93,61 @@ internal class PickerProviderHandler(
         providerQueryJob = modelScope.launch {
             updateUiMetadata()
             val request = getRequest()
-            val directoriesOnly = request.mode == PickerMode.CREATE_DOCUMENT || request.mode == PickerMode.OPEN_DOCUMENT_TREE
-            val observedUri = DocumentsContract.buildChildDocumentsUri(location.root.authority, location.document.documentId)
+            val directoriesOnly =
+                request.mode == PickerMode.CREATE_DOCUMENT || request.mode == PickerMode.OPEN_DOCUMENT_TREE
+            val observedUri = DocumentsContract.buildChildDocumentsUri(
+                location.root.authority,
+                location.document.documentId
+            )
 
-            val outcome = providerQueryRunner.queryUntilSettled(observedUri, { signal ->
-                documentsRepository.queryChildren(location.root.authority, location.document.documentId, request.acceptedMimeTypes, directoriesOnly, request.openableOnly, signal)
-            }) { result ->
+            val outcome = providerQueryRunner.queryUntilSettled(
+                observedUri = observedUri,
+                query = { signal ->
+                    documentsRepository.queryChildren(
+                        location.root.authority,
+                        location.document.documentId,
+                        request.acceptedMimeTypes,
+                        directoriesOnly,
+                        request.openableOnly,
+                        signal
+                    )
+                }
+            ) { result ->
                 if (navigationGeneration == generation && isCurrentProviderLocation(location)) {
-                    uiState.update { state -> state.copy(
-                        pickerItems = result.documents.map { PickerBrowserItem.ProviderDocument(it, location.root) },
-                        providerInfoMessage = result.info ?: if (result.loading) appContext.getString(R.string.providers_still_loading) else null,
-                        focusTargetKey = focusKey?.takeIf { target -> result.documents.any { providerDocumentKey(it) == target } }
-                    )}
+                    uiState.update { state ->
+                        state.copy(
+                            pickerItems = result.documents.map {
+                                PickerBrowserItem.ProviderDocument(it, location.root)
+                            },
+                            providerInfoMessage =
+                                result.info
+                                    ?: if (result.loading) {
+                                        appContext.getString(
+                                            R.string.providers_still_loading
+                                        )
+                                    } else {
+                                        null
+                                    },
+                            focusTargetKey = focusKey?.takeIf { target ->
+                                result.documents.any {
+                                    providerDocumentKey(it) ==
+                                        target
+                                }
+                            }
+                        )
+                    }
                 }
             }
 
             if (navigationGeneration == generation && isCurrentProviderLocation(location)) {
-                uiState.update { it.copy(
-                    providerLoading = false,
-                    providerErrorMessage = outcome.failure?.message ?: outcome.result?.error?.let { appContext.getString(R.string.folder_load_failed) }
-                )}
+                uiState.update {
+                    it.copy(
+                        providerLoading = false,
+                        providerErrorMessage =
+                            outcome.failure?.message
+                                ?: outcome.result?.error?.let { appContext.getString(R.string.folder_load_failed) }
+                    )
+                }
                 observeProviderDirectory(location)
             }
         }
@@ -115,7 +155,9 @@ internal class PickerProviderHandler(
 
     private fun isCurrentProviderLocation(loc: ProviderLocation): Boolean {
         val stack = uiState.value.providerStack
-        return stack.isNotEmpty() && stack.last().root == loc.root && stack.last().document.documentId == loc.document.documentId
+        return stack.isNotEmpty() &&
+            stack.last().root == loc.root &&
+            stack.last().document.documentId == loc.document.documentId
     }
 
     private fun observeProviderDirectory(location: ProviderLocation) {
@@ -140,7 +182,7 @@ internal class PickerProviderHandler(
 
     private fun scheduleProviderRefresh() {
         providerRefreshJob?.cancel()
-        providerRefreshJob = modelScope.launch { 
+        providerRefreshJob = modelScope.launch {
             delay(1000.milliseconds)
             uiState.value.providerStack.lastOrNull()?.let { refreshProviderDirectory(it) }
         }

@@ -9,11 +9,7 @@ internal enum class DisplayMode {
     RECENTS
 }
 
-internal data class ProviderLocation(
-    val root: DocumentRootInfo,
-    val document: ProviderDocumentInfo,
-    val title: String
-)
+internal data class ProviderLocation(val root: DocumentRootInfo, val document: ProviderDocumentInfo, val title: String)
 
 internal data class BrowseSnapshot(
     val localPath: String?,
@@ -22,7 +18,4 @@ internal data class BrowseSnapshot(
     val focusKey: String?
 )
 
-internal data class RecentEntry(
-    val item: PickerBrowserItem,
-    val modified: Long
-)
+internal data class RecentEntry(val item: PickerBrowserItem, val modified: Long)

@@ -31,7 +31,6 @@ import com.luckycatpaw.luckyfilestv.ui.common.model.TvGridPosition
 import com.luckycatpaw.luckyfilestv.ui.common.rememberBrowserFocusState
 import com.luckycatpaw.luckyfilestv.ui.common.rememberTvFileGridFocusState
 
-
 @Composable
 internal fun BrowserScreen(
     items: List<BrowserItem>,
@@ -61,7 +60,7 @@ internal fun BrowserScreen(
     onSelectionMoveClick: () -> Unit = {},
     onSelectionDeleteClick: () -> Unit = {},
     onSelectionCancelClick: () -> Unit = {},
-    onSettingsClick: () -> Unit = {},
+    onSettingsClick: () -> Unit = {}
 ) {
     val requestedInitialIndex = initialGridPosition?.firstVisibleItemIndex ?: 0
     val initialGridIndex = requestedInitialIndex.coerceIn(
@@ -198,14 +197,15 @@ internal fun BrowserScreen(
             HeaderFocusTarget.CANCEL ->
                 cancelFocusRequester.takeIf {
                     !selectionMode &&
-                            transferActionLabel == null &&
-                            showCancelAction
+                        transferActionLabel == null &&
+                        showCancelAction
                 }
 
             HeaderFocusTarget.SETTINGS ->
                 settingsFocusRequester.takeIf {
                     !selectionMode && showSettingsAction
                 }
+
             else -> null
         }
     }
@@ -372,4 +372,3 @@ internal fun BrowserScreen(
         }
     }
 }
-

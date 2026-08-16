@@ -4,14 +4,10 @@ import java.io.File
 
 internal class DocumentIdResolver {
 
-    fun toDocumentId(file: File): String {
-        return DocumentUriMapper.documentId(file.canonicalPath)
-    }
+    fun toDocumentId(file: File): String = DocumentUriMapper.documentId(file.canonicalPath)
 
-    @Suppress("unused") // Core utility for document ID generation from known paths
-    fun toDocumentIdFromCanonicalPath(canonicalPath: String): String {
-        return DocumentUriMapper.documentId(canonicalPath)
-    }
+    fun toDocumentIdFromCanonicalPath(canonicalPath: String): String =
+        DocumentUriMapper.documentIdFromCanonicalPath(canonicalPath)
 
     fun fromDocumentId(documentId: String): File {
         val path = DocumentUriMapper.pathFromDocumentId(documentId)
@@ -19,10 +15,9 @@ internal class DocumentIdResolver {
         return File(path)
     }
 
-    data class ManagedStorageSnapshot(
-        val roots: List<File>,
-        val namesByRootPath: Map<String, String>
-    ) {
+    data class ManagedStorageSnapshot(val roots: List<File>, val namesByRootPath: Map<String, String>) {
+        val rootPaths: Set<String> = roots.mapTo(mutableSetOf()) { it.path }
+
         val restrictedRoots: List<File> = roots.flatMap { root ->
             listOf(
                 File(root, "Android/data").canonicalOrAbsolute(),
@@ -37,8 +32,6 @@ internal class DocumentIdResolver {
             )
         }.toSet()
 
-        private fun File.canonicalOrAbsolute(): File {
-            return runCatching { canonicalFile }.getOrElse { absoluteFile }
-        }
+        private fun File.canonicalOrAbsolute(): File = runCatching { canonicalFile }.getOrElse { absoluteFile }
     }
 }

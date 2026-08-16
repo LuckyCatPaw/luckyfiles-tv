@@ -2,8 +2,6 @@ package com.luckycatpaw.luckyfilestv.ui.settings
 
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -27,22 +26,22 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.input.key.KeyEvent
-import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import com.luckycatpaw.luckyfilestv.data.common.model.FileManagerSettings
 import com.luckycatpaw.luckyfilestv.R
+import com.luckycatpaw.luckyfilestv.data.common.model.FileManagerSettings
 import com.luckycatpaw.luckyfilestv.data.common.model.FileSortMode
+import com.luckycatpaw.luckyfilestv.ui.common.DialogCard
 import com.luckycatpaw.luckyfilestv.ui.common.TvModalDialog
+import com.luckycatpaw.luckyfilestv.ui.common.tvContentColor
+import com.luckycatpaw.luckyfilestv.ui.common.tvFocusHighlight
+import com.luckycatpaw.luckyfilestv.ui.common.tvFocusable
 
 private enum class SettingsFocusItem {
     LANGUAGE_SYSTEM,
@@ -72,48 +71,44 @@ fun SettingsOverlay(
     onFoldersFirstChanged: (Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val languageSystemFocus = remember { FocusRequester() }
-    val languageEnglishFocus = remember { FocusRequester() }
-    val languageGermanFocus = remember { FocusRequester() }
-    val hideFolderJpgFocus = remember { FocusRequester() }
-    val useFolderJpgFocus = remember { FocusRequester() }
-    val optimizeNamesFocus = remember { FocusRequester() }
-    val sortNameFocus = remember { FocusRequester() }
-    val sortDateFocus = remember { FocusRequester() }
-    val sortSizeFocus = remember { FocusRequester() }
-    val sortTypeFocus = remember { FocusRequester() }
-    val sortDirectionFocus = remember { FocusRequester() }
-    val foldersFirstFocus = remember { FocusRequester() }
-    val closeFocus = remember { FocusRequester() }
-
-    var focusedItem by remember {
-        mutableStateOf(SettingsFocusItem.LANGUAGE_SYSTEM)
+    val requesters = remember {
+        SettingsFocusItem.entries.associateWith { FocusRequester() }
     }
+    var focusedItem by remember { mutableStateOf(SettingsFocusItem.LANGUAGE_SYSTEM) }
 
-    fun focusRequesterFor(
-        item: SettingsFocusItem
-    ): FocusRequester {
-        return when (item) {
-            SettingsFocusItem.LANGUAGE_SYSTEM -> languageSystemFocus
-            SettingsFocusItem.LANGUAGE_ENGLISH -> languageEnglishFocus
-            SettingsFocusItem.LANGUAGE_GERMAN -> languageGermanFocus
-            SettingsFocusItem.HIDE_FOLDER_JPG -> hideFolderJpgFocus
-            SettingsFocusItem.USE_FOLDER_JPG -> useFolderJpgFocus
-            SettingsFocusItem.OPTIMIZE_NAMES -> optimizeNamesFocus
-            SettingsFocusItem.SORT_NAME -> sortNameFocus
-            SettingsFocusItem.SORT_DATE -> sortDateFocus
-            SettingsFocusItem.SORT_SIZE -> sortSizeFocus
-            SettingsFocusItem.SORT_TYPE -> sortTypeFocus
-            SettingsFocusItem.SORT_DIRECTION -> sortDirectionFocus
-            SettingsFocusItem.FOLDERS_FIRST -> foldersFirstFocus
-            SettingsFocusItem.CLOSE -> closeFocus
-        }
-    }
+    val onLabel = stringResource(R.string.state_on)
+    val offLabel = stringResource(R.string.state_off)
 
-    TvModalDialog(
-        onDismiss = onDismiss,
-        dimAlpha = 0.72f
-    ) {
+    // LazyListScope is not a composable scope, so every string has to be resolved here.
+    val labels = SettingsTexts(
+        sectionLanguage = stringResource(R.string.settings_section_language),
+        sectionFolder = stringResource(R.string.settings_section_folder),
+        sectionFileNames = stringResource(R.string.settings_section_filenames),
+        sectionSorting = stringResource(R.string.settings_section_sorting),
+        languageSystem = stringResource(R.string.language_system),
+        languageEnglish = stringResource(R.string.language_english),
+        languageGerman = stringResource(R.string.language_german),
+        hideFolderJpg = stringResource(R.string.settings_hide_folder_jpg),
+        hideFolderJpgDesc = stringResource(R.string.settings_hide_folder_jpg_desc),
+        useFolderJpg = stringResource(R.string.settings_use_folder_jpg),
+        useFolderJpgDesc = stringResource(R.string.settings_use_folder_jpg_desc),
+        optimizeNames = stringResource(R.string.settings_optimize_names),
+        optimizeNamesDesc = stringResource(R.string.settings_optimize_names_desc),
+        sortBy = stringResource(R.string.settings_sort_by),
+        sortByDesc = stringResource(R.string.settings_sort_by_desc),
+        sortName = stringResource(R.string.sort_name),
+        sortDate = stringResource(R.string.sort_date),
+        sortSize = stringResource(R.string.sort_size),
+        sortType = stringResource(R.string.sort_type),
+        sortDirection = stringResource(R.string.settings_sort_direction),
+        sortDirectionDesc = sortDirectionDescription(settings.sortMode, settings.sortAscending),
+        ascending = stringResource(R.string.ascending),
+        descending = stringResource(R.string.descending),
+        foldersFirst = stringResource(R.string.folders_first),
+        foldersFirstDesc = stringResource(R.string.folders_first_desc)
+    )
+
+    TvModalDialog(onDismiss = onDismiss, dimAlpha = 0.72f) {
         // Restore focus after setting changes. The dialog window prevents focus from
         // escaping to the browser if the requester is briefly unavailable.
         LaunchedEffect(
@@ -127,601 +122,338 @@ fun SettingsOverlay(
         ) {
             withFrameNanos { }
             withFrameNanos { }
-
-            runCatching {
-                focusRequesterFor(
-                    focusedItem
-                ).requestFocus()
-            }
+            runCatching { requesters.getValue(focusedItem).requestFocus() }
         }
 
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .onPreviewKeyEvent { event ->
-                    when (
-                        event.nativeKeyEvent.keyCode
-                    ) {
+                    when (event.nativeKeyEvent.keyCode) {
                         AndroidKeyEvent.KEYCODE_DPAD_LEFT,
                         AndroidKeyEvent.KEYCODE_DPAD_RIGHT -> true
 
-                        AndroidKeyEvent.KEYCODE_DPAD_UP -> {
-                            focusedItem ==
-                                    SettingsFocusItem.LANGUAGE_SYSTEM
-                        }
+                        AndroidKeyEvent.KEYCODE_DPAD_UP ->
+                            focusedItem == SettingsFocusItem.LANGUAGE_SYSTEM
 
-                        AndroidKeyEvent.KEYCODE_DPAD_DOWN -> {
-                            focusedItem ==
-                                    SettingsFocusItem.CLOSE
-                        }
+                        AndroidKeyEvent.KEYCODE_DPAD_DOWN ->
+                            focusedItem == SettingsFocusItem.CLOSE
 
                         else -> false
                     }
                 }
         ) {
-            Column(
+            DialogCard(
+                width = 780.dp,
                 modifier = Modifier
-                    .align(
-                        Alignment.Center
-                    )
-                    .width(
-                        780.dp
-                    )
-                    .fillMaxHeight(
-                        0.88f
-                    )
-                    .background(
-                        MaterialTheme
-                            .colorScheme
-                            .surface,
-                        RoundedCornerShape(
-                            18.dp
-                        )
-                    )
-                    .border(
-                        width = 1.dp,
-                        color =
-                            MaterialTheme
-                                .colorScheme
-                                .primary
-                                .copy(
-                                    alpha = 0.45f
-                                ),
-                        shape =
-                            RoundedCornerShape(
-                                18.dp
-                            )
-                    )
-                    .padding(
-                        horizontal = 28.dp,
-                        vertical = 24.dp
-                    )
+                    .align(Alignment.Center)
+                    .fillMaxHeight(0.88f),
+                padding = 24.dp,
+                borderAlpha = 0.45f
             ) {
                 Text(
                     text = stringResource(R.string.settings),
-                    color =
-                        MaterialTheme
-                            .colorScheme
-                            .onSurface,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 26.sp,
-                    fontWeight =
-                        FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold
                 )
-
-                Spacer(
-                    modifier =
-                        Modifier.height(
-                            6.dp
-                        )
-                )
-
+                Spacer(Modifier.height(6.dp))
                 Text(
                     text = stringResource(R.string.settings_subtitle),
-                    color =
-                        MaterialTheme
-                            .colorScheme
-                            .onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 14.sp
                 )
-
-                Spacer(
-                    modifier =
-                        Modifier.height(
-                            22.dp
-                        )
-                )
+                Spacer(Modifier.height(22.dp))
 
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    verticalArrangement =
-                        Arrangement.spacedBy(
-                            8.dp
-                        )
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    item(
-                        key = "section_language"
-                    ) {
-                        SettingsSectionTitle(
-                            title = stringResource(R.string.settings_section_language)
+                    section("language", labels.sectionLanguage)
+
+                    choice(
+                        key = "language_system",
+                        title = labels.languageSystem,
+                        selected = settings.languageTag == null,
+                        item = SettingsFocusItem.LANGUAGE_SYSTEM,
+                        requesters = requesters,
+                        onFocused = { focusedItem = it },
+                        onClick = { onLanguageTagChanged(null) }
+                    )
+                    choice(
+                        key = "language_english",
+                        title = labels.languageEnglish,
+                        selected = settings.languageTag == "en",
+                        item = SettingsFocusItem.LANGUAGE_ENGLISH,
+                        requesters = requesters,
+                        onFocused = { focusedItem = it },
+                        onClick = { onLanguageTagChanged("en") }
+                    )
+                    choice(
+                        key = "language_german",
+                        title = labels.languageGerman,
+                        selected = settings.languageTag == "de",
+                        item = SettingsFocusItem.LANGUAGE_GERMAN,
+                        requesters = requesters,
+                        onFocused = { focusedItem = it },
+                        onClick = { onLanguageTagChanged("de") }
+                    )
+
+                    gap("language_space", 18.dp)
+                    section("folder", labels.sectionFolder)
+
+                    toggle(
+                        key = "hide_folder_jpg",
+                        title = labels.hideFolderJpg,
+                        description = labels.hideFolderJpgDesc,
+                        checked = settings.hideFolderJpg,
+                        checkedLabel = onLabel,
+                        uncheckedLabel = offLabel,
+                        item = SettingsFocusItem.HIDE_FOLDER_JPG,
+                        requesters = requesters,
+                        onFocused = { focusedItem = it },
+                        onClick = { onHideFolderJpgChanged(!settings.hideFolderJpg) }
+                    )
+                    toggle(
+                        key = "use_folder_jpg",
+                        title = labels.useFolderJpg,
+                        description = labels.useFolderJpgDesc,
+                        checked = settings.useFolderJpgAsIcon,
+                        checkedLabel = onLabel,
+                        uncheckedLabel = offLabel,
+                        item = SettingsFocusItem.USE_FOLDER_JPG,
+                        requesters = requesters,
+                        onFocused = { focusedItem = it },
+                        onClick = { onUseFolderJpgAsIconChanged(!settings.useFolderJpgAsIcon) }
+                    )
+
+                    gap("folder_space", 18.dp)
+                    section("names", labels.sectionFileNames)
+
+                    toggle(
+                        key = "optimize_names",
+                        title = labels.optimizeNames,
+                        description = labels.optimizeNamesDesc,
+                        checked = settings.optimizeFileNames,
+                        checkedLabel = onLabel,
+                        uncheckedLabel = offLabel,
+                        item = SettingsFocusItem.OPTIMIZE_NAMES,
+                        requesters = requesters,
+                        onFocused = { focusedItem = it },
+                        onClick = { onOptimizeFileNamesChanged(!settings.optimizeFileNames) }
+                    )
+
+                    gap("names_space", 18.dp)
+                    section("sort", labels.sectionSorting)
+
+                    item(key = "sort_description") {
+                        SettingsDescription(title = labels.sortBy, description = labels.sortByDesc)
+                    }
+
+                    val sortChoices = listOf(
+                        Triple(FileSortMode.NAME, "sort_name", labels.sortName),
+                        Triple(FileSortMode.DATE, "sort_date", labels.sortDate),
+                        Triple(FileSortMode.SIZE, "sort_size", labels.sortSize),
+                        Triple(FileSortMode.TYPE, "sort_type", labels.sortType)
+                    )
+
+                    sortChoices.forEach { (mode, key, title) ->
+                        choice(
+                            key = key,
+                            title = title,
+                            selected = settings.sortMode == mode,
+                            item = SortFocusItems.getValue(mode),
+                            requesters = requesters,
+                            onFocused = { focusedItem = it },
+                            onClick = { onSortModeChanged(mode) }
                         )
                     }
 
-                    item(
-                        key = "language_system"
-                    ) {
-                        SettingsChoiceRow(
-                            title = stringResource(R.string.language_system),
-                            selected = settings.languageTag == null,
-                            focusRequester = languageSystemFocus,
-                            onFocused = {
-                                focusedItem = SettingsFocusItem.LANGUAGE_SYSTEM
-                            },
-                            onClick = {
-                                onLanguageTagChanged(null)
-                            }
-                        )
-                    }
+                    gap("sort_gap", 6.dp)
 
-                    item(
-                        key = "language_english"
-                    ) {
-                        SettingsChoiceRow(
-                            title = stringResource(R.string.language_english),
-                            selected = settings.languageTag == "en",
-                            focusRequester = languageEnglishFocus,
-                            onFocused = {
-                                focusedItem = SettingsFocusItem.LANGUAGE_ENGLISH
-                            },
-                            onClick = {
-                                onLanguageTagChanged("en")
-                            }
-                        )
-                    }
+                    toggle(
+                        key = "sort_direction",
+                        title = labels.sortDirection,
+                        description = labels.sortDirectionDesc,
+                        checked = settings.sortAscending,
+                        checkedLabel = labels.ascending,
+                        uncheckedLabel = labels.descending,
+                        item = SettingsFocusItem.SORT_DIRECTION,
+                        requesters = requesters,
+                        onFocused = { focusedItem = it },
+                        onClick = { onSortAscendingChanged(!settings.sortAscending) }
+                    )
+                    toggle(
+                        key = "folders_first",
+                        title = labels.foldersFirst,
+                        description = labels.foldersFirstDesc,
+                        checked = settings.foldersFirst,
+                        checkedLabel = onLabel,
+                        uncheckedLabel = offLabel,
+                        item = SettingsFocusItem.FOLDERS_FIRST,
+                        requesters = requesters,
+                        onFocused = { focusedItem = it },
+                        onClick = { onFoldersFirstChanged(!settings.foldersFirst) }
+                    )
 
-                    item(
-                        key = "language_german"
-                    ) {
-                        SettingsChoiceRow(
-                            title = stringResource(R.string.language_german),
-                            selected = settings.languageTag == "de",
-                            focusRequester = languageGermanFocus,
-                            onFocused = {
-                                focusedItem = SettingsFocusItem.LANGUAGE_GERMAN
-                            },
-                            onClick = {
-                                onLanguageTagChanged("de")
-                            }
-                        )
-                    }
+                    gap("close_gap", 14.dp)
 
-                    item(
-                        key = "language_space"
-                    ) {
-                        SettingsSectionSpacer()
-                    }
-
-                    item(
-                        key = "section_folder"
-                    ) {
-                        SettingsSectionTitle(
-                            title = stringResource(R.string.settings_section_folder)
-                        )
-                    }
-
-                    item(
-                        key = "hide_folder_jpg"
-                    ) {
-                        SettingsToggleRow(
-                            title =
-                                stringResource(R.string.settings_hide_folder_jpg),
-                            description =
-                                stringResource(R.string.settings_hide_folder_jpg_desc),
-                            checked =
-                                settings.hideFolderJpg,
-                            checkedLabel = stringResource(R.string.state_on),
-                            uncheckedLabel = stringResource(R.string.state_off),
-                            focusRequester =
-                                hideFolderJpgFocus,
-                            onFocused = {
-                                focusedItem =
-                                    SettingsFocusItem.HIDE_FOLDER_JPG
-                            },
-                            onClick = {
-                                onHideFolderJpgChanged(
-                                    !settings.hideFolderJpg
-                                )
-                            }
-                        )
-                    }
-
-                    item(
-                        key = "use_folder_jpg"
-                    ) {
-                        SettingsToggleRow(
-                            title =
-                                stringResource(R.string.settings_use_folder_jpg),
-                            description =
-                                stringResource(R.string.settings_use_folder_jpg_desc),
-                            checked =
-                                settings.useFolderJpgAsIcon,
-                            checkedLabel = stringResource(R.string.state_on),
-                            uncheckedLabel = stringResource(R.string.state_off),
-                            focusRequester =
-                                useFolderJpgFocus,
-                            onFocused = {
-                                focusedItem =
-                                    SettingsFocusItem.USE_FOLDER_JPG
-                            },
-                            onClick = {
-                                onUseFolderJpgAsIconChanged(
-                                    !settings.useFolderJpgAsIcon
-                                )
-                            }
-                        )
-                    }
-
-                    item(
-                        key = "folder_space"
-                    ) {
-                        SettingsSectionSpacer()
-                    }
-
-                    item(
-                        key = "section_names"
-                    ) {
-                        SettingsSectionTitle(
-                            title = stringResource(R.string.settings_section_filenames)
-                        )
-                    }
-
-                    item(
-                        key = "optimize_names"
-                    ) {
-                        SettingsToggleRow(
-                            title =
-                                stringResource(R.string.settings_optimize_names),
-                            description =
-                                stringResource(R.string.settings_optimize_names_desc),
-                            checked =
-                                settings.optimizeFileNames,
-                            checkedLabel = stringResource(R.string.state_on),
-                            uncheckedLabel = stringResource(R.string.state_off),
-                            focusRequester =
-                                optimizeNamesFocus,
-                            onFocused = {
-                                focusedItem =
-                                    SettingsFocusItem.OPTIMIZE_NAMES
-                            },
-                            onClick = {
-                                onOptimizeFileNamesChanged(
-                                    !settings.optimizeFileNames
-                                )
-                            }
-                        )
-                    }
-
-                    item(
-                        key = "names_space"
-                    ) {
-                        SettingsSectionSpacer()
-                    }
-
-                    item(
-                        key = "section_sort"
-                    ) {
-                        SettingsSectionTitle(
-                            title = stringResource(R.string.settings_section_sorting)
-                        )
-                    }
-
-                    item(
-                        key = "sort_description"
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(
-                                    horizontal = 4.dp,
-                                    vertical = 4.dp
-                                )
-                        ) {
-                            Text(
-                                text =
-                                    stringResource(R.string.settings_sort_by),
-                                color =
-                                    MaterialTheme
-                                        .colorScheme
-                                        .onSurface,
-                                fontSize = 16.sp,
-                                fontWeight =
-                                    FontWeight.Medium
-                            )
-
-                            Spacer(
-                                modifier =
-                                    Modifier.height(
-                                        4.dp
-                                    )
-                            )
-
-                            Text(
-                                text =
-                                    stringResource(R.string.settings_sort_by_desc),
-                                color =
-                                    MaterialTheme
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                fontSize = 13.sp,
-                                lineHeight = 17.sp
-                            )
-                        }
-                    }
-
-                    item(
-                        key = "sort_name"
-                    ) {
-                        SettingsChoiceRow(
-                            title = stringResource(R.string.sort_name),
-                            selected =
-                                settings.sortMode ==
-                                        FileSortMode.NAME,
-                            focusRequester =
-                                sortNameFocus,
-                            onFocused = {
-                                focusedItem =
-                                    SettingsFocusItem.SORT_NAME
-                            },
-                            onClick = {
-                                onSortModeChanged(
-                                    FileSortMode.NAME
-                                )
-                            }
-                        )
-                    }
-
-                    item(
-                        key = "sort_date"
-                    ) {
-                        SettingsChoiceRow(
-                            title = stringResource(R.string.sort_date),
-                            selected =
-                                settings.sortMode ==
-                                        FileSortMode.DATE,
-                            focusRequester =
-                                sortDateFocus,
-                            onFocused = {
-                                focusedItem =
-                                    SettingsFocusItem.SORT_DATE
-                            },
-                            onClick = {
-                                onSortModeChanged(
-                                    FileSortMode.DATE
-                                )
-                            }
-                        )
-                    }
-
-                    item(
-                        key = "sort_size"
-                    ) {
-                        SettingsChoiceRow(
-                            title = stringResource(R.string.sort_size),
-                            selected =
-                                settings.sortMode ==
-                                        FileSortMode.SIZE,
-                            focusRequester =
-                                sortSizeFocus,
-                            onFocused = {
-                                focusedItem =
-                                    SettingsFocusItem.SORT_SIZE
-                            },
-                            onClick = {
-                                onSortModeChanged(
-                                    FileSortMode.SIZE
-                                )
-                            }
-                        )
-                    }
-
-                    item(
-                        key = "sort_type"
-                    ) {
-                        SettingsChoiceRow(
-                            title = stringResource(R.string.sort_type),
-                            selected =
-                                settings.sortMode ==
-                                        FileSortMode.TYPE,
-                            focusRequester =
-                                sortTypeFocus,
-                            onFocused = {
-                                focusedItem =
-                                    SettingsFocusItem.SORT_TYPE
-                            },
-                            onClick = {
-                                onSortModeChanged(
-                                    FileSortMode.TYPE
-                                )
-                            }
-                        )
-                    }
-
-                    item(
-                        key = "sort_gap"
-                    ) {
-                        Spacer(
-                            modifier =
-                                Modifier.height(
-                                    6.dp
-                                )
-                        )
-                    }
-
-                    item(
-                        key = "sort_direction"
-                    ) {
-                        SettingsToggleRow(
-                            title =
-                                stringResource(R.string.settings_sort_direction),
-                            description =
-                                sortDirectionDescription(
-                                    mode =
-                                        settings.sortMode,
-                                    ascending =
-                                        settings.sortAscending
-                                ),
-                            checked =
-                                settings.sortAscending,
-                            checkedLabel =
-                                stringResource(R.string.ascending),
-                            uncheckedLabel =
-                                stringResource(R.string.descending),
-                            focusRequester =
-                                sortDirectionFocus,
-                            onFocused = {
-                                focusedItem =
-                                    SettingsFocusItem.SORT_DIRECTION
-                            },
-                            onClick = {
-                                onSortAscendingChanged(
-                                    !settings.sortAscending
-                                )
-                            }
-                        )
-                    }
-
-                    item(
-                        key = "folders_first"
-                    ) {
-                        SettingsToggleRow(
-                            title =
-                                stringResource(R.string.folders_first),
-                            description =
-                                stringResource(R.string.folders_first_desc),
-                            checked =
-                                settings.foldersFirst,
-                            checkedLabel = stringResource(R.string.state_on),
-                            uncheckedLabel = stringResource(R.string.state_off),
-                            focusRequester =
-                                foldersFirstFocus,
-                            onFocused = {
-                                focusedItem =
-                                    SettingsFocusItem.FOLDERS_FIRST
-                            },
-                            onClick = {
-                                onFoldersFirstChanged(
-                                    !settings.foldersFirst
-                                )
-                            }
-                        )
-                    }
-
-                    item(
-                        key = "close_gap"
-                    ) {
-                        Spacer(
-                            modifier =
-                                Modifier.height(
-                                    14.dp
-                                )
-                        )
-                    }
-
-                    item(
-                        key = "close"
-                    ) {
+                    item(key = "close") {
                         Row(
-                            modifier =
-                                Modifier.fillMaxWidth(),
-                            horizontalArrangement =
-                                Arrangement.End
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
                         ) {
                             SettingsCloseButton(
-                                focusRequester =
-                                    closeFocus,
-                                onFocused = {
-                                    focusedItem =
-                                        SettingsFocusItem.CLOSE
-                                },
-                                onClick =
-                                    onDismiss
+                                focusRequester = requesters.getValue(SettingsFocusItem.CLOSE),
+                                onFocused = { focusedItem = SettingsFocusItem.CLOSE },
+                                onClick = onDismiss
                             )
                         }
                     }
 
-                    item(
-                        key = "bottom_gap"
-                    ) {
-                        Spacer(
-                            modifier =
-                                Modifier.height(
-                                    8.dp
-                                )
-                        )
-                    }
+                    gap("bottom_gap", 8.dp)
                 }
             }
         }
     }
 }
 
-@Composable
-private fun SettingsSectionTitle(
-    title: String
+private val SortFocusItems = mapOf(
+    FileSortMode.NAME to SettingsFocusItem.SORT_NAME,
+    FileSortMode.DATE to SettingsFocusItem.SORT_DATE,
+    FileSortMode.SIZE to SettingsFocusItem.SORT_SIZE,
+    FileSortMode.TYPE to SettingsFocusItem.SORT_TYPE
+)
+
+private class SettingsTexts(
+    val sectionLanguage: String,
+    val sectionFolder: String,
+    val sectionFileNames: String,
+    val sectionSorting: String,
+    val languageSystem: String,
+    val languageEnglish: String,
+    val languageGerman: String,
+    val hideFolderJpg: String,
+    val hideFolderJpgDesc: String,
+    val useFolderJpg: String,
+    val useFolderJpgDesc: String,
+    val optimizeNames: String,
+    val optimizeNamesDesc: String,
+    val sortBy: String,
+    val sortByDesc: String,
+    val sortName: String,
+    val sortDate: String,
+    val sortSize: String,
+    val sortType: String,
+    val sortDirection: String,
+    val sortDirectionDesc: String,
+    val ascending: String,
+    val descending: String,
+    val foldersFirst: String,
+    val foldersFirstDesc: String
+)
+
+private fun LazyListScope.gap(key: String, height: Dp) {
+    item(key = key) { Spacer(Modifier.height(height)) }
+}
+
+private fun LazyListScope.section(key: String, title: String) {
+    item(key = "section_$key") { SettingsSectionTitle(title) }
+}
+
+private fun LazyListScope.choice(
+    key: String,
+    title: String,
+    selected: Boolean,
+    item: SettingsFocusItem,
+    requesters: Map<SettingsFocusItem, FocusRequester>,
+    onFocused: (SettingsFocusItem) -> Unit,
+    onClick: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(
-                top = 4.dp,
-                bottom = 6.dp
-            )
-    ) {
-        Text(
-            text = title,
-            color =
-                MaterialTheme
-                    .colorScheme
-                    .primary,
-            fontSize = 19.sp,
-            fontWeight =
-                FontWeight.SemiBold
+    item(key = key) {
+        SettingsChoiceRow(
+            title = title,
+            selected = selected,
+            focusRequester = requesters.getValue(item),
+            onFocused = { onFocused(item) },
+            onClick = onClick
         )
+    }
+}
 
-        Spacer(
-            modifier =
-                Modifier.height(
-                    5.dp
-                )
-        )
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(
-                    1.dp
-                )
-                .background(
-                    MaterialTheme
-                        .colorScheme
-                        .primary
-                        .copy(
-                            alpha = 0.28f
-                        )
-                )
+@Suppress("LongParameterList")
+private fun LazyListScope.toggle(
+    key: String,
+    title: String,
+    description: String,
+    checked: Boolean,
+    checkedLabel: String,
+    uncheckedLabel: String,
+    item: SettingsFocusItem,
+    requesters: Map<SettingsFocusItem, FocusRequester>,
+    onFocused: (SettingsFocusItem) -> Unit,
+    onClick: () -> Unit
+) {
+    item(key = key) {
+        SettingsToggleRow(
+            title = title,
+            description = description,
+            checked = checked,
+            checkedLabel = checkedLabel,
+            uncheckedLabel = uncheckedLabel,
+            focusRequester = requesters.getValue(item),
+            onFocused = { onFocused(item) },
+            onClick = onClick
         )
     }
 }
 
 @Composable
-private fun SettingsSectionSpacer() {
-    Spacer(
-        modifier =
-            Modifier.height(
-                18.dp
-            )
-    )
+private fun SettingsSectionTitle(title: String) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp, bottom = 6.dp)
+    ) {
+        Text(
+            text = title,
+            color = MaterialTheme.colorScheme.primary,
+            fontSize = 19.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Spacer(Modifier.height(5.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.28f))
+        )
+    }
+}
+
+@Composable
+private fun SettingsDescription(title: String, description: String) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 4.dp)
+    ) {
+        Text(
+            text = title,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Medium
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = description,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 13.sp,
+            lineHeight = 17.sp
+        )
+    }
 }
 
 @Composable
@@ -735,134 +467,48 @@ private fun SettingsToggleRow(
     onFocused: () -> Unit,
     onClick: () -> Unit
 ) {
-    var focused by remember {
-        mutableStateOf(false)
-    }
-
-    val shape =
-        RoundedCornerShape(
-            12.dp
-        )
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(12.dp)
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .focusRequester(
-                focusRequester
-            )
-            .onFocusChanged { state ->
-                focused =
-                    state.isFocused
-
-                if (state.isFocused) {
-                    onFocused()
-                }
-            }
-            .onPreviewKeyEvent { event ->
-                handleActivation(
-                    event = event,
-                    onClick = onClick
-                )
-            }
-            .focusable()
-            .background(
-                color =
-                    if (focused) {
-                        MaterialTheme
-                            .colorScheme
-                            .primaryContainer
-                    } else {
-                        MaterialTheme
-                            .colorScheme
-                            .surfaceVariant
-                    },
-                shape = shape
-            )
-            .then(
-                if (focused) {
-                    Modifier.border(
-                        width = 2.dp,
-                        color =
-                            MaterialTheme
-                                .colorScheme
-                                .primary,
-                        shape = shape
-                    )
-                } else {
-                    Modifier
+            .tvFocusable(
+                onClick = onClick,
+                focusRequester = focusRequester,
+                onFocusChanged = { isFocused ->
+                    focused = isFocused
+                    if (isFocused) onFocused()
                 }
             )
-            .padding(
-                horizontal = 18.dp,
-                vertical = 14.dp
-            ),
-        verticalAlignment =
-            Alignment.CenterVertically
+            .tvFocusHighlight(focused, shape)
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(
-            modifier =
-                Modifier.weight(
-                    1f
-                )
-        ) {
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                color =
-                    if (focused) {
-                        MaterialTheme
-                            .colorScheme
-                            .onPrimaryContainer
-                    } else {
-                        MaterialTheme
-                            .colorScheme
-                            .onSurface
-                    },
+                color = tvContentColor(focused),
                 fontSize = 16.sp,
-                fontWeight =
-                    FontWeight.Medium
+                fontWeight = FontWeight.Medium
             )
-
-            Spacer(
-                modifier =
-                    Modifier.height(
-                        4.dp
-                    )
-            )
-
+            Spacer(Modifier.height(4.dp))
             Text(
                 text = description,
-                color =
-                    if (focused) {
-                        MaterialTheme
-                            .colorScheme
-                            .onPrimaryContainer
-                            .copy(
-                                alpha = 0.74f
-                            )
-                    } else {
-                        MaterialTheme
-                            .colorScheme
-                            .onSurfaceVariant
-                    },
+                color = if (focused) {
+                    MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.74f)
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
                 fontSize = 13.sp,
                 lineHeight = 17.sp
             )
         }
 
-        Spacer(
-            modifier =
-                Modifier.width(
-                    22.dp
-                )
-        )
+        Spacer(Modifier.width(22.dp))
 
         SettingsValueBadge(
-            text =
-                if (checked) {
-                    checkedLabel
-                } else {
-                    uncheckedLabel
-                },
+            text = if (checked) checkedLabel else uncheckedLabel,
             active = checked,
             focused = focused
         )
@@ -877,100 +523,38 @@ private fun SettingsChoiceRow(
     onFocused: () -> Unit,
     onClick: () -> Unit
 ) {
-    var focused by remember {
-        mutableStateOf(false)
-    }
-
-    val shape =
-        RoundedCornerShape(
-            10.dp
-        )
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(10.dp)
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .focusRequester(
-                focusRequester
-            )
-            .onFocusChanged { state ->
-                focused =
-                    state.isFocused
-
-                if (state.isFocused) {
-                    onFocused()
+            .tvFocusable(
+                onClick = onClick,
+                focusRequester = focusRequester,
+                onFocusChanged = { isFocused ->
+                    focused = isFocused
+                    if (isFocused) onFocused()
                 }
-            }
-            .onPreviewKeyEvent { event ->
-                handleActivation(
-                    event = event,
-                    onClick = onClick
-                )
-            }
-            .focusable()
-            .background(
-                color =
-                    when {
-                        focused ->
-                            MaterialTheme
-                                .colorScheme
-                                .primaryContainer
-
-                        selected ->
-                            MaterialTheme
-                                .colorScheme
-                                .surfaceVariant
-
-                        else ->
-                            MaterialTheme
-                                .colorScheme
-                                .surface
-                    },
-                shape = shape
             )
-            .then(
-                if (focused) {
-                    Modifier.border(
-                        width = 2.dp,
-                        color =
-                            MaterialTheme
-                                .colorScheme
-                                .primary,
-                        shape = shape
-                    )
+            .tvFocusHighlight(
+                focused = focused,
+                shape = shape,
+                unfocusedContainer = if (selected) {
+                    MaterialTheme.colorScheme.surfaceVariant
                 } else {
-                    Modifier
+                    MaterialTheme.colorScheme.surface
                 }
             )
-            .padding(
-                horizontal = 18.dp,
-                vertical = 11.dp
-            ),
-        verticalAlignment =
-            Alignment.CenterVertically
+            .padding(horizontal = 18.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = title,
-            modifier =
-                Modifier.weight(
-                    1f
-                ),
-            color =
-                if (focused) {
-                    MaterialTheme
-                        .colorScheme
-                        .onPrimaryContainer
-                } else {
-                    MaterialTheme
-                        .colorScheme
-                        .onSurface
-                },
+            modifier = Modifier.weight(1f),
+            color = tvContentColor(focused),
             fontSize = 15.sp,
-            fontWeight =
-                if (selected) {
-                    FontWeight.SemiBold
-                } else {
-                    FontWeight.Normal
-                }
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
         )
 
         if (selected) {
@@ -984,223 +568,77 @@ private fun SettingsChoiceRow(
 }
 
 @Composable
-private fun SettingsValueBadge(
-    text: String,
-    active: Boolean,
-    focused: Boolean
-) {
-    val backgroundColor =
-        when {
-            active ->
-                MaterialTheme
-                    .colorScheme
-                    .primary
+private fun SettingsValueBadge(text: String, active: Boolean, focused: Boolean) {
+    val backgroundColor = if (active) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.surface
+    }
 
-            else ->
-                MaterialTheme
-                    .colorScheme
-                    .surface
-        }
-
-    val contentColor =
-        when {
-            active ->
-                MaterialTheme
-                    .colorScheme
-                    .onPrimary
-
-            focused ->
-                MaterialTheme
-                    .colorScheme
-                    .onSurface
-
-            else ->
-                MaterialTheme
-                    .colorScheme
-                    .onSurfaceVariant
-        }
+    val contentColor = when {
+        active -> MaterialTheme.colorScheme.onPrimary
+        focused -> MaterialTheme.colorScheme.onSurface
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
 
     Row(
         modifier = Modifier
-            .background(
-                backgroundColor,
-                RoundedCornerShape(
-                    8.dp
-                )
-            )
-            .padding(
-                horizontal = 12.dp,
-                vertical = 6.dp
-            ),
-        horizontalArrangement =
-            Arrangement.Center,
-        verticalAlignment =
-            Alignment.CenterVertically
+            .background(backgroundColor, RoundedCornerShape(8.dp))
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = text,
             color = contentColor,
             fontSize = 13.sp,
-            fontWeight =
-                FontWeight.Medium
+            fontWeight = FontWeight.Medium
         )
     }
 }
 
 @Composable
-private fun SettingsCloseButton(
-    focusRequester: FocusRequester,
-    onFocused: () -> Unit,
-    onClick: () -> Unit
-) {
-    var focused by remember {
-        mutableStateOf(false)
-    }
-
-    val shape =
-        RoundedCornerShape(
-            10.dp
-        )
+private fun SettingsCloseButton(focusRequester: FocusRequester, onFocused: () -> Unit, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(10.dp)
 
     Row(
         modifier = Modifier
-            .focusRequester(
-                focusRequester
-            )
-            .onFocusChanged { state ->
-                focused =
-                    state.isFocused
-
-                if (state.isFocused) {
-                    onFocused()
-                }
-            }
-            .onPreviewKeyEvent { event ->
-                handleActivation(
-                    event = event,
-                    onClick = onClick
-                )
-            }
-            .focusable()
-            .background(
-                if (focused) {
-                    MaterialTheme
-                        .colorScheme
-                        .primaryContainer
-                } else {
-                    MaterialTheme
-                        .colorScheme
-                        .surfaceVariant
-                },
-                shape
-            )
-            .then(
-                if (focused) {
-                    Modifier.border(
-                        width = 2.dp,
-                        color =
-                            MaterialTheme
-                                .colorScheme
-                                .primary,
-                        shape = shape
-                    )
-                } else {
-                    Modifier
+            .tvFocusable(
+                onClick = onClick,
+                focusRequester = focusRequester,
+                onFocusChanged = { isFocused ->
+                    focused = isFocused
+                    if (isFocused) onFocused()
                 }
             )
-            .padding(
-                horizontal = 22.dp,
-                vertical = 10.dp
-            ),
-        horizontalArrangement =
-            Arrangement.Center,
-        verticalAlignment =
-            Alignment.CenterVertically
+            .tvFocusHighlight(focused, shape)
+            .padding(horizontal = 22.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = stringResource(R.string.close),
-            color =
-                if (focused) {
-                    MaterialTheme
-                        .colorScheme
-                        .onPrimaryContainer
-                } else {
-                    MaterialTheme
-                        .colorScheme
-                        .onSurface
-                },
+            color = tvContentColor(focused),
             fontSize = 14.sp
         )
     }
 }
 
-private fun handleActivation(
-    event: KeyEvent,
-    onClick: () -> Unit
-): Boolean {
-    val keyCode =
-        event.nativeKeyEvent.keyCode
-
-    val activationKey =
-        keyCode ==
-                AndroidKeyEvent.KEYCODE_DPAD_CENTER ||
-                keyCode ==
-                AndroidKeyEvent.KEYCODE_ENTER ||
-                keyCode ==
-                AndroidKeyEvent.KEYCODE_NUMPAD_ENTER ||
-                keyCode ==
-                AndroidKeyEvent.KEYCODE_BUTTON_A
-
-    if (!activationKey) {
-        return false
-    }
-
-    if (
-        event.type ==
-        KeyEventType.KeyUp
-    ) {
-        onClick()
-    }
-
-    return true
-}
-
 @Composable
-private fun sortDirectionDescription(
-    mode: FileSortMode,
-    ascending: Boolean
-): String {
-    return when (mode) {
-        FileSortMode.NAME -> {
-            if (ascending) {
-                stringResource(R.string.sort_name_ascending_desc)
-            } else {
-                stringResource(R.string.sort_name_descending_desc)
-            }
-        }
+private fun sortDirectionDescription(mode: FileSortMode, ascending: Boolean): String {
+    val resId = when (mode) {
+        FileSortMode.NAME ->
+            if (ascending) R.string.sort_name_ascending_desc else R.string.sort_name_descending_desc
 
-        FileSortMode.DATE -> {
-            if (ascending) {
-                stringResource(R.string.sort_date_ascending_desc)
-            } else {
-                stringResource(R.string.sort_date_descending_desc)
-            }
-        }
+        FileSortMode.DATE ->
+            if (ascending) R.string.sort_date_ascending_desc else R.string.sort_date_descending_desc
 
-        FileSortMode.SIZE -> {
-            if (ascending) {
-                stringResource(R.string.sort_size_ascending_desc)
-            } else {
-                stringResource(R.string.sort_size_descending_desc)
-            }
-        }
+        FileSortMode.SIZE ->
+            if (ascending) R.string.sort_size_ascending_desc else R.string.sort_size_descending_desc
 
-        FileSortMode.TYPE -> {
-            if (ascending) {
-                stringResource(R.string.sort_type_ascending_desc)
-            } else {
-                stringResource(R.string.sort_type_descending_desc)
-            }
-        }
+        FileSortMode.TYPE ->
+            if (ascending) R.string.sort_type_ascending_desc else R.string.sort_type_descending_desc
     }
+    return stringResource(resId)
 }

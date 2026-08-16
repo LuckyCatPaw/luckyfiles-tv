@@ -4,16 +4,16 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.os.SystemClock
 import android.util.LruCache
+import com.luckycatpaw.luckyfilestv.data.common.GeneratedThumbnailCache
 import com.luckycatpaw.luckyfilestv.data.provider.model.DocumentRootInfo
 import com.luckycatpaw.luckyfilestv.data.provider.model.ProviderDocumentInfo
-import com.luckycatpaw.luckyfilestv.data.common.GeneratedThumbnailCache
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
-import java.util.concurrent.ConcurrentHashMap
 
 class ImageRepository private constructor(context: Context) {
 
@@ -25,59 +25,41 @@ class ImageRepository private constructor(context: Context) {
         .coerceIn(16 * 1024, 64 * 1024)
 
     private val memoryCache = object : LruCache<String, Bitmap>(maxMemoryKb) {
-        override fun sizeOf(key: String, value: Bitmap): Int {
-            return (value.byteCount / 1024).coerceAtLeast(1)
-        }
+        override fun sizeOf(key: String, value: Bitmap): Int = (value.byteCount / 1024).coerceAtLeast(1)
     }
 
     private val keyLocks = Array(32) { Mutex() }
     private val negativeCache = ConcurrentHashMap<String, Long>()
     private val globalLoadSemaphore = Semaphore(4)
 
-    suspend fun getLocalThumbnail(
-        key: String,
-        generator: suspend () -> Bitmap?
-    ): Bitmap? {
-        return getOrCreate(key) {
-            generatedThumbnailCache.getOrCreate(key, generator)
-        }
+    suspend fun getLocalThumbnail(key: String, generator: suspend () -> Bitmap?): Bitmap? = getOrCreate(key) {
+        generatedThumbnailCache.getOrCreate(key, generator)
     }
 
-    suspend fun getProviderThumbnail(
-        document: ProviderDocumentInfo,
-        width: Int = 384,
-        height: Int = 240
-    ): Bitmap? {
-        val key = "provider-thumb:${document.authority}:${document.documentId}:${document.lastModified ?: 0L}:${width}x$height"
+    suspend fun getProviderThumbnail(document: ProviderDocumentInfo, width: Int = 384, height: Int = 240): Bitmap? {
+        val key = "provider-thumb:${document.authority}:${document.documentId}:" +
+            "${document.lastModified ?: 0L}:${width}x$height"
         return getOrCreate(key) {
             providerVisualRepository.loadThumbnail(document, width, height)
         }
     }
 
-    suspend fun getProviderIcon(
-        document: ProviderDocumentInfo,
-        size: Int = 128
-    ): Bitmap? {
+    suspend fun getProviderIcon(document: ProviderDocumentInfo, size: Int = 128): Bitmap? {
         val key = "provider-icon:${document.authority}:${document.iconResId}:$size"
         return getOrCreate(key) {
             providerVisualRepository.loadDocumentIcon(document, size)
         }
     }
 
-    suspend fun getRootIcon(
-        root: DocumentRootInfo,
-        size: Int = 128
-    ): Bitmap? {
-        val key = "root-icon:${root.packageName}:${root.authority}:${root.rootId}:${root.iconResId}:$size"
+    suspend fun getRootIcon(root: DocumentRootInfo, size: Int = 128): Bitmap? {
+        val key = "root-icon:${root.packageName}:${root.authority}:" +
+            "${root.rootId}:${root.iconResId}:$size"
         return getOrCreate(key) {
             providerVisualRepository.loadRootIcon(root, size)
         }
     }
 
-    private suspend fun getOrCreate(
-        key: String,
-        loader: suspend () -> Bitmap?
-    ): Bitmap? {
+    private suspend fun getOrCreate(key: String, loader: suspend () -> Bitmap?): Bitmap? {
         memoryCache[key]?.let { return it }
 
         if (hasFreshNegativeEntry(key)) return null
@@ -122,10 +104,8 @@ class ImageRepository private constructor(context: Context) {
         @Volatile
         private var instance: ImageRepository? = null
 
-        fun get(context: Context): ImageRepository {
-            return instance ?: synchronized(this) {
-                instance ?: ImageRepository(context).also { instance = it }
-            }
+        fun get(context: Context): ImageRepository = instance ?: synchronized(this) {
+            instance ?: ImageRepository(context).also { instance = it }
         }
     }
 }

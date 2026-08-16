@@ -3,11 +3,8 @@ package com.luckycatpaw.luckyfilestv.data.common
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.os.storage.StorageManager
 import android.util.Log
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
@@ -18,6 +15,10 @@ import java.util.concurrent.ThreadFactory
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 
 class GeneratedThumbnailCache private constructor(context: Context) {
 
@@ -64,10 +65,7 @@ class GeneratedThumbnailCache private constructor(context: Context) {
         }
     }
 
-    suspend fun getOrCreate(
-        key: String,
-        generator: suspend () -> Bitmap?
-    ): Bitmap? {
+    suspend fun getOrCreate(key: String, generator: suspend () -> Bitmap?): Bitmap? {
         val hashedKey = hashKey(key)
 
         val diskBitmap = withContext(Dispatchers.IO) {
@@ -91,9 +89,7 @@ class GeneratedThumbnailCache private constructor(context: Context) {
         return generated
     }
 
-    private fun readFromDisk(
-        hashedKey: String
-    ): Bitmap? {
+    private fun readFromDisk(hashedKey: String): Bitmap? {
         val file = cacheFile(hashedKey)
 
         if (!file.isFile) {
@@ -113,10 +109,7 @@ class GeneratedThumbnailCache private constructor(context: Context) {
         return bitmap
     }
 
-    private fun writeToDisk(
-        hashedKey: String,
-        bitmap: Bitmap
-    ) {
+    private fun writeToDisk(hashedKey: String, bitmap: Bitmap) {
         if (!currentDirectory.exists() && !currentDirectory.mkdirs()) {
             return
         }
@@ -132,6 +125,8 @@ class GeneratedThumbnailCache private constructor(context: Context) {
             currentDirectory,
             ".$hashedKey.${System.nanoTime()}.tmp"
         )
+
+        reserveDiskSpace(THUMBNAIL_RESERVE_BYTES_ESTIMATE)
 
         val encodableBitmap = if (bitmap.config == Bitmap.Config.HARDWARE) {
             bitmap.copy(
@@ -155,7 +150,6 @@ class GeneratedThumbnailCache private constructor(context: Context) {
                 }
 
                 output.flush()
-                output.fd.sync()
             }
 
             if (target.exists()) {
@@ -203,10 +197,7 @@ class GeneratedThumbnailCache private constructor(context: Context) {
         }
     }
 
-    private fun scheduleDiskWrite(
-        hashedKey: String,
-        bitmap: Bitmap
-    ) {
+    private fun scheduleDiskWrite(hashedKey: String, bitmap: Bitmap) {
         if (!pendingDiskWrites.add(hashedKey)) {
             return
         }
@@ -227,14 +218,10 @@ class GeneratedThumbnailCache private constructor(context: Context) {
         }
     }
 
-    private fun cacheFile(
-        hashedKey: String
-    ): File {
-        return File(
-            currentDirectory,
-            "$hashedKey.jpg"
-        )
-    }
+    private fun cacheFile(hashedKey: String): File = File(
+        currentDirectory,
+        "$hashedKey.jpg"
+    )
 
     private fun deleteOldAppVersionCaches() {
         if (!baseDirectory.exists()) {
@@ -269,12 +256,15 @@ class GeneratedThumbnailCache private constructor(context: Context) {
             it.length()
         }
 
-        if (totalBytes <= MAX_DISK_CACHE_BYTES) {
+        val maxBytes = maxDiskCacheBytes()
+        if (totalBytes <= maxBytes) {
             return
         }
 
+        val targetBytes = (maxBytes * TARGET_CACHE_RATIO).toLong()
+
         for (file in files) {
-            if (totalBytes <= TARGET_DISK_CACHE_BYTES) {
+            if (totalBytes <= targetBytes) {
                 break
             }
 
@@ -286,9 +276,29 @@ class GeneratedThumbnailCache private constructor(context: Context) {
         }
     }
 
-    private fun hashKey(
-        key: String
-    ): String {
+    private fun maxDiskCacheBytes(): Long {
+        val allocatableBytes = allocatableBytesViaStorageManager()
+        val usableBytes = allocatableBytes
+            ?: runCatching { currentDirectory.usableSpace }.getOrDefault(0L)
+        val budget = (usableBytes * CACHE_BUDGET_RATIO_OF_FREE_SPACE).toLong()
+        return budget.coerceIn(MIN_DISK_CACHE_BYTES, MAX_DISK_CACHE_BYTES)
+    }
+
+    private fun allocatableBytesViaStorageManager(): Long? = runCatching {
+        val storageManager = appContext.getSystemService(Context.STORAGE_SERVICE) as StorageManager
+        val uuid = storageManager.getUuidForPath(currentDirectory)
+        storageManager.getAllocatableBytes(uuid)
+    }.getOrNull()
+
+    private fun reserveDiskSpace(bytes: Long) {
+        runCatching {
+            val storageManager = appContext.getSystemService(Context.STORAGE_SERVICE) as StorageManager
+            val uuid = storageManager.getUuidForPath(currentDirectory)
+            storageManager.allocateBytes(uuid, bytes)
+        }
+    }
+
+    private fun hashKey(key: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
             .digest(key.toByteArray(Charsets.UTF_8))
 
@@ -311,17 +321,18 @@ class GeneratedThumbnailCache private constructor(context: Context) {
         private const val JPEG_QUALITY = 88
         private const val MAX_PENDING_DISK_WRITES = 24
         private const val MAINTENANCE_WRITE_INTERVAL = 64
-        private const val MAX_DISK_CACHE_BYTES = 512L * 1024L * 1024L
-        private const val TARGET_DISK_CACHE_BYTES = 448L * 1024L * 1024L
+        private const val MIN_DISK_CACHE_BYTES = 32L * 1024L * 1024L
+        private const val MAX_DISK_CACHE_BYTES = 256L * 1024L * 1024L
+        private const val CACHE_BUDGET_RATIO_OF_FREE_SPACE = 0.02
+        private const val TARGET_CACHE_RATIO = 0.85
+        private const val THUMBNAIL_RESERVE_BYTES_ESTIMATE = 512L * 1024L
 
         @Volatile
         private var instance: GeneratedThumbnailCache? = null
 
-        fun get(context: Context): GeneratedThumbnailCache {
-            return instance ?: synchronized(this) {
-                instance ?: GeneratedThumbnailCache(context).also {
-                    instance = it
-                }
+        fun get(context: Context): GeneratedThumbnailCache = instance ?: synchronized(this) {
+            instance ?: GeneratedThumbnailCache(context).also {
+                instance = it
             }
         }
     }

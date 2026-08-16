@@ -20,10 +20,10 @@ import androidx.tv.material3.SurfaceDefaults
 import com.luckycatpaw.luckyfilestv.R
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import com.luckycatpaw.luckyfilestv.ui.browser.NameInputOverlay
-import com.luckycatpaw.luckyfilestv.ui.theme.LuckyFilesTheme
 import com.luckycatpaw.luckyfilestv.ui.picker.model.DisplayMode
 import com.luckycatpaw.luckyfilestv.ui.picker.model.PickerBrowserItem
 import com.luckycatpaw.luckyfilestv.ui.picker.model.PickerMode
+import com.luckycatpaw.luckyfilestv.ui.theme.LuckyFilesTheme
 import kotlinx.coroutines.launch
 
 @Composable
@@ -89,14 +89,16 @@ internal fun DocumentPickerScreen(viewModel: DocumentPickerViewModel) {
                     viewModel.request.allowMultiple ->
                         context.getString(R.string.select_count, selectedItems.size)
 
-                    (browsing &&
+                    (
+                        browsing &&
                             (viewModel.pickerMode == PickerMode.CREATE_DOCUMENT) &&
-                            uiState.currentLocalDirectoryWritable) ->
+                            uiState.currentLocalDirectoryWritable
+                        ) ->
                         context.getString(R.string.save_here)
 
                     browsing &&
-                            viewModel.pickerMode == PickerMode.OPEN_DOCUMENT_TREE &&
-                            uiState.currentLocalTreeSelectable ->
+                        viewModel.pickerMode == PickerMode.OPEN_DOCUMENT_TREE &&
+                        uiState.currentLocalTreeSelectable ->
                         context.getString(R.string.select_this_folder)
 
                     else -> uiState.primaryActionLabel
@@ -134,7 +136,7 @@ internal fun DocumentPickerScreen(viewModel: DocumentPickerViewModel) {
                     showSearchAction = true,
                     showRecentsAction =
                         viewModel.pickerMode == PickerMode.OPEN_DOCUMENT ||
-                                viewModel.pickerMode == PickerMode.GET_CONTENT,
+                            viewModel.pickerMode == PickerMode.GET_CONTENT,
                     showCancelAction = true,
                     onSearchClick = {
                         showSearchDialog = true
@@ -412,9 +414,9 @@ internal fun DocumentPickerScreen(viewModel: DocumentPickerViewModel) {
                 BackHandler(
                     enabled =
                         !showSearchDialog &&
-                                !showCreateFileDialog &&
-                                !showCreateFolderDialog &&
-                                uiState.providerErrorMessage == null
+                            !showCreateFileDialog &&
+                            !showCreateFolderDialog &&
+                            uiState.providerErrorMessage == null
                 ) {
                     if (uiState.displayMode != DisplayMode.BROWSE) {
                         viewModel.restoreBrowseSnapshot()

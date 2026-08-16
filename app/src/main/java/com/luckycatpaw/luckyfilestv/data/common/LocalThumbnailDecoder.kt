@@ -18,36 +18,49 @@ import android.util.Size
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
 import com.luckycatpaw.luckyfilestv.util.MimeTypes
-import kotlinx.coroutines.asCoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runInterruptible
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.time.Duration.Companion.milliseconds
 import java.io.File
 import java.nio.file.Files
-import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
+import kotlin.time.Duration.Companion.milliseconds
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 internal object LocalThumbnailDecoder {
     private const val TAG = "LocalThumbnailDecoder"
 
     private val videoThumbnailDispatcher by lazy {
         ThreadPoolExecutor(
-            2, 2, 0L, TimeUnit.MILLISECONDS,
-            ArrayBlockingQueue(12),
-            { runnable -> Thread(runnable, "TVFM-VideoThumbnail").apply { isDaemon = true } },
-            ThreadPoolExecutor.AbortPolicy()
-        ).asCoroutineDispatcher()
+            2,
+            2,
+            0L,
+            TimeUnit.MILLISECONDS,
+            LinkedBlockingQueue()
+        ) { runnable -> Thread(runnable, "TVFM-VideoThumbnail").apply { isDaemon = true } }
+            .asCoroutineDispatcher()
+    }
+
+    private val imageDecodeDispatcher by lazy {
+        ThreadPoolExecutor(
+            4,
+            4,
+            0L,
+            TimeUnit.MILLISECONDS,
+            LinkedBlockingQueue()
+        ) { runnable -> Thread(runnable, "TVFM-ThumbnailDecode").apply { isDaemon = true } }
+            .asCoroutineDispatcher()
     }
 
     suspend fun decode(context: Context, type: String, path: String): Bitmap? {
-        return withContext(Dispatchers.IO) {
+        if (type == "video") return decodeVideoThumbnail(path)
+
+        return withContext(imageDecodeDispatcher) {
             when (type) {
                 "folder", "image" -> decodeImageThumbnail(path, 384)
-                "video" -> decodeVideoThumbnail(path)
                 "pdf" -> decodePdfThumbnail(path)
                 "audio" -> decodeAudioArtwork(path)
                 "apk" -> decodeApkIcon(context, path)
@@ -56,15 +69,13 @@ internal object LocalThumbnailDecoder {
         }
     }
 
-    fun previewTypeForExtension(extension: String): String? {
-        return when (extension) {
-            in MimeTypes.IMAGE_EXTENSIONS -> "image"
-            in MimeTypes.VIDEO_EXTENSIONS -> "video"
-            "pdf" -> "pdf"
-            in MimeTypes.AUDIO_EXTENSIONS -> "audio"
-            "apk" -> "apk"
-            else -> null
-        }
+    fun previewTypeForExtension(extension: String): String? = when (extension) {
+        in MimeTypes.IMAGE_EXTENSIONS -> "image"
+        in MimeTypes.VIDEO_EXTENSIONS -> "video"
+        "pdf" -> "pdf"
+        in MimeTypes.AUDIO_EXTENSIONS -> "audio"
+        "apk" -> "apk"
+        else -> null
     }
 
     fun decodeImageThumbnail(path: String, requestedSize: Int): Bitmap? {
@@ -73,7 +84,9 @@ internal object LocalThumbnailDecoder {
         if (options.outWidth <= 0 || options.outHeight <= 0) return null
 
         var sampleSize = 1
-        while (options.outWidth / sampleSize > requestedSize * 2 || options.outHeight / sampleSize > requestedSize * 2) {
+        while (options.outWidth / sampleSize > requestedSize * 2 ||
+            options.outHeight / sampleSize > requestedSize * 2
+        ) {
             sampleSize *= 2
         }
 
@@ -143,11 +156,21 @@ internal object LocalThumbnailDecoder {
         if (options.outWidth <= 0 || options.outHeight <= 0) return null
 
         var sampleSize = 1
-        while (options.outWidth / sampleSize > requestedSize * 2 || options.outHeight / sampleSize > requestedSize * 2) {
+        while (options.outWidth / sampleSize > requestedSize * 2 ||
+            options.outHeight / sampleSize > requestedSize * 2
+        ) {
             sampleSize *= 2
         }
 
-        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sampleSize })?.let {
+        return BitmapFactory.decodeByteArray(
+            bytes,
+            0,
+            bytes.size,
+            BitmapFactory.Options().apply {
+                inSampleSize =
+                    sampleSize
+            }
+        )?.let {
             scaleBitmapToFit(it, requestedSize, requestedSize)
         }
     }
@@ -157,9 +180,10 @@ internal object LocalThumbnailDecoder {
         val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             pm.getPackageArchiveInfo(path, PackageManager.PackageInfoFlags.of(0))
         } else {
-            @Suppress("DEPRECATION") pm.getPackageArchiveInfo(path, 0)
+            @Suppress("DEPRECATION")
+            pm.getPackageArchiveInfo(path, 0)
         } ?: return null
-        
+
         info.applicationInfo?.apply {
             sourceDir = path
             publicSourceDir = path
@@ -171,7 +195,11 @@ internal object LocalThumbnailDecoder {
             drawable.bitmap?.let { source ->
                 if (source.width <= maxSize && source.height <= maxSize) return source
                 val scale = minOf(maxSize.toFloat() / source.width, maxSize.toFloat() / source.height)
-                return source.scale((source.width * scale).roundToInt().coerceAtLeast(1), (source.height * scale).roundToInt().coerceAtLeast(1), true)
+                return source.scale(
+                    (source.width * scale).roundToInt().coerceAtLeast(1),
+                    (source.height * scale).roundToInt().coerceAtLeast(1),
+                    true
+                )
             }
         }
         val intrinsicWidth = drawable.intrinsicWidth.coerceAtLeast(1)
@@ -190,7 +218,11 @@ internal object LocalThumbnailDecoder {
         val scale = minOf(maxWidth.toFloat() / bitmap.width, maxHeight.toFloat() / bitmap.height, 1f)
         if (scale >= 1f) return bitmap
 
-        return bitmap.scale((bitmap.width * scale).roundToInt().coerceAtLeast(1), (bitmap.height * scale).roundToInt().coerceAtLeast(1), true).also {
+        return bitmap.scale(
+            (bitmap.width * scale).roundToInt().coerceAtLeast(1),
+            (bitmap.height * scale).roundToInt().coerceAtLeast(1),
+            true
+        ).also {
             if (it !== bitmap) bitmap.recycle()
         }
     }

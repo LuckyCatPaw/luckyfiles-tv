@@ -9,9 +9,7 @@ import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-class StorageRepository(
-    private val context: Context
-) {
+class StorageRepository(private val context: Context) {
 
     private val storageManager: StorageManager =
         context.getSystemService(StorageManager::class.java)
@@ -26,7 +24,7 @@ class StorageRepository(
         return storageManager.storageVolumes
             .filter { volume ->
                 volume.state == Environment.MEDIA_MOUNTED ||
-                        volume.state == Environment.MEDIA_MOUNTED_READ_ONLY
+                    volume.state == Environment.MEDIA_MOUNTED_READ_ONLY
             }
             .mapNotNull { volume ->
                 val directory = volume.directory
@@ -47,9 +45,7 @@ class StorageRepository(
             }
     }
 
-    fun startWatching(
-        onChanged: () -> Unit
-    ) {
+    fun startWatching(onChanged: () -> Unit) {
         if (storageCallback != null) {
             return
         }
@@ -57,9 +53,7 @@ class StorageRepository(
         val callback =
             object : StorageManager.StorageVolumeCallback() {
 
-                override fun onStateChanged(
-                    volume: StorageVolume
-                ) {
+                override fun onStateChanged(volume: StorageVolume) {
                     onChanged()
                 }
             }
@@ -73,7 +67,6 @@ class StorageRepository(
     }
 
     fun stopWatching() {
-
         val callback = storageCallback
             ?: return
 

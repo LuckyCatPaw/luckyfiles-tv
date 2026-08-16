@@ -9,5 +9,6 @@ data class FileProperties(
     val fileCount: Long,
     val folderCount: Long,
     val extension: String?,
-    val mimeType: String?
+    val mimeType: String?,
+    val unreadableDirectoryCount: Long = 0L
 )

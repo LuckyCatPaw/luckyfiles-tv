@@ -8,11 +8,11 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.focus.FocusRequester
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import androidx.compose.runtime.withFrameNanos
 
 internal enum class BrowserFocusArea {
     GRID,
@@ -65,9 +65,7 @@ internal class BrowserFocusState<K, H> internal constructor(
         headerRequester?.requestFocus()
     }
 
-    fun restoreGridFocus(
-        enabled: Boolean = true
-    ) {
+    fun restoreGridFocus(enabled: Boolean = true) {
         if (!enabled) return
 
         val index = when {
@@ -193,14 +191,12 @@ internal fun <K, H> rememberBrowserFocusState(
     gridState: LazyGridState,
     scope: CoroutineScope,
     initialFocusIndex: Int
-): BrowserFocusState<K, H> {
-    return remember(keys) {
-        BrowserFocusState(
-            keys = keys,
-            gridFocusState = gridFocusState,
-            gridState = gridState,
-            scope = scope,
-            initialFocusIndex = initialFocusIndex
-        )
-    }
+): BrowserFocusState<K, H> = remember(keys) {
+    BrowserFocusState(
+        keys = keys,
+        gridFocusState = gridFocusState,
+        gridState = gridState,
+        scope = scope,
+        initialFocusIndex = initialFocusIndex
+    )
 }

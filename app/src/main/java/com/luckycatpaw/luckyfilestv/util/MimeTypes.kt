@@ -7,9 +7,11 @@ internal object MimeTypes {
     const val ANY = "*/*"
     const val BINARY = "application/octet-stream"
 
-    val VIDEO_EXTENSIONS = setOf("avi", "mkv", "mp4", "m4v", "mov", "webm", "mpeg", "mpg", "ts", "m2ts", "wmv", "flv", "vob")
+    val VIDEO_EXTENSIONS =
+        setOf("avi", "mkv", "mp4", "m4v", "mov", "webm", "mpeg", "mpg", "ts", "m2ts", "wmv", "flv", "vob")
     val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif", "avif")
-    val AUDIO_EXTENSIONS = setOf("mp3", "m4a", "mka", "aac", "flac", "ogg", "oga", "opus", "wav", "wma", "ape", "alac", "ac3", "dts")
+    val AUDIO_EXTENSIONS =
+        setOf("mp3", "m4a", "mka", "aac", "flac", "ogg", "oga", "opus", "wav", "wma", "ape", "alac", "ac3", "dts")
 
     fun normalize(value: String?): String? {
         val mimeType = value
@@ -62,7 +64,7 @@ internal object MimeTypes {
                     request.value.equals(actual, ignoreCase = true)
                 } else {
                     partMatches(requestedParts.first, actualParts.first) &&
-                            partMatches(requestedParts.second, actualParts.second)
+                        partMatches(requestedParts.second, actualParts.second)
                 }
             }
         }
@@ -79,7 +81,7 @@ internal object MimeTypes {
         }
 
         return partsOverlap(firstParts.first, secondParts.first) &&
-                partsOverlap(firstParts.second, secondParts.second)
+            partsOverlap(firstParts.second, secondParts.second)
     }
 
     private fun parse(value: String): Pair<String, String>? {
@@ -96,16 +98,11 @@ internal object MimeTypes {
         return value.substring(0, slashIndex) to value.substring(slashIndex + 1)
     }
 
-    private fun partMatches(requested: String, actual: String): Boolean {
-        return requested == "*" || requested.equals(actual, ignoreCase = true)
-    }
+    private fun partMatches(requested: String, actual: String): Boolean =
+        requested == "*" || requested.equals(actual, ignoreCase = true)
 
-    private fun partsOverlap(first: String, second: String): Boolean {
-        return first == "*" || second == "*" || first.equals(second, ignoreCase = true)
-    }
+    private fun partsOverlap(first: String, second: String): Boolean =
+        first == "*" || second == "*" || first.equals(second, ignoreCase = true)
 
-    private data class ParsedRequest(
-        val value: String,
-        val parts: Pair<String, String>?
-    )
+    private data class ParsedRequest(val value: String, val parts: Pair<String, String>?)
 }

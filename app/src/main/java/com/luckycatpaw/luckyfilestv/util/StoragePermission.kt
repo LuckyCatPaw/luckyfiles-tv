@@ -2,29 +2,36 @@ package com.luckycatpaw.luckyfilestv.util
 
 import android.app.Activity
 import android.content.Intent
-import androidx.core.net.toUri
 import android.os.Environment
 import android.provider.Settings
+import android.widget.Toast
+import androidx.core.net.toUri
+import com.luckycatpaw.luckyfilestv.R
 
-fun hasAllFilesAccess(): Boolean {
-    return Environment.isExternalStorageManager()
-}
+fun hasAllFilesAccess(): Boolean = Environment.isExternalStorageManager()
 
-fun requestAllFilesAccess(activity: Activity) {
+fun requestAllFilesAccess(activity: Activity): Boolean {
+    val packageUri = "package:${activity.packageName}".toUri()
 
-    val appIntent = Intent(
-        Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-        "package:${activity.packageName}".toUri()
+    val candidates = listOf(
+        Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, packageUri),
+        Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION),
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri)
     )
 
-    try {
-        activity.startActivity(appIntent)
-    } catch (_: Exception) {
+    for (intent in candidates) {
+        val started = runCatching {
+            activity.startActivity(intent)
+        }.isSuccess
 
-        val fallbackIntent = Intent(
-            Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION
-        )
-
-        activity.startActivity(fallbackIntent)
+        if (started) return true
     }
+
+    Toast.makeText(
+        activity,
+        R.string.storage_permission_screen_missing,
+        Toast.LENGTH_LONG
+    ).show()
+
+    return false
 }

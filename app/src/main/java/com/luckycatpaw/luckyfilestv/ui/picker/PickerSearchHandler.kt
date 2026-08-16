@@ -41,37 +41,46 @@ internal class PickerSearchHandler(
         searchJob?.cancel()
         onSearchStarted()
 
-        uiState.update { it.copy(
-            displayMode = DisplayMode.SEARCH,
-            currentSearchQuery = query,
-            currentLocalPath = null,
-            currentLocalTitle = null,
-            currentLocalDirectoryWritable = false,
-            currentLocalTreeSelectable = false,
-            providerStack = emptyList(),
-            pickerItems = emptyList(),
-            providerLoading = true,
-            providerInfoMessage = appContext.getString(R.string.search_running),
-            providerErrorMessage = null
-        )}
+        uiState.update {
+            it.copy(
+                displayMode = DisplayMode.SEARCH,
+                currentSearchQuery = query,
+                currentLocalPath = null,
+                currentLocalTitle = null,
+                currentLocalDirectoryWritable = false,
+                currentLocalTreeSelectable = false,
+                providerStack = emptyList(),
+                pickerItems = emptyList(),
+                providerLoading = true,
+                providerInfoMessage = appContext.getString(R.string.search_running),
+                providerErrorMessage = null
+            )
+        }
 
         searchJob = modelScope.launch {
             val request = getRequest()
             val settings = getSettings()
-            val directoriesOnly = request.mode == PickerMode.CREATE_DOCUMENT || request.mode == PickerMode.OPEN_DOCUMENT_TREE
+            val directoriesOnly =
+                request.mode == PickerMode.CREATE_DOCUMENT || request.mode == PickerMode.OPEN_DOCUMENT_TREE
             val hasProviderAccess = documentsRepository.hasSystemDocumentAccess()
-            
+
             val localResultsDeferred = async(Dispatchers.IO) {
-                localSearchRepository.search(query, directoriesOnly, settings, request.acceptedMimeTypes).map { PickerBrowserItem.Local(it) }
+                localSearchRepository.search(query, directoriesOnly, settings, request.acceptedMimeTypes).map {
+                    PickerBrowserItem.Local(it)
+                }
             }
-            val rootsDeferred = if (hasProviderAccess) async {
-                documentsRepository.queryRoots(
-                    request.acceptedMimeTypes,
-                    request.localOnly,
-                    request.mode == PickerMode.CREATE_DOCUMENT,
-                    request.excludeSelf
-                )
-            } else null
+            val rootsDeferred = if (hasProviderAccess) {
+                async {
+                    documentsRepository.queryRoots(
+                        request.acceptedMimeTypes,
+                        request.localOnly,
+                        request.mode == PickerMode.CREATE_DOCUMENT,
+                        request.excludeSelf
+                    )
+                }
+            } else {
+                null
+            }
 
             val localResults = localResultsDeferred.await()
             if (!isCurrentSearch(query)) return@launch
@@ -80,10 +89,19 @@ internal class PickerSearchHandler(
             publishSearchResults(query, localResults, providerResults)
 
             if (!hasProviderAccess || rootsDeferred == null) {
-                uiState.update { it.copy(
-                    providerLoading = false,
-                    providerInfoMessage = if (it.pickerItems.isEmpty()) appContext.getString(R.string.no_search_results, query) else null
-                )}
+                uiState.update {
+                    it.copy(
+                        providerLoading = false,
+                        providerInfoMessage = if (it.pickerItems.isEmpty()) {
+                            appContext.getString(
+                                R.string.no_search_results,
+                                query
+                            )
+                        } else {
+                            null
+                        }
+                    )
+                }
                 return@launch
             }
 
@@ -100,15 +118,39 @@ internal class PickerSearchHandler(
                     launch {
                         semaphore.withPermit {
                             val outcome = providerQueryRunner.queryUntilSettled(
-                                observedUri = DocumentsContract.buildSearchDocumentsUri(root.authority, root.rootId, query),
-                                query = { signal -> documentsRepository.searchDocuments(root, query, request.acceptedMimeTypes, directoriesOnly, request.openableOnly, signal) }
+                                observedUri = DocumentsContract.buildSearchDocumentsUri(
+                                    root.authority,
+                                    root.rootId,
+                                    query
+                                ),
+                                query = { signal ->
+                                    documentsRepository.searchDocuments(
+                                        root,
+                                        query,
+                                        request.acceptedMimeTypes,
+                                        directoriesOnly,
+                                        request.openableOnly,
+                                        signal
+                                    )
+                                }
                             ) { search ->
                                 if (isCurrentSearch(query)) {
-                                    providerResults[providerRootKey(root)] = search.documents.map { PickerBrowserItem.ProviderDocument(it, root) }
+                                    providerResults[providerRootKey(root)] =
+                                        search.documents.map { PickerBrowserItem.ProviderDocument(it, root) }
                                     publishSearchResults(query, localResults, providerResults)
-                                    uiState.update { it.copy(
-                                        providerInfoMessage = search.info ?: if (search.loading) appContext.getString(R.string.providers_still_loading) else appContext.getString(R.string.search_running)
-                                    )}
+                                    uiState.update {
+                                        it.copy(
+                                            providerInfoMessage =
+                                                search.info
+                                                    ?: if (search.loading) {
+                                                        appContext.getString(
+                                                            R.string.providers_still_loading
+                                                        )
+                                                    } else {
+                                                        appContext.getString(R.string.search_running)
+                                                    }
+                                        )
+                                    }
                                 }
                             }
                             if (isCurrentSearch(query)) {
@@ -121,12 +163,24 @@ internal class PickerSearchHandler(
             }
 
             if (!isCurrentSearch(query)) return@launch
-            uiState.update { it.copy(providerLoading = false, providerInfoMessage = when {
-                providerErrors > 0 -> appContext.resources.getQuantityString(R.plurals.provider_search_errors, providerErrors, providerErrors)
-                it.pickerItems.isEmpty() -> appContext.getString(R.string.no_search_results, query)
-                loadingTimeouts > 0 -> appContext.getString(R.string.providers_still_loading)
-                else -> null
-            })}
+            uiState.update {
+                it.copy(
+                    providerLoading = false,
+                    providerInfoMessage = when {
+                        providerErrors > 0 -> appContext.resources.getQuantityString(
+                            R.plurals.provider_search_errors,
+                            providerErrors,
+                            providerErrors
+                        )
+
+                        it.pickerItems.isEmpty() -> appContext.getString(R.string.no_search_results, query)
+
+                        loadingTimeouts > 0 -> appContext.getString(R.string.providers_still_loading)
+
+                        else -> null
+                    }
+                )
+            }
         }
     }
 
@@ -134,16 +188,25 @@ internal class PickerSearchHandler(
         searchJob?.cancel()
     }
 
-    private fun isCurrentSearch(query: String): Boolean = uiState.value.displayMode == DisplayMode.SEARCH && uiState.value.currentSearchQuery == query
+    private fun isCurrentSearch(query: String): Boolean =
+        uiState.value.displayMode == DisplayMode.SEARCH && uiState.value.currentSearchQuery == query
 
-    private fun publishSearchResults(query: String, localResults: List<PickerBrowserItem>, providerResults: Map<String, List<PickerBrowserItem>>) {
+    private fun publishSearchResults(
+        query: String,
+        localResults: List<PickerBrowserItem>,
+        providerResults: Map<String, List<PickerBrowserItem>>
+    ) {
         uiState.update { state ->
             state.copy(
                 pickerItems = (localResults + providerResults.values.flatten())
                     .asSequence()
                     .distinctBy { it.key }
                     .map { RankedSearchItem(it, searchRank(it.name, query)) }
-                    .sortedWith(compareBy<RankedSearchItem> { it.rank }.thenBy { !it.item.isDirectory }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.item.name })
+                    .sortedWith(
+                        compareBy<RankedSearchItem> {
+                            it.rank
+                        }.thenBy { !it.item.isDirectory }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.item.name }
+                    )
                     .take(300)
                     .map { it.item }
                     .toList()

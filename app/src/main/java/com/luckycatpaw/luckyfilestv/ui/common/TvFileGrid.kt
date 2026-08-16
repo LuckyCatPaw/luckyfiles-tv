@@ -40,13 +40,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import kotlin.math.abs
+import kotlin.math.roundToInt
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlin.math.abs
-import kotlin.math.roundToInt
-import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 internal fun <T> TvFileGrid(
@@ -82,9 +82,9 @@ internal fun <T> TvFileGrid(
 
     val rowStepPx = with(density) {
         (
-                TvFileGridDefaults.ItemHeight +
-                        TvFileGridDefaults.VerticalSpacing
-                ).toPx()
+            TvFileGridDefaults.ItemHeight +
+                TvFileGridDefaults.VerticalSpacing
+            ).toPx()
     }
 
     var activationJob by remember {
@@ -138,12 +138,12 @@ internal fun <T> TvFileGrid(
 
                 if (abs(scrollAmount) > 1f) {
                     val rows = (
-                            abs(scrollAmount) / rowStepPx
-                            ).roundToInt().coerceAtLeast(1)
+                        abs(scrollAmount) / rowStepPx
+                        ).roundToInt().coerceAtLeast(1)
 
                     val duration = (
-                            82 + (rows - 1) * 22
-                            ).coerceIn(82, 155)
+                        82 + (rows - 1) * 22
+                        ).coerceIn(82, 155)
 
                     gridState.animateScrollBy(
                         value = scrollAmount,
@@ -234,8 +234,8 @@ internal fun <T> TvFileGrid(
                 }
 
                 val keyCode = event.nativeKeyEvent.keyCode
-                val isDirectionKey = keyCode in directionKeyCodes
-                val isActivationKey = keyCode in activationKeyCodes
+                val isDirectionKey = keyCode in DirectionKeyCodes
+                val isActivationKey = keyCode in ActivationKeyCodes
 
                 if (isActivationKey) {
                     if (event.type == KeyEventType.KeyDown) {
@@ -363,9 +363,7 @@ internal fun <T> TvFileGrid(
 }
 
 @Composable
-private fun SelectionBadge(
-    modifier: Modifier = Modifier
-) {
+private fun SelectionBadge(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .padding(8.dp)
@@ -385,12 +383,7 @@ private fun SelectionBadge(
     }
 }
 
-private fun targetIndex(
-    currentIndex: Int,
-    itemCount: Int,
-    columnCount: Int,
-    keyCode: Int
-): Int? {
+private fun targetIndex(currentIndex: Int, itemCount: Int, columnCount: Int, keyCode: Int): Int? {
     if (currentIndex !in 0 until itemCount) {
         return null
     }
@@ -416,12 +409,7 @@ private fun targetIndex(
     }
 }
 
-private fun requiredScrollForIndex(
-    gridState: LazyGridState,
-    index: Int,
-    columnCount: Int,
-    rowStepPx: Float
-): Float {
+private fun requiredScrollForIndex(gridState: LazyGridState, index: Int, columnCount: Int, rowStepPx: Float): Float {
     val layoutInfo = gridState.layoutInfo
     val visibleItems = layoutInfo.visibleItemsInfo
 
@@ -468,19 +456,5 @@ private fun requiredScrollForIndex(
         (targetRow - lastRow) * rowStepPx
     }
 }
-
-private val directionKeyCodes = setOf(
-    AndroidKeyEvent.KEYCODE_DPAD_LEFT,
-    AndroidKeyEvent.KEYCODE_DPAD_RIGHT,
-    AndroidKeyEvent.KEYCODE_DPAD_UP,
-    AndroidKeyEvent.KEYCODE_DPAD_DOWN
-)
-
-private val activationKeyCodes = setOf(
-    AndroidKeyEvent.KEYCODE_DPAD_CENTER,
-    AndroidKeyEvent.KEYCODE_ENTER,
-    AndroidKeyEvent.KEYCODE_NUMPAD_ENTER,
-    AndroidKeyEvent.KEYCODE_BUTTON_A
-)
 
 private val LONG_PRESS_DELAY = 550.milliseconds

@@ -7,18 +7,18 @@ import android.graphics.Canvas
 import android.graphics.drawable.Drawable
 import android.os.Build
 import android.util.Size
-import androidx.core.graphics.createBitmap
 import androidx.core.content.res.ResourcesCompat
+import androidx.core.graphics.createBitmap
+import com.luckycatpaw.luckyfilestv.data.common.ProviderCallRunner
 import com.luckycatpaw.luckyfilestv.data.provider.model.DocumentRootInfo
 import com.luckycatpaw.luckyfilestv.data.provider.model.ProviderDocumentInfo
-import com.luckycatpaw.luckyfilestv.data.common.ProviderCallRunner
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.time.Duration.Companion.milliseconds
 
 class ProviderVisualRepository private constructor(context: Context) {
 
@@ -26,11 +26,7 @@ class ProviderVisualRepository private constructor(context: Context) {
     private val resolver = appContext.contentResolver
     private val packageManager = appContext.packageManager
 
-    suspend fun loadThumbnail(
-        document: ProviderDocumentInfo,
-        width: Int = 384,
-        height: Int = 240
-    ): Bitmap? {
+    suspend fun loadThumbnail(document: ProviderDocumentInfo, width: Int = 384, height: Int = 240): Bitmap? {
         if (document.isDirectory || !document.supportsThumbnail) {
             return null
         }
@@ -56,10 +52,7 @@ class ProviderVisualRepository private constructor(context: Context) {
         }
     }
 
-    suspend fun loadRootIcon(
-        root: DocumentRootInfo,
-        size: Int = 128
-    ): Bitmap? = withContext(Dispatchers.IO) {
+    suspend fun loadRootIcon(root: DocumentRootInfo, size: Int = 128): Bitmap? = withContext(Dispatchers.IO) {
         currentCoroutineContext().ensureActive()
 
         val drawable = runCatching {
@@ -74,35 +67,29 @@ class ProviderVisualRepository private constructor(context: Context) {
         drawableToBitmap(drawable = drawable, width = size, height = size)
     }
 
-    suspend fun loadDocumentIcon(
-        document: ProviderDocumentInfo,
-        size: Int = 128
-    ): Bitmap? = withContext(Dispatchers.IO) {
-        currentCoroutineContext().ensureActive()
+    suspend fun loadDocumentIcon(document: ProviderDocumentInfo, size: Int = 128): Bitmap? =
+        withContext(Dispatchers.IO) {
+            currentCoroutineContext().ensureActive()
 
-        val providerInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            packageManager.resolveContentProvider(
-                document.authority,
-                PackageManager.ComponentInfoFlags.of(0)
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            packageManager.resolveContentProvider(document.authority, 0)
-        } ?: return@withContext null
+            val providerInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.resolveContentProvider(
+                    document.authority,
+                    PackageManager.ComponentInfoFlags.of(0)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.resolveContentProvider(document.authority, 0)
+            } ?: return@withContext null
 
-        val drawable = runCatching {
-            val resources = packageManager.getResourcesForApplication(providerInfo.applicationInfo)
-            ResourcesCompat.getDrawable(resources, document.iconResId, null)
-        }.getOrNull() ?: return@withContext null
+            val drawable = runCatching {
+                val resources = packageManager.getResourcesForApplication(providerInfo.applicationInfo)
+                ResourcesCompat.getDrawable(resources, document.iconResId, null)
+            }.getOrNull() ?: return@withContext null
 
-        drawableToBitmap(drawable = drawable, width = size, height = size)
-    }
+            drawableToBitmap(drawable = drawable, width = size, height = size)
+        }
 
-    private fun drawableToBitmap(
-        drawable: Drawable,
-        width: Int,
-        height: Int
-    ): Bitmap {
+    private fun drawableToBitmap(drawable: Drawable, width: Int, height: Int): Bitmap {
         if (drawable is android.graphics.drawable.BitmapDrawable && drawable.bitmap != null) {
             val source = drawable.bitmap
             if (source.width == width && source.height == height) {
@@ -127,11 +114,9 @@ class ProviderVisualRepository private constructor(context: Context) {
         @Volatile
         private var instance: ProviderVisualRepository? = null
 
-        fun get(context: Context): ProviderVisualRepository {
-            return instance ?: synchronized(this) {
-                instance ?: ProviderVisualRepository(context.applicationContext).also {
-                    instance = it
-                }
+        fun get(context: Context): ProviderVisualRepository = instance ?: synchronized(this) {
+            instance ?: ProviderVisualRepository(context.applicationContext).also {
+                instance = it
             }
         }
     }

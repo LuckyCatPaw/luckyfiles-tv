@@ -2,10 +2,11 @@ package com.luckycatpaw.luckyfilestv.data.transfer
 
 import android.content.Context
 import com.luckycatpaw.luckyfilestv.R
-import com.luckycatpaw.luckyfilestv.data.transfer.model.FileConflictPolicy
+import com.luckycatpaw.luckyfilestv.data.common.FileTreeWalker
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeCycleException
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeOutsideRootException
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeReadException
+import com.luckycatpaw.luckyfilestv.data.transfer.model.FileConflictPolicy
 import com.luckycatpaw.luckyfilestv.data.transfer.model.TransferCancelledException
 import com.luckycatpaw.luckyfilestv.data.transfer.model.TransferConflict
 import com.luckycatpaw.luckyfilestv.data.transfer.model.TransferConflictDecision
@@ -13,17 +14,17 @@ import com.luckycatpaw.luckyfilestv.data.transfer.model.TransferIssue
 import com.luckycatpaw.luckyfilestv.data.transfer.model.TransferOperation
 import com.luckycatpaw.luckyfilestv.data.transfer.model.TransferProgress
 import com.luckycatpaw.luckyfilestv.data.transfer.model.TransferResult
-import com.luckycatpaw.luckyfilestv.data.common.FileTreeWalker
 import com.luckycatpaw.luckyfilestv.util.FileUtil
+import com.luckycatpaw.luckyfilestv.util.formatBytes
+import java.io.File
+import java.nio.file.Files
+import java.nio.file.LinkOption
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.nio.file.Files
-import java.nio.file.LinkOption
 
 class TransferCoordinator(
     context: Context,
@@ -103,7 +104,7 @@ class TransferCoordinator(
                 if (
                     !sourceIsSymbolicLink &&
                     source.isDirectory &&
-                    isSameOrChild(source, targetDirectory)
+                    FileUtil.isSameOrChild(source, targetDirectory)
                 ) {
                     issues += TransferIssue(
                         sourcePath = source.absolutePath,
@@ -121,10 +122,10 @@ class TransferCoordinator(
                 val directTarget = File(targetDirectory, source.name).absoluteFile
                 val sameTarget = directTarget == source
                 val conflict = (
-                        Files.exists(directTarget.toPath(), LinkOption.NOFOLLOW_LINKS) ||
-                                directTarget.absolutePath in reservedTargets
-                        ) &&
-                        (operation == TransferOperation.COPY || !sameTarget)
+                    Files.exists(directTarget.toPath(), LinkOption.NOFOLLOW_LINKS) ||
+                        directTarget.absolutePath in reservedTargets
+                    ) &&
+                    (operation == TransferOperation.COPY || !sameTarget)
                 var policy = if (conflict) {
                     stickyPolicy ?: FileConflictPolicy.KEEP_BOTH
                 } else {
@@ -168,11 +169,13 @@ class TransferCoordinator(
 
                 val target = when {
                     !conflict -> directTarget
+
                     policy == FileConflictPolicy.REPLACE -> directTarget
-                    else -> uniqueDestination(
+
+                    else -> FileUtil.createUniqueDestination(
                         parent = targetDirectory,
                         requestedName = source.name,
-                        directory = source.isDirectory,
+                        isDirectory = source.isDirectory,
                         reservedTargets = reservedTargets
                     )
                 }
@@ -233,6 +236,24 @@ class TransferCoordinator(
 
                 plannedItems[index] = item.copy(size = statsResult.size)
                 totalBytes = safeAdd(totalBytes, statsResult.size)
+            }
+
+            val spaceIssue = insufficientSpaceIssue(
+                targetDirectory = targetDirectory,
+                requiredBytes = totalBytes
+            )
+
+            if (spaceIssue != null) {
+                issues += spaceIssue
+
+                return@withContext TransferResult(
+                    completedPaths = completedPaths,
+                    skippedCount = skippedCount,
+                    issues = issues,
+                    cleanupWarningCount = cleanupWarningCount,
+                    sourceDeleteWarningCount = sourceDeleteWarningCount,
+                    cancelled = false
+                )
             }
 
             var processedBytes = 0L
@@ -307,6 +328,10 @@ class TransferCoordinator(
                                 itemSize = stats.size
                                 totalBytes = safeAdd(totalBytes, itemSize)
 
+                                insufficientSpaceIssue(targetDirectory, itemSize)?.let {
+                                    error(it.message)
+                                }
+
                                 val copyResult = transferEngine.copy(
                                     source = item.source,
                                     target = item.target,
@@ -347,7 +372,8 @@ class TransferCoordinator(
                                 TransferItemResult(
                                     cleanupWarning = copyResult.cleanupWarning,
                                     bytesTransferred = itemSize,
-                                    sourceDeleteFailure = sourceDeleteFailure
+                                    sourceDeleteFailure = sourceDeleteFailure,
+                                    unreadableDirectories = copyResult.unreadableDirectories
                                 )
                             }
                         }
@@ -356,6 +382,17 @@ class TransferCoordinator(
                     if (!completionRecorded) {
                         completedPaths += item.target.absolutePath
                     }
+
+                    result.unreadableDirectories.forEach { path ->
+                        issues += TransferIssue(
+                            sourcePath = path,
+                            message = appContext.getString(
+                                R.string.unreadable_skipped,
+                                File(path).name
+                            )
+                        )
+                    }
+
                     processedBytes = safeAdd(processedBytes, itemSize)
                     transferredBytes = safeAdd(
                         transferredBytes,
@@ -420,10 +457,10 @@ class TransferCoordinator(
             transferredBytes > 0L
         ) {
             (
-                    transferredBytes.toDouble() *
-                            1_000_000_000.0 /
-                            elapsedNanos.toDouble()
-                    ).toLong()
+                transferredBytes.toDouble() *
+                    1_000_000_000.0 /
+                    elapsedNanos.toDouble()
+                ).toLong()
         } else {
             null
         }
@@ -435,6 +472,25 @@ class TransferCoordinator(
             bytesProcessed = bytesProcessed,
             totalBytes = totalBytes,
             bytesPerSecond = speed
+        )
+    }
+
+    private fun insufficientSpaceIssue(targetDirectory: File, requiredBytes: Long): TransferIssue? {
+        if (requiredBytes <= 0L) return null
+
+        val usableBytes = runCatching { targetDirectory.usableSpace }.getOrDefault(0L)
+        if (usableBytes <= 0L) return null
+
+        val requiredWithMargin = safeAdd(requiredBytes, FREE_SPACE_MARGIN_BYTES)
+        if (usableBytes >= requiredWithMargin) return null
+
+        return TransferIssue(
+            sourcePath = targetDirectory.absolutePath,
+            message = appContext.getString(
+                R.string.not_enough_space,
+                formatBytes(requiredBytes),
+                formatBytes(usableBytes)
+            )
         )
     }
 
@@ -452,76 +508,30 @@ class TransferCoordinator(
         return directory
     }
 
-    private fun uniqueDestination(
-        parent: File,
-        requestedName: String,
-        directory: Boolean,
-        reservedTargets: Set<String>
-    ): File {
-        var candidate = File(parent, requestedName)
+    private fun readableMessage(error: Throwable): String = when (error) {
+        is FileTreeReadException -> appContext.getString(
+            R.string.folder_named_read_failed,
+            error.directory.name
+        )
 
-        if (
-            !Files.exists(candidate.toPath(), LinkOption.NOFOLLOW_LINKS) &&
-            candidate.absolutePath !in reservedTargets
-        ) {
-            return candidate
-        }
+        is FileTreeCycleException,
+        is FileTreeOutsideRootException ->
+            appContext.getString(R.string.unsafe_file_tree)
 
-        val extensionIndex = requestedName.lastIndexOf('.')
-        val hasExtension = !directory &&
-                extensionIndex > 0 &&
-                extensionIndex < requestedName.lastIndex
-
-        val baseName = if (hasExtension) {
-            requestedName.substring(0, extensionIndex)
-        } else {
-            requestedName
-        }
-
-        val extension = if (hasExtension) {
-            requestedName.substring(extensionIndex)
-        } else {
-            ""
-        }
-
-        var number = 1
-
-        while (
-            Files.exists(candidate.toPath(), LinkOption.NOFOLLOW_LINKS) ||
-            candidate.absolutePath in reservedTargets
-        ) {
-            candidate = File(parent, "$baseName ($number)$extension")
-            number++
-        }
-
-        return candidate
-    }
-
-    private fun isSameOrChild(parent: File, child: File): Boolean = FileUtil.isSameOrChild(parent, child)
-
-    private fun readableMessage(error: Throwable): String {
-        return when (error) {
-            is FileTreeReadException -> appContext.getString(
-                R.string.folder_named_read_failed,
-                error.directory.name
-            )
-
-            is FileTreeCycleException,
-            is FileTreeOutsideRootException ->
-                appContext.getString(R.string.unsafe_file_tree)
-
-            else -> error.message
+        else ->
+            error.message
                 ?.takeIf { it.isNotBlank() }
                 ?: appContext.getString(R.string.error_generic)
-        }
     }
 
-    private fun safeAdd(first: Long, second: Long): Long {
-        return if (Long.MAX_VALUE - first < second) {
-            Long.MAX_VALUE
-        } else {
-            first + second
-        }
+    private fun safeAdd(first: Long, second: Long): Long = if (Long.MAX_VALUE - first < second) {
+        Long.MAX_VALUE
+    } else {
+        first + second
+    }
+
+    private companion object {
+        const val FREE_SPACE_MARGIN_BYTES = 8L * 1024L * 1024L
     }
 
     private data class PlannedTransfer(
@@ -531,5 +541,4 @@ class TransferCoordinator(
         val size: Long?,
         val invalid: Boolean = false
     )
-
 }

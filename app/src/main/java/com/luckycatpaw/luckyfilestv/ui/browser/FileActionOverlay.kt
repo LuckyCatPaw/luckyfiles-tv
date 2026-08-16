@@ -1,79 +1,66 @@
 package com.luckycatpaw.luckyfilestv.ui.browser
 
-import android.view.KeyEvent as AndroidKeyEvent
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import com.luckycatpaw.luckyfilestv.data.transfer.model.FileConflictPolicy
 import com.luckycatpaw.luckyfilestv.R
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
+import com.luckycatpaw.luckyfilestv.data.transfer.model.FileConflictPolicy
+import com.luckycatpaw.luckyfilestv.ui.common.DialogCard
+import com.luckycatpaw.luckyfilestv.ui.common.RequestInitialFocus
+import com.luckycatpaw.luckyfilestv.ui.common.TvDialogButton
+import com.luckycatpaw.luckyfilestv.ui.common.TvLoadingSpinner
 import com.luckycatpaw.luckyfilestv.ui.common.TvModalDialog
 import com.luckycatpaw.luckyfilestv.ui.common.TvTextInput
-import java.util.Locale
+import com.luckycatpaw.luckyfilestv.util.formatBytes
 
 @Composable
 fun ItemActionMenuOverlay(
     item: BrowserItem,
-    onSelect: (() -> Unit)? = null,
     onRename: () -> Unit,
     onCopy: () -> Unit,
     onMove: () -> Unit,
     onDelete: () -> Unit,
-    onProperties: (() -> Unit)? = null,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onSelect: (() -> Unit)? = null,
+    onProperties: (() -> Unit)? = null
 ) {
     val firstFocus = remember { FocusRequester() }
 
+    // The first entry present in the menu owns the initial focus.
+    val entries = buildList {
+        onSelect?.let { add(stringResource(R.string.select) to it) }
+        add(stringResource(R.string.rename) to onRename)
+        add(stringResource(R.string.copy) to onCopy)
+        add(stringResource(R.string.move) to onMove)
+        add(stringResource(R.string.delete) to onDelete)
+        onProperties?.let { add(stringResource(R.string.properties) to it) }
+        add(stringResource(R.string.cancel) to onDismiss)
+    }
+
     TvModalDialog(onDismiss = onDismiss) {
-        Column(
-            modifier = Modifier
-                .width(560.dp)
-                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
-                .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
-                .padding(24.dp)
-        ) {
+        DialogCard(width = 560.dp, padding = 24.dp) {
             Text(
                 text = item.name,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -85,38 +72,15 @@ fun ItemActionMenuOverlay(
 
             Spacer(Modifier.height(18.dp))
 
-            if (onSelect != null) {
-                ActionButton(
-                    text = stringResource(R.string.select),
+            entries.forEachIndexed { index, (label, action) ->
+                if (index > 0) Spacer(Modifier.height(8.dp))
+                TvDialogButton(
+                    text = label,
                     modifier = Modifier.fillMaxWidth(),
-                    focusRequester = firstFocus,
-                    onClick = onSelect
-                )
-                Spacer(Modifier.height(8.dp))
-                ActionButton(stringResource(R.string.rename), modifier = Modifier.fillMaxWidth(), onClick = onRename)
-            } else {
-                ActionButton(
-                    text = stringResource(R.string.rename),
-                    modifier = Modifier.fillMaxWidth(),
-                    focusRequester = firstFocus,
-                    onClick = onRename
+                    focusRequester = firstFocus.takeIf { index == 0 },
+                    onClick = action
                 )
             }
-
-            Spacer(Modifier.height(8.dp))
-            ActionButton(stringResource(R.string.copy), modifier = Modifier.fillMaxWidth(), onClick = onCopy)
-            Spacer(Modifier.height(8.dp))
-            ActionButton(stringResource(R.string.move), modifier = Modifier.fillMaxWidth(), onClick = onMove)
-            Spacer(Modifier.height(8.dp))
-            ActionButton(stringResource(R.string.delete), modifier = Modifier.fillMaxWidth(), onClick = onDelete)
-
-            if (onProperties != null) {
-                Spacer(Modifier.height(8.dp))
-                ActionButton(stringResource(R.string.properties), modifier = Modifier.fillMaxWidth(), onClick = onProperties)
-            }
-
-            Spacer(Modifier.height(8.dp))
-            ActionButton(stringResource(R.string.cancel), modifier = Modifier.fillMaxWidth(), onClick = onDismiss)
         }
     }
 
@@ -136,13 +100,7 @@ fun NameInputOverlay(
     val cancelFocusRequester = remember { FocusRequester() }
 
     TvModalDialog(onDismiss = onDismiss) {
-        Column(
-            modifier = Modifier
-                .width(640.dp)
-                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
-                .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
-                .padding(28.dp)
-        ) {
+        DialogCard(width = 640.dp) {
             Text(
                 text = title,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -165,17 +123,17 @@ fun NameInputOverlay(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)
             ) {
-                ActionButton(
+                TvDialogButton(
                     text = stringResource(R.string.cancel),
+                    modifier = Modifier.width(160.dp),
                     focusRequester = cancelFocusRequester,
                     upFocusRequester = fieldFocusRequester,
-                    modifier = Modifier.width(160.dp),
                     onClick = onDismiss
                 )
-                ActionButton(
+                TvDialogButton(
                     text = confirmLabel,
-                    upFocusRequester = fieldFocusRequester,
                     modifier = Modifier.width(180.dp),
+                    upFocusRequester = fieldFocusRequester,
                     onClick = { onConfirm(value) }
                 )
             }
@@ -183,102 +141,6 @@ fun NameInputOverlay(
     }
 
     RequestInitialFocus(fieldFocusRequester, initialValue)
-}
-
-@Composable
-fun DeleteConfirmOverlay(
-    item: BrowserItem,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    val cancelFocus = remember { FocusRequester() }
-
-    TvModalDialog(onDismiss = onDismiss) {
-        Column(
-            modifier = Modifier
-                .width(620.dp)
-                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
-                .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
-                .padding(28.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.confirm_delete),
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 21.sp,
-                fontWeight = FontWeight.Medium
-            )
-            Spacer(Modifier.height(12.dp))
-            Text(
-                text = item.name,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 16.sp,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(Modifier.height(24.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)
-            ) {
-                ActionButton(
-                    text = stringResource(R.string.cancel),
-                    modifier = Modifier.width(170.dp),
-                    focusRequester = cancelFocus,
-                    onClick = onDismiss
-                )
-                ActionButton(stringResource(R.string.delete), modifier = Modifier.width(170.dp), onClick = onConfirm)
-            }
-        }
-    }
-
-    RequestInitialFocus(cancelFocus, item.path)
-}
-
-@Composable
-fun MultiDeleteConfirmOverlay(
-    count: Int,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    val cancelFocus = remember { FocusRequester() }
-
-    TvModalDialog(onDismiss = onDismiss) {
-        Column(
-            modifier = Modifier
-                .width(620.dp)
-                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
-                .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
-                .padding(28.dp)
-        ) {
-            Text(
-                text = pluralStringResource(R.plurals.confirm_delete_count, count, count),
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 21.sp,
-                fontWeight = FontWeight.Medium
-            )
-            Spacer(Modifier.height(12.dp))
-            Text(
-                text = stringResource(R.string.confirm_delete_selected_description),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 16.sp
-            )
-            Spacer(Modifier.height(24.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)
-            ) {
-                ActionButton(
-                    text = stringResource(R.string.cancel),
-                    modifier = Modifier.width(170.dp),
-                    focusRequester = cancelFocus,
-                    onClick = onDismiss
-                )
-                ActionButton(stringResource(R.string.delete), modifier = Modifier.width(170.dp), onClick = onConfirm)
-            }
-        }
-    }
-
-    RequestInitialFocus(cancelFocus, count)
 }
 
 @Composable
@@ -291,15 +153,10 @@ fun TransferConflictOverlay(
 ) {
     var applyToAll by remember(multipleItems) { mutableStateOf(false) }
     val keepBothFocus = remember { FocusRequester() }
+    val applyAllLabel = stringResource(R.string.apply_all_conflicts)
 
     TvModalDialog(onDismiss = onCancel) {
-        Column(
-            modifier = Modifier
-                .width(700.dp)
-                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
-                .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
-                .padding(28.dp)
-        ) {
+        DialogCard(width = 700.dp) {
             Text(
                 text = stringResource(R.string.file_already_exists),
                 color = MaterialTheme.colorScheme.onSurface,
@@ -324,20 +181,20 @@ fun TransferConflictOverlay(
             )
             Spacer(Modifier.height(20.dp))
 
-            ActionButton(
+            TvDialogButton(
                 text = stringResource(R.string.keep_both),
-                focusRequester = keepBothFocus,
                 modifier = Modifier.fillMaxWidth(),
+                focusRequester = keepBothFocus,
                 onClick = { onDecision(FileConflictPolicy.KEEP_BOTH, applyToAll) }
             )
             Spacer(Modifier.height(8.dp))
-            ActionButton(
+            TvDialogButton(
                 text = stringResource(R.string.replace_existing),
                 modifier = Modifier.fillMaxWidth(),
                 onClick = { onDecision(FileConflictPolicy.REPLACE, applyToAll) }
             )
             Spacer(Modifier.height(8.dp))
-            ActionButton(
+            TvDialogButton(
                 text = stringResource(R.string.skip),
                 modifier = Modifier.fillMaxWidth(),
                 onClick = { onDecision(FileConflictPolicy.SKIP, applyToAll) }
@@ -345,19 +202,19 @@ fun TransferConflictOverlay(
 
             if (multipleItems) {
                 Spacer(Modifier.height(14.dp))
-                ActionButton(
-                    text = if (applyToAll) {
-                        "✓ ${stringResource(R.string.apply_all_conflicts)}"
-                    } else {
-                        stringResource(R.string.apply_all_conflicts)
-                    },
+                TvDialogButton(
+                    text = if (applyToAll) "✓ $applyAllLabel" else applyAllLabel,
                     modifier = Modifier.fillMaxWidth(),
                     onClick = { applyToAll = !applyToAll }
                 )
             }
 
             Spacer(Modifier.height(14.dp))
-            ActionButton(stringResource(R.string.cancel), modifier = Modifier.fillMaxWidth(), onClick = onCancel)
+            TvDialogButton(
+                text = stringResource(R.string.cancel),
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onCancel
+            )
         }
     }
 
@@ -383,13 +240,7 @@ fun TransferProgressOverlay(
     }
 
     TvModalDialog(onDismiss = onCancel) {
-        Column(
-            modifier = Modifier
-                .width(700.dp)
-                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
-                .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
-                .padding(28.dp)
-        ) {
+        DialogCard(width = 700.dp) {
             Text(
                 text = title,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -398,7 +249,11 @@ fun TransferProgressOverlay(
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                text = if (totalItems > 1) stringResource(R.string.transfer_item_progress, currentItem, totalItems) else currentName,
+                text = if (totalItems > 1) {
+                    stringResource(R.string.transfer_item_progress, currentItem, totalItems)
+                } else {
+                    currentName
+                },
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 15.sp
             )
@@ -445,10 +300,10 @@ fun TransferProgressOverlay(
             }
 
             Spacer(Modifier.height(22.dp))
-            ActionButton(
+            TvDialogButton(
                 text = stringResource(R.string.cancel),
-                focusRequester = cancelFocus,
                 modifier = Modifier.fillMaxWidth(),
+                focusRequester = cancelFocus,
                 onClick = onCancel
             )
         }
@@ -459,19 +314,12 @@ fun TransferProgressOverlay(
 
 @Composable
 fun OperationProgressOverlay(message: String) {
-    TvModalDialog(
-        onDismiss = {},
-        dismissOnBackPress = false
-    ) {
-        Column(
-            modifier = Modifier
-                .width(620.dp)
-                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
-                .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
-                .padding(28.dp),
+    TvModalDialog(onDismiss = {}, dismissOnBackPress = false) {
+        DialogCard(
+            width = 620.dp,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            LoadingSpinner()
+            TvLoadingSpinner(label = "operation-loading")
             Spacer(Modifier.height(18.dp))
             Text(
                 text = message,
@@ -498,111 +346,5 @@ private fun ProgressBar(progress: Float) {
                 .height(10.dp)
                 .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(5.dp))
         )
-    }
-}
-
-@Composable
-private fun LoadingSpinner() {
-    val transition = rememberInfiniteTransition(label = "operation-loading")
-    val rotation by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(850, easing = LinearEasing)
-        ),
-        label = "operation-spinner"
-    )
-    val color = MaterialTheme.colorScheme.primary
-
-    Canvas(Modifier.size(38.dp)) {
-        drawArc(
-            color = color,
-            startAngle = rotation,
-            sweepAngle = 275f,
-            useCenter = false,
-            style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
-        )
-    }
-}
-
-@Composable
-private fun ActionButton(
-    text: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    focusRequester: FocusRequester? = null,
-    upFocusRequester: FocusRequester? = null
-) {
-    var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(10.dp)
-
-    Row(
-        modifier = modifier
-            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-            .onPreviewKeyEvent { event ->
-                if (
-                    upFocusRequester != null &&
-                    event.nativeKeyEvent.keyCode == AndroidKeyEvent.KEYCODE_DPAD_UP
-                ) {
-                    if (event.type == KeyEventType.KeyDown) {
-                        upFocusRequester.requestFocus()
-                    }
-                    true
-                } else {
-                    false
-                }
-            }
-            .onFocusChanged { focused = it.isFocused }
-            .background(
-                if (focused) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                shape
-            )
-            .then(
-                if (focused) {
-                    Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape)
-                } else {
-                    Modifier
-                }
-            )
-            .clickable { onClick() }
-            .padding(horizontal = 18.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = text,
-            color = if (focused) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-            fontSize = 16.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-@Composable
-private fun RequestInitialFocus(
-    focusRequester: FocusRequester,
-    key: Any?
-) {
-    LaunchedEffect(key) {
-        withFrameNanos { }
-        withFrameNanos { }
-        runCatching { focusRequester.requestFocus() }
-    }
-}
-
-private fun formatBytes(bytes: Long): String {
-    val value = bytes.coerceAtLeast(0L)
-    val kb = 1024.0
-    val mb = kb * 1024.0
-    val gb = mb * 1024.0
-    val tb = gb * 1024.0
-
-    return when {
-        value >= tb -> String.format(Locale.getDefault(), "%.2f TB", value / tb)
-        value >= gb -> String.format(Locale.getDefault(), "%.2f GB", value / gb)
-        value >= mb -> String.format(Locale.getDefault(), "%.1f MB", value / mb)
-        value >= kb -> String.format(Locale.getDefault(), "%.1f KB", value / kb)
-        else -> "$value B"
     }
 }

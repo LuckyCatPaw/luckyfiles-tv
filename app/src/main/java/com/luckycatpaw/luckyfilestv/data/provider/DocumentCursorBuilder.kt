@@ -5,30 +5,57 @@ import android.provider.DocumentsContract
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import com.luckycatpaw.luckyfilestv.util.MimeTypes
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.attribute.BasicFileAttributes
 
 internal class DocumentCursorBuilder(
     private val idResolver: DocumentIdResolver,
     private val securityGuard: DocumentSecurityGuard
 ) {
-    fun addRootRow(
-        cursor: MatrixCursor,
-        storage: BrowserItem.Storage,
-        root: File
-    ) {
+
+    internal data class DocumentEntry(
+        val file: File,
+        val canonicalPath: String,
+        val name: String,
+        val isDirectory: Boolean,
+        val size: Long?,
+        val lastModified: Long
+    )
+
+    fun entryFor(canonicalFile: File): DocumentEntry {
+        val attributes = runCatching {
+            Files.readAttributes(canonicalFile.toPath(), BasicFileAttributes::class.java)
+        }.getOrNull()
+
+        val isDirectory = attributes?.isDirectory ?: canonicalFile.isDirectory
+
+        return DocumentEntry(
+            file = canonicalFile,
+            canonicalPath = canonicalFile.path,
+            name = canonicalFile.name,
+            isDirectory = isDirectory,
+            size = if (isDirectory) null else attributes?.size() ?: canonicalFile.length(),
+            lastModified = attributes?.lastModifiedTime()?.toMillis() ?: canonicalFile.lastModified()
+        )
+    }
+
+    fun addRootRow(cursor: MatrixCursor, storage: BrowserItem.Storage, root: File) {
         var flags = DocumentsContract.Root.FLAG_LOCAL_ONLY or
-                DocumentsContract.Root.FLAG_SUPPORTS_IS_CHILD
+            DocumentsContract.Root.FLAG_SUPPORTS_IS_CHILD
 
         if (root.canWrite()) {
             flags = flags or DocumentsContract.Root.FLAG_SUPPORTS_CREATE
         }
 
+        val documentId = idResolver.toDocumentIdFromCanonicalPath(root.path)
+
         addRow(
             cursor,
             mapOf(
-                DocumentsContract.Root.COLUMN_ROOT_ID to idResolver.toDocumentId(root),
+                DocumentsContract.Root.COLUMN_ROOT_ID to documentId,
                 DocumentsContract.Root.COLUMN_FLAGS to flags,
                 DocumentsContract.Root.COLUMN_TITLE to storage.name,
-                DocumentsContract.Root.COLUMN_DOCUMENT_ID to idResolver.toDocumentId(root),
+                DocumentsContract.Root.COLUMN_DOCUMENT_ID to documentId,
                 DocumentsContract.Root.COLUMN_AVAILABLE_BYTES to root.freeSpace,
                 DocumentsContract.Root.COLUMN_CAPACITY_BYTES to root.totalSpace
             )
@@ -37,26 +64,30 @@ internal class DocumentCursorBuilder(
 
     fun addDocumentRow(
         cursor: MatrixCursor,
-        canonicalFile: File,
-        storageSnapshot: DocumentIdResolver.ManagedStorageSnapshot
+        entry: DocumentEntry,
+        storageSnapshot: DocumentIdResolver.ManagedStorageSnapshot,
+        parentWritable: Boolean
     ) {
-        val documentId = idResolver.toDocumentId(canonicalFile)
-        val isDirectory = canonicalFile.isDirectory
-        val isRoot = securityGuard.isRootFile(canonicalFile, storageSnapshot)
+        val documentId = idResolver.toDocumentIdFromCanonicalPath(entry.canonicalPath)
+        val isRoot = securityGuard.isRootPath(entry.canonicalPath, storageSnapshot)
+        val writable = entry.file.canWrite()
+
         var flags = when {
-            isDirectory && canonicalFile.canWrite() -> DocumentsContract.Document.FLAG_DIR_SUPPORTS_CREATE
-            !isDirectory && canonicalFile.canWrite() -> DocumentsContract.Document.FLAG_SUPPORTS_WRITE
+            entry.isDirectory && writable -> DocumentsContract.Document.FLAG_DIR_SUPPORTS_CREATE
+            !entry.isDirectory && writable -> DocumentsContract.Document.FLAG_SUPPORTS_WRITE
             else -> 0
         }
 
-        if (isDirectory && securityGuard.blocksOpenDocumentTree(documentId, storageSnapshot)) {
+        if (
+            entry.isDirectory &&
+            securityGuard.blocksOpenDocumentTree(entry.canonicalPath, storageSnapshot)
+        ) {
             flags = flags or DocumentsContract.Document.FLAG_DIR_BLOCKS_OPEN_DOCUMENT_TREE
         }
 
         if (!isRoot) {
             flags = flags or DocumentsContract.Document.FLAG_SUPPORTS_COPY
 
-            val parentWritable = canonicalFile.parentFile?.canWrite() ?: false
             if (parentWritable) {
                 flags = flags or DocumentsContract.Document.FLAG_SUPPORTS_DELETE
                 flags = flags or DocumentsContract.Document.FLAG_SUPPORTS_RENAME
@@ -64,35 +95,35 @@ internal class DocumentCursorBuilder(
             }
         }
 
-        val mimeType = if (isDirectory) {
+        val mimeType = if (entry.isDirectory) {
             DocumentsContract.Document.MIME_TYPE_DIR
         } else {
-            MimeTypes.forFileName(canonicalFile.name)
+            MimeTypes.forFileName(entry.name)
         }
 
-        val values = mutableMapOf(
-            DocumentsContract.Document.COLUMN_DOCUMENT_ID to documentId,
-            DocumentsContract.Document.COLUMN_DISPLAY_NAME to displayName(canonicalFile, storageSnapshot),
-            DocumentsContract.Document.COLUMN_SIZE to canonicalFile.length(),
-            DocumentsContract.Document.COLUMN_MIME_TYPE to mimeType,
-            DocumentsContract.Document.COLUMN_LAST_MODIFIED to canonicalFile.lastModified(),
-            DocumentsContract.Document.COLUMN_FLAGS to flags
+        addRow(
+            cursor,
+            mapOf(
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID to documentId,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME to displayName(entry, storageSnapshot),
+                DocumentsContract.Document.COLUMN_SIZE to entry.size,
+                DocumentsContract.Document.COLUMN_MIME_TYPE to mimeType,
+                DocumentsContract.Document.COLUMN_LAST_MODIFIED to entry.lastModified,
+                DocumentsContract.Document.COLUMN_FLAGS to flags
+            )
         )
-
-        addRow(cursor, values)
     }
 
     private fun addRow(cursor: MatrixCursor, values: Map<String, Any?>) {
+        val available = cursor.columnNames.toHashSet()
         val row = cursor.newRow()
         for ((column, value) in values) {
-            row.add(column, value)
+            if (column in available) {
+                row.add(column, value)
+            }
         }
     }
 
-    private fun displayName(
-        file: File,
-        storageSnapshot: DocumentIdResolver.ManagedStorageSnapshot
-    ): String {
-        return storageSnapshot.namesByRootPath[file.path] ?: file.name
-    }
+    private fun displayName(entry: DocumentEntry, storageSnapshot: DocumentIdResolver.ManagedStorageSnapshot): String =
+        storageSnapshot.namesByRootPath[entry.canonicalPath] ?: entry.name
 }

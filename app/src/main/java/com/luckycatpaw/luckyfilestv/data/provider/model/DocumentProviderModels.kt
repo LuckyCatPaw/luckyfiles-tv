@@ -3,11 +3,7 @@ package com.luckycatpaw.luckyfilestv.data.provider.model
 import android.net.Uri
 import android.provider.DocumentsContract
 
-data class DocumentProviderInfo(
-    val packageName: String,
-    val authority: String,
-    val label: String
-)
+data class DocumentProviderInfo(val packageName: String, val authority: String, val label: String)
 
 data class DocumentRootInfo(
     val packageName: String,
@@ -65,18 +61,11 @@ data class ProviderDocumentInfo(
     val supportsThumbnail: Boolean
         get() = flags and DocumentsContract.Document.FLAG_SUPPORTS_THUMBNAIL != 0
 
-    @Suppress("unused") // Part of SAF capability flags mapping
-    val supportsCreate: Boolean
-        get() = flags and DocumentsContract.Document.FLAG_DIR_SUPPORTS_CREATE != 0
-
     val blocksOpenDocumentTree: Boolean
         get() = flags and DocumentsContract.Document.FLAG_DIR_BLOCKS_OPEN_DOCUMENT_TREE != 0
 }
 
-data class DocumentRootsResult(
-    val roots: List<DocumentRootInfo>,
-    val errors: List<DocumentProviderError>
-)
+data class DocumentRootsResult(val roots: List<DocumentRootInfo>, val errors: List<DocumentProviderError>)
 
 data class ProviderChildrenResult(
     val documents: List<ProviderDocumentInfo>,
@@ -85,13 +74,6 @@ data class ProviderChildrenResult(
     val error: String?
 )
 
-data class ProviderDocumentPath(
-    val authority: String,
-    val rootId: String?,
-    val documentIds: List<String>
-)
+data class ProviderDocumentPath(val authority: String, val rootId: String?, val documentIds: List<String>)
 
-data class DocumentProviderError(
-    val authority: String,
-    val message: String
-)
+data class DocumentProviderError(val authority: String, val message: String)

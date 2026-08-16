@@ -1,11 +1,9 @@
 package com.luckycatpaw.luckyfilestv.util
 
+import java.util.Locale
+
 object FileNameOptimizer {
-    private data class EpisodeMatch(
-        val startIndex: Int,
-        val endIndex: Int,
-        val episodeCode: String
-    )
+    private data class EpisodeMatch(val startIndex: Int, val endIndex: Int, val episodeCode: String)
 
     // Supports S01E02, S01E01-E02, S01E01-S02E01, 1x02, and 1x02-03.
     private val seasonEpisodeRegex = Regex(
@@ -104,10 +102,8 @@ object FileNameOptimizer {
         return if (episodeTitle.isBlank()) heading else "$heading\n$episodeTitle"
     }
 
-    private fun findEpisodeMatch(text: String): EpisodeMatch? {
-        return seasonEpisodeRegex.toEpisodeMatch(text)
-            ?: xEpisodeRegex.toEpisodeMatch(text)
-    }
+    private fun findEpisodeMatch(text: String): EpisodeMatch? = seasonEpisodeRegex.toEpisodeMatch(text)
+        ?: xEpisodeRegex.toEpisodeMatch(text)
 
     private fun Regex.toEpisodeMatch(text: String): EpisodeMatch? {
         val match = find(text) ?: return null
@@ -162,19 +158,15 @@ object FileNameOptimizer {
             .joinToString(separator = " / ")
     }
 
-    private fun String.normalizeSeparators(): String {
-        return replace(nameSeparatorsRegex, " ")
-            .replace(whitespaceRegex, " ")
-            .trim()
-    }
+    private fun String.normalizeSeparators(): String = replace(nameSeparatorsRegex, " ")
+        .replace(whitespaceRegex, " ")
+        .trim()
 
-    private fun formatSingleEpisode(season: Int, episode: Int): String {
-        return buildString {
-            append('S')
-            append(season.toEpisodeNumber())
-            append('E')
-            append(episode.toEpisodeNumber())
-        }
+    private fun formatSingleEpisode(season: Int, episode: Int): String = buildString {
+        append('S')
+        append(season.toEpisodeNumber())
+        append('E')
+        append(episode.toEpisodeNumber())
     }
 
     private fun formatDoubleEpisode(
@@ -192,15 +184,13 @@ object FileNameOptimizer {
         }
     }
 
-    private fun Int.toEpisodeNumber(): String {
-        return coerceAtLeast(0).toString().padStart(length = 2, padChar = '0')
-    }
+    private fun Int.toEpisodeNumber(): String = coerceAtLeast(0).toString().padStart(length = 2, padChar = '0')
 
     private fun removeKnownVideoExtension(fileName: String): String {
         val lastDot = fileName.lastIndexOf('.')
         if (lastDot <= 0 || lastDot >= fileName.lastIndex) return fileName
 
-        val extension = fileName.substring(lastDot + 1).lowercase()
+        val extension = fileName.substring(lastDot + 1).lowercase(Locale.ROOT)
         return if (extension in knownVideoExtensions) {
             fileName.substring(0, lastDot)
         } else {
@@ -210,9 +200,7 @@ object FileNameOptimizer {
 
     private fun String.trimNameSeparators(): String = trim(' ', '.', '_', '-')
 
-    private fun String.capitalizeFirstCharacter(): String {
-        return replaceFirstChar { character ->
-            if (character.isLowerCase()) character.titlecase() else character.toString()
-        }
+    private fun String.capitalizeFirstCharacter(): String = replaceFirstChar { character ->
+        if (character.isLowerCase()) character.titlecase() else character.toString()
     }
 }

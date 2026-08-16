@@ -6,14 +6,14 @@ import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeEntryType
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeOutsideRootException
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeReadException
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeStats
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.util.ArrayDeque
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 class FileTreeWalker {
 
@@ -22,6 +22,7 @@ class FileTreeWalker {
         var fileCount = 0L
         var directoryCount = 0L
         var symbolicLinkCount = 0L
+        var unreadableDirectoryCount = 0L
 
         walk(
             root = root,
@@ -43,6 +44,9 @@ class FileTreeWalker {
                         symbolicLinkCount = safeAdd(symbolicLinkCount, 1L)
                     }
                 }
+            },
+            onUnreadableDirectory = {
+                unreadableDirectoryCount = safeAdd(unreadableDirectoryCount, 1L)
             }
         )
 
@@ -50,14 +54,16 @@ class FileTreeWalker {
             size = size,
             fileCount = fileCount,
             directoryCount = directoryCount,
-            symbolicLinkCount = symbolicLinkCount
+            symbolicLinkCount = symbolicLinkCount,
+            unreadableDirectoryCount = unreadableDirectoryCount
         )
     }
 
     suspend fun walk(
         root: File,
         onEntry: suspend (FileTreeEntry) -> Unit,
-        onDirectoryComplete: suspend (FileTreeEntry) -> Unit = {}
+        onDirectoryComplete: suspend (FileTreeEntry) -> Unit = {},
+        onUnreadableDirectory: suspend (File) -> Unit = { throw FileTreeReadException(it) }
     ) {
         val source = root.toPath()
             .toAbsolutePath()
@@ -133,19 +139,25 @@ class FileTreeWalker {
 
             onEntry(directoryEntry)
 
+            val completionFrame = WalkFrame(
+                file = canonical,
+                relativePath = frame.relativePath,
+                directoryComplete = true
+            )
+
             val children = try {
                 canonical.listFiles()
             } catch (_: SecurityException) {
                 null
-            } ?: throw FileTreeReadException(canonical)
+            }
 
-            stack.addLast(
-                WalkFrame(
-                    file = canonical,
-                    relativePath = frame.relativePath,
-                    directoryComplete = true
-                )
-            )
+            if (children == null) {
+                onUnreadableDirectory(canonical)
+                stack.addLast(completionFrame)
+                continue
+            }
+
+            stack.addLast(completionFrame)
 
             for (index in children.indices.reversed()) {
                 val child = children[index]
@@ -189,14 +201,10 @@ class FileTreeWalker {
         )
     }
 
-    private fun File.toEntry(
-        relativePath: String,
-        type: FileTreeEntryType
-    ): FileTreeEntry {
+    private fun File.toEntry(relativePath: String, type: FileTreeEntryType): FileTreeEntry {
         val size = when (type) {
             FileTreeEntryType.FILE -> length().coerceAtLeast(0L)
             FileTreeEntryType.SYMBOLIC_LINK -> 0L
-
             FileTreeEntryType.DIRECTORY -> 0L
         }
 
@@ -213,20 +221,14 @@ class FileTreeWalker {
         val childPath = child.path
 
         return childPath == parentPath ||
-                childPath.startsWith(parentPath + File.separator)
+            childPath.startsWith(parentPath + File.separator)
     }
 
-    private fun safeAdd(first: Long, second: Long): Long {
-        return if (Long.MAX_VALUE - first < second) {
-            Long.MAX_VALUE
-        } else {
-            first + second
-        }
+    private fun safeAdd(first: Long, second: Long): Long = if (Long.MAX_VALUE - first < second) {
+        Long.MAX_VALUE
+    } else {
+        first + second
     }
 
-    private data class WalkFrame(
-        val file: File,
-        val relativePath: String,
-        val directoryComplete: Boolean
-    )
+    private data class WalkFrame(val file: File, val relativePath: String, val directoryComplete: Boolean)
 }

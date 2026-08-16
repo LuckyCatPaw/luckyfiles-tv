@@ -6,13 +6,16 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.luckycatpaw.luckyfilestv.ui.picker.DocumentPickerScreen
 import com.luckycatpaw.luckyfilestv.ui.picker.DocumentPickerViewModel
 import com.luckycatpaw.luckyfilestv.ui.picker.model.PickerRequest
 import com.luckycatpaw.luckyfilestv.ui.picker.model.PickerUiEvent
 import com.luckycatpaw.luckyfilestv.util.requestAllFilesAccess
+import kotlinx.coroutines.launch
 
 class DocumentPickerActivity : ComponentActivity() {
 
@@ -32,11 +35,13 @@ class DocumentPickerActivity : ComponentActivity() {
         viewModel = ViewModelProvider(this)[DocumentPickerViewModel::class.java]
         viewModel.initialize(request)
 
-        setContent {
-            LaunchedEffect(viewModel) {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.events.collect(::handleEvent)
             }
+        }
 
+        setContent {
             DocumentPickerScreen(viewModel)
         }
     }

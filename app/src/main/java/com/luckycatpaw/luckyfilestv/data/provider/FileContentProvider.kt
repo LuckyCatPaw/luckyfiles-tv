@@ -19,11 +19,7 @@ class FileContentProvider : ContentProvider() {
 
     override fun onCreate(): Boolean = true
 
-    override fun openFile(
-        uri: Uri,
-        mode: String
-    ): ParcelFileDescriptor {
-
+    override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
         if (mode != "r") {
             throw FileNotFoundException(requireNotNull(context).getString(R.string.read_only_access))
         }
@@ -53,7 +49,6 @@ class FileContentProvider : ContentProvider() {
         selectionArgs: Array<out String>?,
         sortOrder: String?
     ): Cursor {
-
         val file = resolveFile(uri)
 
         val requestedColumns = projection ?: arrayOf(
@@ -66,7 +61,6 @@ class FileContentProvider : ContentProvider() {
         val values = requestedColumns.map { column ->
 
             when (column) {
-
                 OpenableColumns.DISPLAY_NAME ->
                     file.name
 
@@ -83,32 +77,15 @@ class FileContentProvider : ContentProvider() {
         return cursor
     }
 
-    override fun insert(
-        uri: Uri,
-        values: ContentValues?
-    ): Uri? {
-        throw UnsupportedOperationException()
-    }
+    override fun insert(uri: Uri, values: ContentValues?): Uri? = throw UnsupportedOperationException()
 
-    override fun delete(
-        uri: Uri,
-        selection: String?,
-        selectionArgs: Array<out String>?
-    ): Int {
+    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int =
         throw UnsupportedOperationException()
-    }
 
-    override fun update(
-        uri: Uri,
-        values: ContentValues?,
-        selection: String?,
-        selectionArgs: Array<out String>?
-    ): Int {
+    override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int =
         throw UnsupportedOperationException()
-    }
 
     private fun resolveFile(uri: Uri): File {
-
         val encoded = uri.lastPathSegment
             ?: throw FileNotFoundException()
 
@@ -136,7 +113,6 @@ class FileContentProvider : ContentProvider() {
     }
 
     private fun isAllowedFile(file: File): Boolean {
-
         val context = context ?: return false
 
         val storageManager =
@@ -153,24 +129,20 @@ class FileContentProvider : ContentProvider() {
             val rootPath = root.canonicalPath
 
             filePath == rootPath ||
-                    filePath.startsWith(
-                        rootPath + File.separator
-                    )
+                filePath.startsWith(
+                    rootPath + File.separator
+                )
         }
     }
 
     companion object {
 
-        fun createUri(
-            context: android.content.Context,
-            file: File
-        ): Uri {
-
+        fun createUri(context: android.content.Context, file: File): Uri {
             val encoded = Base64.encodeToString(
                 file.canonicalPath.toByteArray(StandardCharsets.UTF_8),
                 Base64.URL_SAFE or
-                        Base64.NO_WRAP or
-                        Base64.NO_PADDING
+                    Base64.NO_WRAP or
+                    Base64.NO_PADDING
             )
 
             return Uri.Builder()

@@ -39,9 +39,7 @@ private val FileManagerColorScheme = darkColorScheme(
 )
 
 @Composable
-fun LuckyFilesTheme(
-    content: @Composable () -> Unit
-) {
+fun LuckyFilesTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = FileManagerColorScheme,
         content = content

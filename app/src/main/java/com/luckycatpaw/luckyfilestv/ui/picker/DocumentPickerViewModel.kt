@@ -8,9 +8,9 @@ import androidx.lifecycle.AndroidViewModel
 import com.luckycatpaw.luckyfilestv.R
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import com.luckycatpaw.luckyfilestv.data.common.model.FileManagerSettings
+import com.luckycatpaw.luckyfilestv.data.provider.DocumentUriMapper
 import com.luckycatpaw.luckyfilestv.data.provider.model.DocumentRootInfo
 import com.luckycatpaw.luckyfilestv.data.provider.model.ProviderDocumentInfo
-import com.luckycatpaw.luckyfilestv.data.provider.DocumentUriMapper
 import com.luckycatpaw.luckyfilestv.data.repository.DocumentsProviderRepository
 import com.luckycatpaw.luckyfilestv.data.repository.FileRepository
 import com.luckycatpaw.luckyfilestv.data.repository.LocalFileSearchRepository
@@ -29,6 +29,9 @@ import com.luckycatpaw.luckyfilestv.ui.picker.model.ProviderLocation
 import com.luckycatpaw.luckyfilestv.util.FileUtil
 import com.luckycatpaw.luckyfilestv.util.MimeTypes
 import com.luckycatpaw.luckyfilestv.util.hasAllFilesAccess
+import java.io.File
+import java.nio.file.Files
+import java.nio.file.LinkOption
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -45,13 +48,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.nio.file.Files
-import java.nio.file.LinkOption
 
-internal class DocumentPickerViewModel(
-    application: Application
-) : AndroidViewModel(application) {
+internal class DocumentPickerViewModel(application: Application) : AndroidViewModel(application) {
 
     private val appContext = application.applicationContext
     private val modelScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -87,7 +85,8 @@ internal class DocumentPickerViewModel(
         localOnly = false,
         openableOnly = false,
         excludeSelf = false,
-        prompt = null
+        prompt = null,
+        callerGrantFlags = 0
     )
     private var requestedMimeMatcher: (String) -> Boolean = { true }
     private var initialized = false
@@ -161,18 +160,24 @@ internal class DocumentPickerViewModel(
         openInitialLocation()
     }
 
-    internal suspend fun createLocalFolder(parentPath: String, name: String): Result<String> = fileRepository.createFolder(parentPath, name)
+    internal suspend fun createLocalFolder(parentPath: String, name: String): Result<String> =
+        fileRepository.createFolder(parentPath, name)
 
-    internal suspend fun createProviderDirectory(location: ProviderLocation, name: String): Result<ProviderDocumentInfo> =
+    internal suspend fun createProviderDirectory(
+        location: ProviderLocation,
+        name: String
+    ): Result<ProviderDocumentInfo> =
         documentsRepository.createDirectory(location.root.authority, location.document.documentId, name)
 
-    internal suspend fun createProviderDocument(location: ProviderLocation, name: String): Result<ProviderDocumentInfo> =
-        documentsRepository.createDocument(
-            location.root.authority,
-            location.document.documentId,
-            request.createMimeType,
-            name
-        )
+    internal suspend fun createProviderDocument(
+        location: ProviderLocation,
+        name: String
+    ): Result<ProviderDocumentInfo> = documentsRepository.createDocument(
+        location.root.authority,
+        location.document.documentId,
+        request.createMimeType,
+        name
+    )
 
     internal fun runGlobalSearch(query: String) {
         providerHandler.incrementNavigation()
@@ -212,16 +217,18 @@ internal class DocumentPickerViewModel(
         initialLocationJob?.cancel()
         searchHandler.cancelSearch()
         recentsHandler.cancelRecents()
-        
+
         if (snapshot.localPath != null) {
             openLocalDirectory(snapshot.localPath, snapshot.focusKey, true)
         } else if (snapshot.providerStack.isNotEmpty()) {
             val last = snapshot.providerStack.last()
-            _uiState.update { it.copy(
-                displayMode = DisplayMode.BROWSE, 
-                currentLocalPath = null, 
-                providerStack = snapshot.providerStack
-            )}
+            _uiState.update {
+                it.copy(
+                    displayMode = DisplayMode.BROWSE,
+                    currentLocalPath = null,
+                    providerStack = snapshot.providerStack
+                )
+            }
             providerHandler.refreshProviderDirectory(last, snapshot.focusKey)
         } else {
             showSourceOverview(snapshot.focusKey)
@@ -234,11 +241,13 @@ internal class DocumentPickerViewModel(
         searchHandler.cancelSearch()
         recentsHandler.cancelRecents()
         val loc = ProviderLocation(item.root, item.document, item.document.displayName)
-        _uiState.update { it.copy(
-            displayMode = DisplayMode.BROWSE, 
-            currentLocalPath = null, 
-            providerStack = listOf(loc)
-        )}
+        _uiState.update {
+            it.copy(
+                displayMode = DisplayMode.BROWSE,
+                currentLocalPath = null,
+                providerStack = listOf(loc)
+            )
+        }
         providerHandler.refreshProviderDirectory(loc)
     }
 
@@ -251,8 +260,8 @@ internal class DocumentPickerViewModel(
         _uiState.update { it.copy(providerLoading = true) }
 
         initialLocationJob = modelScope.launch {
-            val localDir = withContext(Dispatchers.IO) { 
-                FileUtil.runCancellable { resolveLocalInitialDirectory(initialUri) }.getOrNull() 
+            val localDir = withContext(Dispatchers.IO) {
+                FileUtil.runCancellable { resolveLocalInitialDirectory(initialUri) }.getOrNull()
             }
             if (localDir != null) {
                 _uiState.update { it.copy(providerLoading = false) }
@@ -264,20 +273,22 @@ internal class DocumentPickerViewModel(
                 showSourceOverview()
                 return@launch
             }
-            val providerLocs = withContext(Dispatchers.IO) { 
-                FileUtil.runCancellable { resolveProviderInitialLocation(initialUri) }.getOrNull() 
+            val providerLocs = withContext(Dispatchers.IO) {
+                FileUtil.runCancellable { resolveProviderInitialLocation(initialUri) }.getOrNull()
             }
             if (providerLocs.isNullOrEmpty()) {
                 _uiState.update { it.copy(providerLoading = false) }
                 showSourceOverview()
                 return@launch
             }
-            _uiState.update { it.copy(
-                providerLoading = false, 
-                displayMode = DisplayMode.BROWSE, 
-                currentLocalPath = null, 
-                providerStack = providerLocs
-            )}
+            _uiState.update {
+                it.copy(
+                    providerLoading = false,
+                    displayMode = DisplayMode.BROWSE,
+                    currentLocalPath = null,
+                    providerStack = providerLocs
+                )
+            }
             providerHandler.refreshProviderDirectory(providerLocs.last(), initialDocumentId(initialUri))
         }
     }
@@ -298,8 +309,10 @@ internal class DocumentPickerViewModel(
             requireCreate = false,
             excludeSelf = request.excludeSelf
         )
-        val root = rootResult.roots.firstOrNull { it.authority == pathInfo.authority && it.rootId == pathInfo.rootId } ?: return null
-        
+        val root =
+            rootResult.roots.firstOrNull { it.authority == pathInfo.authority && it.rootId == pathInfo.rootId }
+                ?: return null
+
         val stack = mutableListOf<ProviderLocation>()
         for (id in pathInfo.documentIds) {
             val doc = documentsRepository.queryDocument(root.authority, id, root.rootId).getOrNull() ?: break
@@ -309,10 +322,13 @@ internal class DocumentPickerViewModel(
         return stack.takeIf { it.isNotEmpty() }
     }
 
-    private fun initialDocumentId(uri: Uri): String? = 
-        if (DocumentsContract.isDocumentUri(appContext, uri)) DocumentsContract.getDocumentId(uri) 
-        else if (DocumentsContract.isTreeUri(uri)) DocumentsContract.getTreeDocumentId(uri) 
-        else null
+    private fun initialDocumentId(uri: Uri): String? = if (DocumentsContract.isDocumentUri(appContext, uri)) {
+        DocumentsContract.getDocumentId(uri)
+    } else if (DocumentsContract.isTreeUri(uri)) {
+        DocumentsContract.getTreeDocumentId(uri)
+    } else {
+        null
+    }
 
     internal fun showSourceOverview(focusKey: String? = null) {
         providerHandler.incrementNavigation()
@@ -322,31 +338,38 @@ internal class DocumentPickerViewModel(
         providerHandler.stopObservingProviderDirectory()
         currentStorageRoot = null
 
-        _uiState.update { it.copy(
-            displayMode = DisplayMode.BROWSE,
-            currentLocalPath = null,
-            currentLocalTitle = appContext.getString(R.string.storage),
-            currentLocalDirectoryWritable = false,
-            currentLocalTreeSelectable = false,
-            providerStack = emptyList(),
-            pickerItems = emptyList(),
-            providerLoading = true,
-            providerInfoMessage = null,
-            providerErrorMessage = null
-        )}
+        _uiState.update {
+            it.copy(
+                displayMode = DisplayMode.BROWSE,
+                currentLocalPath = null,
+                currentLocalTitle = appContext.getString(R.string.storage),
+                currentLocalDirectoryWritable = false,
+                currentLocalTreeSelectable = false,
+                providerStack = emptyList(),
+                pickerItems = emptyList(),
+                providerLoading = true,
+                providerInfoMessage = null,
+                providerErrorMessage = null
+            )
+        }
 
         modelScope.launch {
             updateUiMetadata()
-            val localResult = withContext(Dispatchers.IO) { 
-                FileUtil.runCancellable { storageRepository.getStorages().map { PickerBrowserItem.Local(it) } } 
+            val localResult = withContext(Dispatchers.IO) {
+                FileUtil.runCancellable {
+                    storageRepository.getStorages().map { PickerBrowserItem.Local(it) }
+                }
             }
             if (!isSourceOverview()) return@launch
 
             val local = localResult.getOrElse { error ->
-                _uiState.update { it.copy(
-                    providerLoading = false, 
-                    providerErrorMessage = error.message ?: appContext.getString(R.string.storage_source_open_failed)
-                )}
+                _uiState.update {
+                    it.copy(
+                        providerLoading = false,
+                        providerErrorMessage =
+                            error.message ?: appContext.getString(R.string.storage_source_open_failed)
+                    )
+                }
                 return@launch
             }
 
@@ -355,11 +378,13 @@ internal class DocumentPickerViewModel(
             }
 
             if (!documentsRepository.hasSystemDocumentAccess()) {
-                _uiState.update { state -> state.copy(
-                    focusTargetKey = focusKey?.takeIf { target -> local.any { item -> item.key == target } },
-                    pickerItems = local,
-                    providerLoading = false
-                )}
+                _uiState.update { state ->
+                    state.copy(
+                        focusTargetKey = focusKey?.takeIf { target -> local.any { item -> item.key == target } },
+                        pickerItems = local,
+                        providerLoading = false
+                    )
+                }
                 return@launch
             }
 
@@ -374,20 +399,21 @@ internal class DocumentPickerViewModel(
             val providerItems = rootsResult.roots.map { PickerBrowserItem.ProviderRoot(it) }
             val allItems = local + providerItems
 
-            _uiState.update { state -> state.copy(
-                pickerItems = allItems,
-                focusTargetKey = focusKey?.takeIf { target -> allItems.any { it.key == target } },
-                providerLoading = false,
-                providerInfoMessage = rootsResult.errors.size.takeIf { it > 0 }?.let { errorCount ->
-                    appContext.resources.getQuantityString(R.plurals.provider_load_errors, errorCount, errorCount)
-                }
-            )}
+            _uiState.update { state ->
+                state.copy(
+                    pickerItems = allItems,
+                    focusTargetKey = focusKey?.takeIf { target -> allItems.any { it.key == target } },
+                    providerLoading = false,
+                    providerInfoMessage = rootsResult.errors.size.takeIf { it > 0 }?.let { errorCount ->
+                        appContext.resources.getQuantityString(R.plurals.provider_load_errors, errorCount, errorCount)
+                    }
+                )
+            }
         }
     }
 
-    private fun isSourceOverview(): Boolean = 
-        _uiState.value.displayMode == DisplayMode.BROWSE && 
-        _uiState.value.currentLocalPath == null && 
+    private fun isSourceOverview(): Boolean = _uiState.value.displayMode == DisplayMode.BROWSE &&
+        _uiState.value.currentLocalPath == null &&
         _uiState.value.providerStack.isEmpty()
 
     internal fun openLocalDirectory(path: String, focusKey: String? = null, restoreCachedState: Boolean = false) {
@@ -423,52 +449,71 @@ internal class DocumentPickerViewModel(
             path = path,
             settings = currentSettings,
             restoreCachedState = restoreCachedState,
-            isCurrentPath = { _uiState.value.displayMode == DisplayMode.BROWSE && _uiState.value.currentLocalPath == it },
+            isCurrentPath = {
+                _uiState.value.displayMode == DisplayMode.BROWSE && _uiState.value.currentLocalPath == it
+            },
             filter = { item ->
                 when (pickerMode) {
                     PickerMode.OPEN_DOCUMENT, PickerMode.GET_CONTENT -> {
                         when (item) {
                             is BrowserItem.Folder -> PickerBrowserItem.Local(item)
-                            is BrowserItem.File -> if (matchesRequestedMimeType(item.path)) PickerBrowserItem.Local(item) else null
+
+                            is BrowserItem.File -> if (matchesRequestedMimeType(
+                                    item.path
+                                )
+                            ) {
+                                PickerBrowserItem.Local(item)
+                            } else {
+                                null
+                            }
+
                             else -> null
                         }
                     }
+
                     else -> if (item is BrowserItem.Folder) PickerBrowserItem.Local(item) else null
                 }
             },
             onLoading = { cachedItems ->
-                _uiState.update { it.copy(
-                    displayMode = DisplayMode.BROWSE,
-                    currentLocalPath = path,
-                    providerStack = emptyList(),
-                    pickerItems = cachedItems ?: emptyList(),
-                    providerLoading = cachedItems == null
-                )}
+                _uiState.update {
+                    it.copy(
+                        displayMode = DisplayMode.BROWSE,
+                        currentLocalPath = path,
+                        providerStack = emptyList(),
+                        pickerItems = cachedItems ?: emptyList(),
+                        providerLoading = cachedItems == null
+                    )
+                }
             },
             onLoaded = { items, title, metadata ->
-                _uiState.update { state -> state.copy(
-                    pickerItems = items,
-                    currentLocalTitle = title,
-                    currentLocalDirectoryWritable = (metadata["writable"] as? Boolean) ?: false,
-                    currentLocalTreeSelectable = isLocalTreeSelectable(
-                        path = path,
-                        storageRoot = currentStorageRoot
-                    ),
-                    focusTargetKey = focusKey?.takeIf { target -> items.any { item -> item.key == target } },
-                    providerLoading = false
-                )}
+                _uiState.update { state ->
+                    state.copy(
+                        pickerItems = items,
+                        currentLocalTitle = title,
+                        currentLocalDirectoryWritable = (metadata["writable"] as? Boolean) ?: false,
+                        currentLocalTreeSelectable = isLocalTreeSelectable(
+                            path = path,
+                            storageRoot = currentStorageRoot
+                        ),
+                        focusTargetKey = focusKey?.takeIf { target -> items.any { item -> item.key == target } },
+                        providerLoading = false
+                    )
+                }
             },
             onError = { message ->
-                _uiState.update { it.copy(
-                    providerLoading = false,
-                    providerErrorMessage = message
-                )}
+                _uiState.update {
+                    it.copy(
+                        providerLoading = false,
+                        providerErrorMessage = message
+                    )
+                }
             }
         )
     }
 
     internal fun localGridPosition(path: String?): TvGridPosition? = localCoordinator.getGridPosition(path)
-    internal fun saveLocalGridPosition(path: String?, pos: TvGridPosition) = localCoordinator.saveGridPosition(path, pos)
+    internal fun saveLocalGridPosition(path: String?, pos: TvGridPosition) =
+        localCoordinator.saveGridPosition(path, pos)
 
     internal fun openProviderRoot(root: DocumentRootInfo) {
         saveBrowseSnapshotIfNeeded()
@@ -489,11 +534,6 @@ internal class DocumentPickerViewModel(
 
     internal fun retryCurrentProviderLocation() {
         _uiState.value.providerStack.lastOrNull()?.let { refreshProviderDirectory(it) } ?: showSourceOverview()
-    }
-
-    @Suppress("unused") // General reset for provider status messages
-    internal fun clearProviderStatus() {
-        _uiState.update { it.copy(providerErrorMessage = null, providerInfoMessage = null) }
     }
 
     internal fun navigateBack() {
@@ -529,37 +569,59 @@ internal class DocumentPickerViewModel(
     }
 
     private fun updateUiMetadata() {
-        _uiState.update { it.copy(
-            title = calculateTitleInternal(), 
-            canCreateFolder = _uiState.value.displayMode == DisplayMode.BROWSE && canCreateInCurrentLocation(), 
-            primaryActionLabel = calculatePrimaryActionLabel()
-        )}
+        _uiState.update {
+            it.copy(
+                title = calculateTitleInternal(),
+                canCreateFolder = _uiState.value.displayMode == DisplayMode.BROWSE && canCreateInCurrentLocation(),
+                primaryActionLabel = calculatePrimaryActionLabel()
+            )
+        }
     }
 
     private fun calculateTitleInternal(): String {
         val state = _uiState.value
         return when (state.displayMode) {
             DisplayMode.SEARCH -> appContext.getString(R.string.search_title_query, state.currentSearchQuery)
+
             DisplayMode.RECENTS -> appContext.getString(R.string.recents)
-            else -> request.prompt
-                ?: if (state.providerStack.isNotEmpty()) {
-                    state.providerStack.last().document.displayName
-                } else {
-                    state.currentLocalTitle ?: appContext.getString(R.string.storage)
-                }
+
+            else ->
+                request.prompt
+                    ?: if (state.providerStack.isNotEmpty()) {
+                        state.providerStack.last().document.displayName
+                    } else {
+                        state.currentLocalTitle ?: appContext.getString(R.string.storage)
+                    }
         }
     }
 
     private fun calculatePrimaryActionLabel(): String? = when (pickerMode) {
-        PickerMode.OPEN_DOCUMENT_TREE -> if (canSelectCurrentTree()) appContext.getString(R.string.select_this_folder) else null
-        PickerMode.CREATE_DOCUMENT -> if (canCreateInCurrentLocation()) appContext.getString(R.string.save_here) else null
+        PickerMode.OPEN_DOCUMENT_TREE -> if (canSelectCurrentTree()) {
+            appContext.getString(
+                R.string.select_this_folder
+            )
+        } else {
+            null
+        }
+
+        PickerMode.CREATE_DOCUMENT -> if (canCreateInCurrentLocation()) {
+            appContext.getString(
+                R.string.save_here
+            )
+        } else {
+            null
+        }
+
         else -> null
     }
 
     internal fun canCreateInCurrentLocation(): Boolean {
         val state = _uiState.value
-        return if (state.providerStack.isNotEmpty()) state.providerStack.last().root.supportsCreate 
-        else state.currentLocalPath?.let { File(it).canWrite() } ?: false
+        return if (state.providerStack.isNotEmpty()) {
+            state.providerStack.last().root.supportsCreate
+        } else {
+            state.currentLocalPath?.let { File(it).canWrite() } ?: false
+        }
     }
 
     private fun canSelectCurrentTree(): Boolean {
@@ -575,73 +637,108 @@ internal class DocumentPickerViewModel(
     internal fun currentTreeUri(): Uri? {
         val state = _uiState.value
         if (state.displayMode != DisplayMode.BROWSE || !canSelectCurrentTree()) return null
-        return if (state.providerStack.isNotEmpty()) { 
+        return if (state.providerStack.isNotEmpty()) {
             val loc = state.providerStack.last()
-            DocumentsContract.buildTreeDocumentUri(loc.root.authority, loc.document.documentId) 
+            DocumentsContract.buildTreeDocumentUri(loc.root.authority, loc.document.documentId)
+        } else {
+            state.currentLocalPath?.let { DocumentUriMapper.treeUri(appContext, it) }
         }
-        else state.currentLocalPath?.let { DocumentUriMapper.treeUri(appContext, it) }
     }
 
     internal fun uriForPickerItem(item: PickerBrowserItem): Uri? = when (item) {
         is PickerBrowserItem.Local -> DocumentUriMapper.documentUri(appContext, item.item.path)
-        is PickerBrowserItem.ProviderDocument -> DocumentsContract.buildDocumentUri(item.document.authority, item.document.documentId)
+
+        is PickerBrowserItem.ProviderDocument -> DocumentsContract.buildDocumentUri(
+            item.document.authority,
+            item.document.documentId
+        )
+
         else -> null
     }
 
-    internal suspend fun createLocalDocument(parentPath: String, name: String): Result<Uri> = withContext(Dispatchers.IO) {
-        FileUtil.runCancellable {
-            val parent = File(parentPath).canonicalFile
-            require(parent.isDirectory && parent.canWrite()) {
-                appContext.getString(R.string.target_read_only)
-            }
+    internal suspend fun createLocalDocument(parentPath: String, name: String): Result<Uri> =
+        withContext(Dispatchers.IO) {
+            FileUtil.runCancellable {
+                val parent = File(parentPath).canonicalFile
+                require(parent.isDirectory && parent.canWrite()) {
+                    appContext.getString(R.string.target_read_only)
+                }
 
-            val cleanName = runCatching { FileUtil.validateFileName(name) }
-                .getOrElse { throw IllegalArgumentException(appContext.getString(R.string.invalid_name)) }
-            val file = File(parent, cleanName).canonicalFile
+                val cleanName = runCatching { FileUtil.validateFileName(name) }
+                    .getOrElse { throw IllegalArgumentException(appContext.getString(R.string.invalid_name)) }
+                val file = File(parent, cleanName).canonicalFile
 
-            require(file.parentFile == parent) {
-                appContext.getString(R.string.invalid_name)
-            }
-            require(!Files.exists(file.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-                appContext.getString(R.string.already_exists, cleanName)
-            }
-            check(file.createNewFile()) {
-                appContext.getString(R.string.file_create_failed)
-            }
+                require(file.parentFile == parent) {
+                    appContext.getString(R.string.invalid_name)
+                }
+                require(!Files.exists(file.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                    appContext.getString(R.string.already_exists, cleanName)
+                }
+                check(file.createNewFile()) {
+                    appContext.getString(R.string.file_create_failed)
+                }
 
-            DocumentUriMapper.documentUri(appContext, file.absolutePath)
+                DocumentUriMapper.documentUri(appContext, file.absolutePath)
+            }
         }
-    }
 
-    internal fun resultGrantFlags(): Int = when (pickerMode) {
-        PickerMode.GET_CONTENT ->
-            Intent.FLAG_GRANT_READ_URI_PERMISSION
+    internal fun resultGrantFlags(): Int {
+        val supported = when (pickerMode) {
+            PickerMode.GET_CONTENT ->
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
 
-        PickerMode.OPEN_DOCUMENT ->
-            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+            PickerMode.OPEN_DOCUMENT,
+            PickerMode.CREATE_DOCUMENT ->
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
                     Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
                     Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
 
-        PickerMode.CREATE_DOCUMENT ->
-            Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
-                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
-
-        PickerMode.OPEN_DOCUMENT_TREE ->
-            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+            PickerMode.OPEN_DOCUMENT_TREE ->
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
                     Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
                     Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
                     Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+        }
+
+        val requested = request.callerGrantFlags and supported
+
+        var flags = if (requested == 0) {
+            Intent.FLAG_GRANT_READ_URI_PERMISSION
+        } else {
+            requested
+        }
+
+        flags = flags or Intent.FLAG_GRANT_READ_URI_PERMISSION
+
+        if (pickerMode == PickerMode.OPEN_DOCUMENT_TREE) {
+            flags = flags or Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+        }
+
+        if (pickerMode == PickerMode.CREATE_DOCUMENT) {
+            flags = flags or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        }
+
+        return flags
     }
-    private fun matchesRequestedMimeType(path: String): Boolean = requestedMimeMatcher(MimeTypes.forFileName(File(path).name))
-    private fun samePath(p1: String, p2: String): Boolean = runCatching { File(p1).canonicalPath == File(p2).canonicalPath }.getOrDefault(p1 == p2)
+
+    private fun matchesRequestedMimeType(path: String): Boolean =
+        requestedMimeMatcher(MimeTypes.forFileName(File(path).name))
+
+    private fun samePath(p1: String, p2: String): Boolean = runCatching {
+        File(p1).canonicalPath ==
+            File(p2).canonicalPath
+    }.getOrDefault(p1 == p2)
+
     private fun isLocalTreeSelectable(path: String, storageRoot: String?): Boolean {
         if (FileUtil.isSafRestrictedPath(path)) return false
         val root = storageRoot ?: return false
         if (samePath(path, root)) return false
         return !samePath(path, File(root, "Download").absolutePath)
     }
-    private suspend fun isStorageRoot(path: String): Boolean = storageRepository.getStorages().any { samePath(it.path, path) }
+
+    private suspend fun isStorageRoot(path: String): Boolean =
+        storageRepository.getStorages().any { samePath(it.path, path) }
+
     private suspend fun findStorageRoot(path: String): String? = storageRepository.getStorages()
         .map { it.path }
         .firstOrNull { path == it || path.startsWith(it + File.separator) }
@@ -654,7 +751,10 @@ internal class DocumentPickerViewModel(
     internal fun setFocusTargetKey(key: String?) = _uiState.update { it.copy(focusTargetKey = key) }
     internal fun dismissProviderError() = _uiState.update { it.copy(providerErrorMessage = null) }
     internal fun dismissProviderInfo() = _uiState.update { it.copy(providerInfoMessage = null) }
-    internal fun finishWithUris(uris: List<Uri>) { if (uris.isNotEmpty()) eventChannel.trySend(PickerUiEvent.Finish(uris)) }
+    internal fun finishWithUris(uris: List<Uri>) {
+        if (uris.isNotEmpty()) eventChannel.trySend(PickerUiEvent.Finish(uris))
+    }
+
     internal fun cancelPicker() = eventChannel.trySend(PickerUiEvent.Cancel)
     internal fun startWatchingStorage() {
         storageRepository.startWatching {
@@ -674,8 +774,11 @@ internal class DocumentPickerViewModel(
             }
         }
     }
+
     internal fun stopWatchingStorage() = storageRepository.stopWatching()
-    internal fun resumeAfterStoragePermission() { pendingLocalPath?.let { if (hasAllFilesAccess()) openLocalDirectory(it) } }
+    internal fun resumeAfterStoragePermission() {
+        pendingLocalPath?.let { if (hasAllFilesAccess()) openLocalDirectory(it) }
+    }
 
     override fun onCleared() {
         providerHandler.stopObservingProviderDirectory()
@@ -689,5 +792,4 @@ internal class DocumentPickerViewModel(
         eventChannel.close()
         super.onCleared()
     }
-
 }

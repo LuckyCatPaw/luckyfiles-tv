@@ -16,14 +16,16 @@ import com.luckycatpaw.luckyfilestv.data.provider.model.DocumentProviderInfo
 import com.luckycatpaw.luckyfilestv.data.provider.model.DocumentRootInfo
 import com.luckycatpaw.luckyfilestv.data.provider.model.DocumentRootsResult
 import com.luckycatpaw.luckyfilestv.data.provider.model.ProviderChildrenResult
-import com.luckycatpaw.luckyfilestv.data.provider.model.ProviderDocumentPath
 import com.luckycatpaw.luckyfilestv.data.provider.model.ProviderDocumentInfo
+import com.luckycatpaw.luckyfilestv.data.provider.model.ProviderDocumentPath
 import com.luckycatpaw.luckyfilestv.util.FileUtil
 import com.luckycatpaw.luckyfilestv.util.MimeTypes
-import com.luckycatpaw.luckyfilestv.util.string
-import com.luckycatpaw.luckyfilestv.util.requiredString
 import com.luckycatpaw.luckyfilestv.util.int
 import com.luckycatpaw.luckyfilestv.util.longOrNull
+import com.luckycatpaw.luckyfilestv.util.requiredString
+import com.luckycatpaw.luckyfilestv.util.string
+import java.util.Locale
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -33,8 +35,6 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import java.util.Locale
-import kotlin.time.Duration.Companion.milliseconds
 
 class DocumentsProviderRepository(context: Context) {
 
@@ -42,65 +42,64 @@ class DocumentsProviderRepository(context: Context) {
     private val resolver = appContext.contentResolver
     private val packageManager = appContext.packageManager
 
-    fun hasSystemDocumentAccess(): Boolean {
-        return appContext.checkSelfPermission(
-            Manifest.permission.MANAGE_DOCUMENTS
-        ) == PackageManager.PERMISSION_GRANTED
-    }
+    fun hasSystemDocumentAccess(): Boolean = appContext.checkSelfPermission(
+        Manifest.permission.MANAGE_DOCUMENTS
+    ) == PackageManager.PERMISSION_GRANTED
 
-    suspend fun discoverProviders(includeSelf: Boolean = true): List<DocumentProviderInfo> = withContext(Dispatchers.IO) {
-        val intent = Intent(DocumentsContract.PROVIDER_INTERFACE)
+    suspend fun discoverProviders(includeSelf: Boolean = true): List<DocumentProviderInfo> =
+        withContext(Dispatchers.IO) {
+            val intent = Intent(DocumentsContract.PROVIDER_INTERFACE)
 
-        val providers = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            packageManager.queryIntentContentProviders(
-                intent,
-                PackageManager.ResolveInfoFlags.of(0)
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            packageManager.queryIntentContentProviders(intent, 0)
-        }
-
-        providers.flatMap { resolveInfo ->
-            val provider = resolveInfo.providerInfo ?: return@flatMap emptyList()
-
-            if (!includeSelf && provider.packageName == appContext.packageName) {
-                return@flatMap emptyList()
+            val providers = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.queryIntentContentProviders(
+                    intent,
+                    PackageManager.ResolveInfoFlags.of(0)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.queryIntentContentProviders(intent, 0)
             }
 
-            val label = runCatching {
-                provider.loadLabel(packageManager).toString().trim()
-            }.getOrNull()?.takeIf { it.isNotBlank() } ?: provider.packageName
+            providers.flatMap { resolveInfo ->
+                val provider = resolveInfo.providerInfo ?: return@flatMap emptyList()
 
-            provider.authority
-                ?.split(';')
-                ?.mapNotNull { authority ->
-                    authority.trim().takeIf { it.isNotBlank() }?.let {
-                        DocumentProviderInfo(
-                            packageName = provider.packageName,
-                            authority = it,
-                            label = label
-                        )
+                if (!includeSelf && provider.packageName == appContext.packageName) {
+                    return@flatMap emptyList()
+                }
+
+                val label = runCatching {
+                    provider.loadLabel(packageManager).toString().trim()
+                }.getOrNull()?.takeIf { it.isNotBlank() } ?: provider.packageName
+
+                provider.authority
+                    ?.split(';')
+                    ?.mapNotNull { authority ->
+                        authority.trim().takeIf { it.isNotBlank() }?.let {
+                            DocumentProviderInfo(
+                                packageName = provider.packageName,
+                                authority = it,
+                                label = label
+                            )
+                        }
+                    }
+                    .orEmpty()
+            }.distinctBy {
+                it.authority
+            }.sortedWith(
+                Comparator { first, second ->
+                    val labelResult = String.CASE_INSENSITIVE_ORDER.compare(
+                        first.label,
+                        second.label
+                    )
+
+                    if (labelResult != 0) {
+                        labelResult
+                    } else {
+                        first.authority.compareTo(second.authority, ignoreCase = true)
                     }
                 }
-                .orEmpty()
-        }.distinctBy {
-            it.authority
-        }.sortedWith(
-            Comparator { first, second ->
-                val labelResult = String.CASE_INSENSITIVE_ORDER.compare(
-                    first.label,
-                    second.label
-                )
-
-                if (labelResult != 0) {
-                    labelResult
-                } else {
-                    first.authority.compareTo(second.authority, ignoreCase = true)
-                }
-            }
-        )
-    }
+            )
+        }
 
     suspend fun queryRoots(
         acceptedMimeTypes: List<String> = listOf(MimeTypes.ANY),
@@ -154,57 +153,51 @@ class DocumentsProviderRepository(context: Context) {
         acceptedMimeTypes: List<String>,
         localOnly: Boolean,
         requireCreate: Boolean
-    ): RootQueryOutcome {
-        return try {
-            val roots = withTimeoutOrNull(PROVIDER_QUERY_TIMEOUT) {
-                ProviderCallRunner.run { signal ->
-                    queryProviderRoots(
-                        provider = provider,
-                        acceptedMimeTypes = acceptedMimeTypes,
-                        localOnly = localOnly,
-                        requireCreate = requireCreate,
-                        cancellationSignal = signal
-                    )
-                }
+    ): RootQueryOutcome = try {
+        val roots = withTimeoutOrNull(PROVIDER_QUERY_TIMEOUT) {
+            ProviderCallRunner.run { signal ->
+                queryProviderRoots(
+                    provider = provider,
+                    acceptedMimeTypes = acceptedMimeTypes,
+                    localOnly = localOnly,
+                    requireCreate = requireCreate,
+                    cancellationSignal = signal
+                )
             }
-
-            if (roots == null) {
-                RootQueryOutcome(
-                    error = DocumentProviderError(
-                        authority = provider.authority,
-                        message = appContext.getString(R.string.provider_query_timeout, provider.label)
-                    )
-                )
-            } else {
-                RootQueryOutcome(roots = roots)
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: SecurityException) {
-            RootQueryOutcome(
-                error = DocumentProviderError(
-                    authority = provider.authority,
-                    message = appContext.getString(R.string.provider_no_manage_access, provider.label)
-                )
-            )
-        } catch (e: Exception) {
-            RootQueryOutcome(
-                error = DocumentProviderError(
-                    authority = provider.authority,
-                    message = e.message ?: appContext.getString(R.string.provider_read_failed)
-                )
-            )
         }
-    }
 
-    suspend fun queryRootDocument(
-        root: DocumentRootInfo
-    ): Result<ProviderDocumentInfo> {
-        return queryDocument(
-            authority = root.authority,
-            documentId = root.documentId
+        if (roots == null) {
+            RootQueryOutcome(
+                error = DocumentProviderError(
+                    authority = provider.authority,
+                    message = appContext.getString(R.string.provider_query_timeout, provider.label)
+                )
+            )
+        } else {
+            RootQueryOutcome(roots = roots)
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: SecurityException) {
+        RootQueryOutcome(
+            error = DocumentProviderError(
+                authority = provider.authority,
+                message = appContext.getString(R.string.provider_no_manage_access, provider.label)
+            )
+        )
+    } catch (e: Exception) {
+        RootQueryOutcome(
+            error = DocumentProviderError(
+                authority = provider.authority,
+                message = e.message ?: appContext.getString(R.string.provider_read_failed)
+            )
         )
     }
+
+    suspend fun queryRootDocument(root: DocumentRootInfo): Result<ProviderDocumentInfo> = queryDocument(
+        authority = root.authority,
+        documentId = root.documentId
+    )
 
     suspend fun queryDocument(
         authority: String,
@@ -246,23 +239,6 @@ class DocumentsProviderRepository(context: Context) {
                 authority = uri.authority ?: error("No authority in URI"),
                 rootId = path.rootId,
                 documentIds = path.path
-            )
-        }
-    }
-
-    @Suppress("unused") // Part of the core DocumentsProvider API operations
-    suspend fun isChildDocument(
-        root: DocumentRootInfo,
-        childDocumentId: String
-    ): Result<Boolean> = FileUtil.runCancellable {
-        ProviderCallRunner.run { _ ->
-            DocumentsContract.isChildDocument(
-                resolver,
-                root.documentUri,
-                DocumentsContract.buildDocumentUri(
-                    root.authority,
-                    childDocumentId
-                )
             )
         }
     }
@@ -389,14 +365,11 @@ class DocumentsProviderRepository(context: Context) {
         }
     }
 
-    private fun documentFromUriSync(
-        authority: String,
-        uri: Uri
-    ): ProviderDocumentInfo {
-        val cursor = resolver.query(uri, DOCUMENT_PROJECTION, null, null, null) 
+    private fun documentFromUriSync(authority: String, uri: Uri): ProviderDocumentInfo {
+        val cursor = resolver.query(uri, DOCUMENT_PROJECTION, null, null, null)
             ?: error(appContext.getString(R.string.provider_no_document))
 
-        return cursor.use { 
+        return cursor.use {
             if (!it.moveToFirst()) {
                 error(appContext.getString(R.string.document_not_found))
             }
@@ -413,63 +386,12 @@ class DocumentsProviderRepository(context: Context) {
         authority: String,
         parentDocumentId: String,
         displayName: String
-    ): Result<ProviderDocumentInfo> {
-        return createDocument(
-            authority = authority,
-            parentDocumentId = parentDocumentId,
-            mimeType = DocumentsContract.Document.MIME_TYPE_DIR,
-            displayName = displayName
-        )
-    }
-
-    @Suppress("unused") // Part of the core DocumentsProvider API operations
-    suspend fun deleteDocument(document: ProviderDocumentInfo): Result<Unit> = FileUtil.runCancellable {
-        ProviderCallRunner.run { _ ->
-            check(
-                DocumentsContract.deleteDocument(
-                    resolver,
-                    document.uri
-                )
-            ) {
-                appContext.getString(R.string.document_delete_failed)
-            }
-        }
-    }
-
-    @Suppress("unused") // Part of the core DocumentsProvider API operations
-    suspend fun renameDocument(
-        document: ProviderDocumentInfo,
-        newName: String
-    ): Result<ProviderDocumentInfo> = FileUtil.runCancellable {
-        ProviderCallRunner.run { _ ->
-            val uri = DocumentsContract.renameDocument(
-                resolver,
-                document.uri,
-                newName
-            ) ?: error(appContext.getString(R.string.document_rename_failed))
-
-            documentFromUriSync(
-                authority = document.authority,
-                uri = uri
-            )
-        }
-    }
-
-    @Suppress("unused") // Helper for building document URIs externally
-    fun documentUri(
-        authority: String,
-        documentId: String
-    ): Uri {
-        return DocumentsContract.buildDocumentUri(authority, documentId)
-    }
-
-    @Suppress("unused") // Helper for building tree URIs externally
-    fun treeUri(
-        authority: String,
-        documentId: String
-    ): Uri {
-        return DocumentsContract.buildTreeDocumentUri(authority, documentId)
-    }
+    ): Result<ProviderDocumentInfo> = createDocument(
+        authority = authority,
+        parentDocumentId = parentDocumentId,
+        mimeType = DocumentsContract.Document.MIME_TYPE_DIR,
+        displayName = displayName
+    )
 
     private suspend fun queryDocumentList(
         uri: Uri,
@@ -519,7 +441,9 @@ class DocumentsProviderRepository(context: Context) {
                         Comparator { first, second ->
                             when {
                                 first.isDirectory && !second.isDirectory -> -1
+
                                 !first.isDirectory && second.isDirectory -> 1
+
                                 else -> String.CASE_INSENSITIVE_ORDER.compare(
                                     first.displayName,
                                     second.displayName
@@ -600,10 +524,7 @@ class DocumentsProviderRepository(context: Context) {
         return result
     }
 
-    private fun rootFromCursor(
-        provider: DocumentProviderInfo,
-        cursor: Cursor
-    ): DocumentRootInfo {
+    private fun rootFromCursor(provider: DocumentProviderInfo, cursor: Cursor): DocumentRootInfo {
         val title = cursor.string(DocumentsContract.Root.COLUMN_TITLE)
             ?.takeIf { it.isNotBlank() } ?: provider.label
 
@@ -626,12 +547,8 @@ class DocumentsProviderRepository(context: Context) {
         )
     }
 
-    private fun documentFromCursor(
-        cursor: Cursor,
-        authority: String,
-        parentDocumentId: String?
-    ): ProviderDocumentInfo {
-        return ProviderDocumentInfo(
+    private fun documentFromCursor(cursor: Cursor, authority: String, parentDocumentId: String?): ProviderDocumentInfo =
+        ProviderDocumentInfo(
             authority = authority,
             documentId = cursor.requiredString(DocumentsContract.Document.COLUMN_DOCUMENT_ID),
             parentDocumentId = parentDocumentId,
@@ -644,7 +561,6 @@ class DocumentsProviderRepository(context: Context) {
             size = cursor.longOrNull(DocumentsContract.Document.COLUMN_SIZE),
             lastModified = cursor.longOrNull(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
         )
-    }
 
     private fun shouldShowDocument(
         document: ProviderDocumentInfo,
@@ -659,10 +575,7 @@ class DocumentsProviderRepository(context: Context) {
         return mimeMatcher(document.mimeType)
     }
 
-    private fun rootSupportsMimeTypes(
-        root: DocumentRootInfo,
-        acceptedMimeTypes: List<String>
-    ): Boolean {
+    private fun rootSupportsMimeTypes(root: DocumentRootInfo, acceptedMimeTypes: List<String>): Boolean {
         val rootTypes = root.mimeTypes ?: return true
 
         return acceptedMimeTypes.any { requested ->
@@ -710,4 +623,3 @@ class DocumentsProviderRepository(context: Context) {
         )
     }
 }
-

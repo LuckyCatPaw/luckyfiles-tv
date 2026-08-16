@@ -3,8 +3,6 @@ package com.luckycatpaw.luckyfilestv.data.transfer
 import android.content.Context
 import com.luckycatpaw.luckyfilestv.R
 import com.luckycatpaw.luckyfilestv.data.common.FileTreeWalker
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
@@ -14,11 +12,10 @@ import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.StandardCopyOption
 import java.util.UUID
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
-internal class ReplacementTransactionStore(
-    context: Context,
-    private val fileTreeWalker: FileTreeWalker
-) {
+internal class ReplacementTransactionStore(context: Context, private val fileTreeWalker: FileTreeWalker) {
     private val appContext = context.applicationContext
     private val journalDirectory = File(
         appContext.noBackupFilesDir,
@@ -31,11 +28,8 @@ internal class ReplacementTransactionStore(
         }
     }
 
-    suspend fun prepareReplacement(
-        target: File,
-        preparedReplacement: File
-    ): ReplacementPreparation {
-        return transactionMutex.withLock {
+    suspend fun prepareReplacement(target: File, preparedReplacement: File): ReplacementPreparation =
+        transactionMutex.withLock {
             recoverPendingLocked()
 
             require(exists(target))
@@ -62,47 +56,42 @@ internal class ReplacementTransactionStore(
                 journal = journal
             )
         }
-    }
 
-    suspend fun installReplacement(
-        preparation: ReplacementPreparation
-    ): Boolean {
-        return transactionMutex.withLock {
-            require(preparation.journal.absolutePath in activeJournals)
-            require(preparation.journal.isFile)
-            require(exists(preparation.target))
-            require(exists(preparation.preparedReplacement))
+    suspend fun installReplacement(preparation: ReplacementPreparation): Boolean = transactionMutex.withLock {
+        require(preparation.journal.absolutePath in activeJournals)
+        require(preparation.journal.isFile)
+        require(exists(preparation.target))
+        require(exists(preparation.preparedReplacement))
 
-            if (!preparation.target.renameTo(preparation.backup)) {
-                preparation.journal.delete()
-                error(appContext.getString(R.string.replace_prepare_failed))
-            }
-
-            if (!preparation.preparedReplacement.renameTo(preparation.target)) {
-                val restored = preparation.backup.renameTo(preparation.target)
-                if (restored) {
-                    preparation.journal.delete()
-                }
-                error(
-                    appContext.getString(
-                        if (restored) {
-                            R.string.replace_failed
-                        } else {
-                            R.string.replace_restore_failed
-                        }
-                    )
-                )
-            }
-
-            val backupDeleted = deleteOwnedPath(preparation.backup)
-            val replacementDeleted = deleteOwnedPath(preparation.preparedReplacement)
-
-            if (backupDeleted && replacementDeleted) {
-                preparation.journal.delete()
-            }
-
-            !backupDeleted || !replacementDeleted
+        if (!preparation.target.renameTo(preparation.backup)) {
+            preparation.journal.delete()
+            error(appContext.getString(R.string.replace_prepare_failed))
         }
+
+        if (!preparation.preparedReplacement.renameTo(preparation.target)) {
+            val restored = preparation.backup.renameTo(preparation.target)
+            if (restored) {
+                preparation.journal.delete()
+            }
+            error(
+                appContext.getString(
+                    if (restored) {
+                        R.string.replace_failed
+                    } else {
+                        R.string.replace_restore_failed
+                    }
+                )
+            )
+        }
+
+        val backupDeleted = deleteOwnedPath(preparation.backup)
+        val replacementDeleted = deleteOwnedPath(preparation.preparedReplacement)
+
+        if (backupDeleted && replacementDeleted) {
+            preparation.journal.delete()
+        }
+
+        !backupDeleted || !replacementDeleted
     }
 
     suspend fun finishPreparation(preparation: ReplacementPreparation) {
@@ -153,10 +142,7 @@ internal class ReplacementTransactionStore(
         }
     }
 
-    private fun writeJournal(
-        journal: File,
-        transaction: ReplacementTransaction
-    ) {
+    private fun writeJournal(journal: File, transaction: ReplacementTransaction) {
         check(journalDirectory.exists() || journalDirectory.mkdirs())
 
         val temporary = File(journalDirectory, ".${journal.name}.tmp")
@@ -184,18 +170,16 @@ internal class ReplacementTransactionStore(
         }
     }
 
-    private fun readJournal(journal: File): ReplacementTransaction? {
-        return runCatching {
-            DataInputStream(FileInputStream(journal)).use { input ->
-                check(input.readInt() == JOURNAL_VERSION)
-                ReplacementTransaction(
-                    target = File(input.readUTF()).canonicalFile,
-                    preparedReplacement = File(input.readUTF()).canonicalFile,
-                    backup = File(input.readUTF()).canonicalFile
-                )
-            }
-        }.getOrNull()
-    }
+    private fun readJournal(journal: File): ReplacementTransaction? = runCatching {
+        DataInputStream(FileInputStream(journal)).use { input ->
+            check(input.readInt() == JOURNAL_VERSION)
+            ReplacementTransaction(
+                target = File(input.readUTF()).canonicalFile,
+                preparedReplacement = File(input.readUTF()).canonicalFile,
+                backup = File(input.readUTF()).canonicalFile
+            )
+        }
+    }.getOrNull()
 
     private suspend fun deleteOwnedPath(file: File): Boolean {
         if (!exists(file)) return true
@@ -205,25 +189,19 @@ internal class ReplacementTransactionStore(
         }.isSuccess
     }
 
-    private fun exists(file: File): Boolean {
-        return Files.exists(file.toPath(), LinkOption.NOFOLLOW_LINKS)
-    }
+    private fun exists(file: File): Boolean = Files.exists(file.toPath(), LinkOption.NOFOLLOW_LINKS)
 
-    private data class ReplacementTransaction(
-        val target: File,
-        val preparedReplacement: File,
-        val backup: File
-    ) {
+    private data class ReplacementTransaction(val target: File, val preparedReplacement: File, val backup: File) {
         fun isValid(): Boolean {
             val targetParent = target.parentFile?.path ?: return false
             val replacementParent = preparedReplacement.parentFile?.path ?: return false
             val backupParent = backup.parentFile?.path ?: return false
 
             return targetParent == replacementParent &&
-                    targetParent == backupParent &&
-                    preparedReplacement.name.startsWith(".luckyfiles-") &&
-                    backup.name.startsWith(".luckyfiles-") &&
-                    backup.name.endsWith(".backup")
+                targetParent == backupParent &&
+                preparedReplacement.name.startsWith(".luckyfiles-") &&
+                backup.name.startsWith(".luckyfiles-") &&
+                backup.name.endsWith(".backup")
         }
     }
 

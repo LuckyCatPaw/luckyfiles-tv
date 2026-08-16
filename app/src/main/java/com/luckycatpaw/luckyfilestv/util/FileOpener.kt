@@ -10,11 +10,7 @@ import java.io.IOException
 
 object FileOpener {
 
-    fun open(
-        context: Context,
-        path: String
-    ): Boolean {
-
+    fun open(context: Context, path: String): Boolean {
         val file = File(path)
 
         if (!file.exists() || !file.isFile) {
@@ -50,7 +46,6 @@ object FileOpener {
             context.startActivity(intent)
 
             true
-
         } catch (_: ActivityNotFoundException) {
             false
         } catch (_: SecurityException) {

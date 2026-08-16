@@ -219,4 +219,13 @@
     <string name="provider_not_directory">Not a directory: %1$s</string>
     <string name="provider_read_only">Read-only: %1$s</string>
     <string name="provider_invalid_file_name">Invalid file name</string>
+    <string name="transfer_channel_name">File transfers</string>
+    <string name="unreadable_skipped">%1$s could not be read and was skipped.</string>
+    <string name="properties_incomplete">Note</string>
+    <plurals name="properties_unreadable_folders">
+        <item quantity="one">%1$d folder could not be read (e.g. Android/data) — size and counts are minimums.</item>
+        <item quantity="other">%1$d folders could not be read (e.g. Android/data) — size and counts are minimums.</item>
+    </plurals>
+    <string name="storage_permission_screen_missing">This device has no settings screen for full file access. Please grant it manually under Settings &gt; Apps.</string>
+    <string name="not_enough_space">Not enough space in the target folder: %1$s required, %2$s available.</string>
 </resources>

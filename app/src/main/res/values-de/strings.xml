@@ -219,4 +219,13 @@
     <string name="provider_not_directory">Kein Ordner: %1$s</string>
     <string name="provider_read_only">Schreibgeschützt: %1$s</string>
     <string name="provider_invalid_file_name">Ungültiger Dateiname</string>
+    <string name="transfer_channel_name">Dateiübertragungen</string>
+    <string name="unreadable_skipped">%1$s konnte nicht gelesen werden und wurde übersprungen.</string>
+    <string name="properties_incomplete">Hinweis</string>
+    <plurals name="properties_unreadable_folders">
+        <item quantity="one">%1$d Ordner konnte nicht gelesen werden (z. B. Android/data) — Größe und Anzahl sind Mindestwerte.</item>
+        <item quantity="other">%1$d Ordner konnten nicht gelesen werden (z. B. Android/data) — Größe und Anzahl sind Mindestwerte.</item>
+    </plurals>
+    <string name="storage_permission_screen_missing">Dieses Gerät bietet keinen Einstellungsdialog für den vollen Dateizugriff. Bitte manuell unter Einstellungen &gt; Apps erteilen.</string>
+    <string name="not_enough_space">Nicht genug Speicher im Zielordner: %1$s benötigt, %2$s verfügbar.</string>
 </resources>

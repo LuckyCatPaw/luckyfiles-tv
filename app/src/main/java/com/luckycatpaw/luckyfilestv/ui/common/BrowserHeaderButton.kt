@@ -1,9 +1,6 @@
 package com.luckycatpaw.luckyfilestv.ui.common
 
 import android.view.KeyEvent as AndroidKeyEvent
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -16,13 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Icon
@@ -41,92 +32,47 @@ internal fun BrowserHeaderButton(
     contentDescription: String? = null,
     focusEnabled: Boolean = true
 ) {
-    var focused by remember {
-        mutableStateOf(false)
-    }
-
+    var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(9.dp)
+    val iconOnly = icon != null && text == null
 
     Box(
         modifier = modifier
-            .then(
-                if (icon != null && text == null) {
-                    Modifier.size(40.dp)
-                } else {
-                    Modifier
-                }
-            )
-            .focusRequester(focusRequester)
-            .focusProperties {
-                canFocus = focusEnabled
-            }
-            .onFocusChanged { state ->
-                focused = state.isFocused && focusEnabled
-                if (state.isFocused && focusEnabled) {
-                    onFocused()
-                }
-            }
-            .onPreviewKeyEvent { event ->
-                if (!focusEnabled) {
-                    return@onPreviewKeyEvent true
-                }
-
-                when (event.nativeKeyEvent.keyCode) {
-                    AndroidKeyEvent.KEYCODE_DPAD_DOWN -> {
-                        if (event.type == KeyEventType.KeyDown) {
-                            onDown()
-                        }
-                        true
-                    }
-
-                    AndroidKeyEvent.KEYCODE_DPAD_UP -> true
-                    else -> false
-                }
-            }
-            .background(
-                if (focused) {
-                    MaterialTheme.colorScheme.primaryContainer
-                } else {
-                    MaterialTheme.colorScheme.surface
+            .then(if (iconOnly) Modifier.size(40.dp) else Modifier)
+            .tvFocusable(
+                onClick = onClick,
+                focusRequester = focusRequester,
+                enabled = focusEnabled,
+                onFocusChanged = { isFocused ->
+                    focused = isFocused
+                    if (isFocused) onFocused()
                 },
-                shape
-            )
-            .then(
-                if (focused) {
-                    Modifier.border(
-                        width = 2.dp,
-                        color = MaterialTheme.colorScheme.primary,
-                        shape = shape
-                    )
-                } else {
-                    Modifier
+                onKeyEvent = { keyCode, keyDown ->
+                    when (keyCode) {
+                        AndroidKeyEvent.KEYCODE_DPAD_DOWN -> {
+                            if (keyDown) onDown()
+                            true
+                        }
+
+                        // Up must not escape the header row.
+                        AndroidKeyEvent.KEYCODE_DPAD_UP -> true
+
+                        else -> false
+                    }
                 }
             )
-            .clickable(
-                enabled = focusEnabled
-            ) {
-                onClick()
-            }
-            .then(
-                if (text != null) {
-                    Modifier.padding(
-                        horizontal = 15.dp,
-                        vertical = 8.dp
-                    )
-                } else {
-                    Modifier
-                }
-            ),
+            .tvFocusHighlight(
+                focused = focused,
+                shape = shape,
+                unfocusedContainer = MaterialTheme.colorScheme.surface
+            )
+            .then(if (text != null) Modifier.padding(horizontal = 15.dp, vertical = 8.dp) else Modifier),
         contentAlignment = Alignment.Center
     ) {
         if (text != null) {
             Text(
                 text = text,
-                color = if (focused) {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
+                color = tvContentColor(focused),
                 fontSize = 14.sp,
                 maxLines = 1
             )
@@ -134,11 +80,7 @@ internal fun BrowserHeaderButton(
             Icon(
                 imageVector = icon,
                 contentDescription = contentDescription,
-                tint = if (focused) {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
+                tint = tvContentColor(focused),
                 modifier = Modifier.size(22.dp)
             )
         }

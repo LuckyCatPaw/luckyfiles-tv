@@ -2,21 +2,21 @@ package com.luckycatpaw.luckyfilestv.ui.main
 
 import android.content.Context
 import com.luckycatpaw.luckyfilestv.R
-import com.luckycatpaw.luckyfilestv.data.repository.FileRepository
-import com.luckycatpaw.luckyfilestv.data.repository.StorageRepository
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import com.luckycatpaw.luckyfilestv.data.common.model.FileManagerSettings
+import com.luckycatpaw.luckyfilestv.data.repository.FileRepository
+import com.luckycatpaw.luckyfilestv.data.repository.StorageRepository
 import com.luckycatpaw.luckyfilestv.ui.common.LocalBrowserCoordinator
 import com.luckycatpaw.luckyfilestv.ui.common.model.TvGridPosition
 import com.luckycatpaw.luckyfilestv.ui.main.model.MainUiEvent
 import com.luckycatpaw.luckyfilestv.ui.main.model.MainUiState
 import com.luckycatpaw.luckyfilestv.util.hasAllFilesAccess
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.io.File
 
 internal class NavigationHandler(
     private val appContext: Context,
@@ -52,23 +52,21 @@ internal class NavigationHandler(
             val storages = storageRepository.getStorages()
             if (generation != navigationGeneration) return@launch
 
-            uiState.update { state -> state.copy(
-                currentPath = null,
-                currentStorageRoot = null,
-                title = appContext.getString(R.string.storage),
-                focusTargetPath = focusPath?.takeIf { target ->
-                    storages.any { it.path == target }
-                },
-                browserItems = storages
-            )}
+            uiState.update { state ->
+                state.copy(
+                    currentPath = null,
+                    currentStorageRoot = null,
+                    title = appContext.getString(R.string.storage),
+                    focusTargetPath = focusPath?.takeIf { target ->
+                        storages.any { it.path == target }
+                    },
+                    browserItems = storages
+                )
+            }
         }
     }
 
-    fun openDirectory(
-        path: String,
-        focusPath: String? = null,
-        restoreCachedState: Boolean = false
-    ) {
+    fun openDirectory(path: String, focusPath: String? = null, restoreCachedState: Boolean = false) {
         if (!hasAllFilesAccess()) {
             onPendingPathChanged(path)
             eventChannel.trySend(MainUiEvent.RequestStorageAccess)
@@ -86,18 +84,31 @@ internal class NavigationHandler(
             isCurrentPath = { uiState.value.currentPath == it },
             filter = { it },
             onLoading = { cachedItems ->
-                uiState.update { it.copy(
-                    currentPath = path,
-                    focusTargetPath = if (restoreCachedState && cachedItems == null) null else focusPath,
-                    browserItems = cachedItems ?: emptyList()
-                )}
+                uiState.update {
+                    it.copy(
+                        currentPath = path,
+                        focusTargetPath = if (restoreCachedState && cachedItems == null) null else focusPath,
+                        browserItems = cachedItems ?: emptyList()
+                    )
+                }
             },
             onLoaded = { items, title, _ ->
-                uiState.update { state -> state.copy(
-                    focusTargetPath = if (restoreCachedState) focusPath else focusPath?.takeIf { target -> items.any { it.path == target } },
-                    browserItems = items,
-                    title = title
-                )}
+                uiState.update { state ->
+                    state.copy(
+                        focusTargetPath = if (restoreCachedState) {
+                            focusPath
+                        } else {
+                            focusPath?.takeIf { target ->
+                                items.any {
+                                    it.path ==
+                                        target
+                                }
+                            }
+                        },
+                        browserItems = items,
+                        title = title
+                    )
+                }
             },
             onError = { message ->
                 eventChannel.trySend(MainUiEvent.ShowMessage(message))
@@ -134,7 +145,5 @@ internal class NavigationHandler(
         }
     }
 
-    private suspend fun isStorageRoot(path: String): Boolean {
-        return storageRepository.getStorages().any { it.path == path }
-    }
+    private suspend fun isStorageRoot(path: String): Boolean = storageRepository.getStorages().any { it.path == path }
 }

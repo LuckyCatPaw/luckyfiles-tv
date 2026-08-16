@@ -18,15 +18,21 @@ data class PickerRequest(
     val localOnly: Boolean,
     val openableOnly: Boolean,
     val excludeSelf: Boolean,
-    val prompt: String?
+    val prompt: String?,
+    val callerGrantFlags: Int = 0
 ) {
     companion object {
+        const val GRANT_MASK = Intent.FLAG_GRANT_READ_URI_PERMISSION or
+            Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+            Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+            Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+
         fun fromIntent(context: Context, intent: Intent): PickerRequest? {
             val mode = PickerMode.fromIntent(intent) ?: return null
 
             val allowMultiple =
                 (mode == PickerMode.OPEN_DOCUMENT || mode == PickerMode.GET_CONTENT) &&
-                        intent.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
+                    intent.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
 
             val extraMimeTypes = intent
                 .getStringArrayExtra(Intent.EXTRA_MIME_TYPES)
@@ -76,7 +82,8 @@ data class PickerRequest(
                 excludeSelf = intent.getBooleanExtra(DocumentsContract.EXTRA_EXCLUDE_SELF, false),
                 prompt = intent.getStringExtra(DocumentsContract.EXTRA_PROMPT)
                     ?.trim()
-                    ?.takeIf { it.isNotBlank() }
+                    ?.takeIf { it.isNotBlank() },
+                callerGrantFlags = intent.flags and GRANT_MASK
             )
         }
     }

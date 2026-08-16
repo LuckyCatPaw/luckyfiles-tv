@@ -24,15 +24,10 @@ internal class BrowserActionHandler(
                 viewModel.setCurrentStorageRoot(item.path)
                 viewModel.openDirectory(item.path)
             }
-            is BrowserItem.Folder -> viewModel.openDirectory(item.path)
-            is BrowserItem.File -> Unit
-        }
-    }
 
-    @Suppress("unused") // Entry point for selection mode on long press
-    fun handleItemLongClick(item: BrowserItem, selectionMode: Boolean, toggleSelection: (BrowserItem) -> Unit) {
-        if (!selectionMode) {
-            toggleSelection(item)
+            is BrowserItem.Folder -> viewModel.openDirectory(item.path)
+
+            is BrowserItem.File -> Unit
         }
     }
 
@@ -44,26 +39,38 @@ internal class BrowserActionHandler(
 
     fun rename(item: BrowserItem, newName: String, onFinished: () -> Unit) {
         modelScope.launch {
-            val result = viewModel.rename(item.path, newName)
-            result.onSuccess {
-                onFinished()
-                viewModel.refreshCurrentDirectory(focusPath = it)
-            }.onFailure { error ->
-                Toast.makeText(appContext, error.message ?: appContext.getString(R.string.rename_failed), Toast.LENGTH_LONG).show()
-            }
+            viewModel.rename(item.path, newName)
+                .onSuccess {
+                    onFinished()
+                    viewModel.refreshCurrentDirectory(focusPath = it)
+                }
+                .onFailure { error -> toast(error.message, R.string.rename_failed) }
         }
     }
 
-    fun delete(items: List<BrowserItem>, onFinished: (successCount: Int, failureCount: Int) -> Unit) {
+    /**
+     * Deletes [items] one by one. [onProgress] receives the item about to be deleted and
+     * its 1-based position, which lets the caller drive a progress overlay without
+     * running its own coroutine.
+     */
+    fun delete(
+        items: List<BrowserItem>,
+        onProgress: (index: Int, total: Int, item: BrowserItem) -> Unit = { _, _, _ -> },
+        onFinished: (successCount: Int, failureCount: Int) -> Unit
+    ) {
         if (items.isEmpty()) return
+
         modelScope.launch {
             var successCount = 0
             var failureCount = 0
-            items.forEach { item ->
+
+            items.forEachIndexed { index, item ->
+                onProgress(index + 1, items.size, item)
                 viewModel.delete(item.path)
                     .onSuccess { successCount++ }
                     .onFailure { failureCount++ }
             }
+
             if (successCount > 0) {
                 viewModel.refreshCurrentDirectory()
             }
@@ -73,12 +80,20 @@ internal class BrowserActionHandler(
 
     fun createFolder(parentPath: String, name: String, onFinished: (String) -> Unit) {
         modelScope.launch {
-            viewModel.createFolder(parentPath, name).onSuccess { newPath ->
-                onFinished(newPath)
-                viewModel.refreshCurrentDirectory(focusPath = newPath)
-            }.onFailure { error ->
-                Toast.makeText(appContext, error.message ?: appContext.getString(R.string.folder_create_failed), Toast.LENGTH_LONG).show()
-            }
+            viewModel.createFolder(parentPath, name)
+                .onSuccess { newPath ->
+                    onFinished(newPath)
+                    viewModel.refreshCurrentDirectory(focusPath = newPath)
+                }
+                .onFailure { error -> toast(error.message, R.string.folder_create_failed) }
         }
+    }
+
+    private fun toast(message: String?, fallbackResId: Int) {
+        Toast.makeText(
+            appContext,
+            message ?: appContext.getString(fallbackResId),
+            Toast.LENGTH_LONG
+        ).show()
     }
 }

@@ -9,38 +9,19 @@ import java.nio.charset.StandardCharsets
 
 object DocumentUriMapper {
 
-    fun documentUri(context: Context, path: String): Uri {
-        return DocumentsContract.buildDocumentUri(
-            authority(context),
-            documentId(path)
-        )
-    }
+    fun documentUri(context: Context, path: String): Uri = DocumentsContract.buildDocumentUri(
+        authority(context),
+        documentId(path)
+    )
 
-    fun treeUri(context: Context, path: String): Uri {
-        return DocumentsContract.buildTreeDocumentUri(
-            authority(context),
-            documentId(path)
-        )
-    }
+    fun treeUri(context: Context, path: String): Uri = DocumentsContract.buildTreeDocumentUri(
+        authority(context),
+        documentId(path)
+    )
 
-    @Suppress("unused") // Core mapping logic for resolving URIs back to file paths
-    fun pathFromUri(context: Context, uri: Uri): String? {
-        if (uri.authority != authority(context)) {
-            return null
-        }
+    fun documentId(path: String): String = documentIdFromCanonicalPath(File(path).canonicalFile.absolutePath)
 
-        val documentId = runCatching {
-            DocumentsContract.getDocumentId(uri)
-        }.getOrNull() ?: runCatching {
-            DocumentsContract.getTreeDocumentId(uri)
-        }.getOrNull() ?: return null
-
-        return pathFromDocumentId(documentId)
-    }
-
-    fun documentId(path: String): String {
-        val canonicalPath = File(path).canonicalFile.absolutePath
-
+    fun documentIdFromCanonicalPath(canonicalPath: String): String {
         val encoded = Base64.encodeToString(
             canonicalPath.toByteArray(StandardCharsets.UTF_8),
             Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
@@ -68,7 +49,5 @@ object DocumentUriMapper {
         }.getOrNull()
     }
 
-    private fun authority(context: Context): String {
-        return "${context.packageName}.documents"
-    }
+    private fun authority(context: Context): String = "${context.packageName}.documents"
 }

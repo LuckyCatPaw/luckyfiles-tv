@@ -7,11 +7,13 @@ import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import com.luckycatpaw.luckyfilestv.data.common.model.FileProperties
 import com.luckycatpaw.luckyfilestv.data.common.model.FileSortMode
 import com.luckycatpaw.luckyfilestv.util.FileUtil
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import com.luckycatpaw.luckyfilestv.util.MimeTypes
 import java.io.File as JavaFile
 import java.nio.file.Files
 import java.nio.file.LinkOption
+import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 internal class FileRepository(
     private val context: Context,
@@ -28,6 +30,9 @@ internal class FileRepository(
             val directory = JavaFile(path).canonicalFile
             require(directory.exists() && directory.isDirectory) {
                 context.getString(R.string.target_folder_missing)
+            }
+            require(directory.canRead()) {
+                context.getString(R.string.folder_load_failed)
             }
 
             val children = directory.listFiles()
@@ -48,7 +53,7 @@ internal class FileRepository(
                         isDirectory = isDirectory,
                         size = size,
                         lastModified = file.lastModified(),
-                        extension = file.extension.lowercase()
+                        extension = file.extension.lowercase(Locale.ROOT)
                     )
                 }
                 .sortedWith(fileComparator(sortMode, sortAscending, foldersFirst))
@@ -77,7 +82,8 @@ internal class FileRepository(
                 fileCount = scan.fileCount,
                 folderCount = scan.directoryCount,
                 extension = file.extension.takeIf { it.isNotBlank() },
-                mimeType = com.luckycatpaw.luckyfilestv.util.MimeTypes.forFileName(file.name)
+                mimeType = MimeTypes.forFileName(file.name),
+                unreadableDirectoryCount = scan.unreadableDirectoryCount
             )
         }
     }
@@ -118,7 +124,7 @@ internal class FileRepository(
             val parent = requireDirectory(parentPath)
             val cleanName = runCatching { FileUtil.validateFileName(name) }
                 .getOrElse { throw IllegalArgumentException(context.getString(R.string.invalid_folder_name)) }
-            
+
             val target = JavaFile(parent, cleanName).absoluteFile
             require(target.parentFile?.canonicalFile == parent) { context.getString(R.string.invalid_folder_name) }
             require(!Files.exists(target.toPath(), LinkOption.NOFOLLOW_LINKS)) {
@@ -147,7 +153,13 @@ internal class FileRepository(
         }
 
         val result = if (ascending) primary else -primary
-        if (result != 0) result else String.CASE_INSENSITIVE_ORDER.compare(a.name, b.name).let { if (ascending) it else -it }
+        if (result !=
+            0
+        ) {
+            result
+        } else {
+            String.CASE_INSENSITIVE_ORDER.compare(a.name, b.name).let { if (ascending) it else -it }
+        }
     }
 
     private fun requireDirectory(path: String): JavaFile {

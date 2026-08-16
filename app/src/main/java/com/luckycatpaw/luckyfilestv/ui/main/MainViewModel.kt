@@ -2,37 +2,34 @@ package com.luckycatpaw.luckyfilestv.ui.main
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
-import com.luckycatpaw.luckyfilestv.data.repository.FileRepository
 import com.luckycatpaw.luckyfilestv.data.common.FileTreeWalker
-import com.luckycatpaw.luckyfilestv.data.repository.SettingsRepository
-import com.luckycatpaw.luckyfilestv.data.repository.StorageRepository
-import com.luckycatpaw.luckyfilestv.data.transfer.TransferCoordinator
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import com.luckycatpaw.luckyfilestv.data.common.model.FileManagerSettings
 import com.luckycatpaw.luckyfilestv.data.common.model.FileProperties
 import com.luckycatpaw.luckyfilestv.data.common.model.FileSortMode
-import com.luckycatpaw.luckyfilestv.util.hasAllFilesAccess
+import com.luckycatpaw.luckyfilestv.data.repository.FileRepository
+import com.luckycatpaw.luckyfilestv.data.repository.SettingsRepository
+import com.luckycatpaw.luckyfilestv.data.repository.StorageRepository
+import com.luckycatpaw.luckyfilestv.ui.common.model.TvGridPosition
 import com.luckycatpaw.luckyfilestv.ui.main.model.MainUiEvent
+import com.luckycatpaw.luckyfilestv.ui.main.model.MainUiState
 import com.luckycatpaw.luckyfilestv.ui.main.model.TransferConflictAnswer
 import com.luckycatpaw.luckyfilestv.ui.main.model.TransferMode
-import com.luckycatpaw.luckyfilestv.ui.common.model.TvGridPosition
+import com.luckycatpaw.luckyfilestv.util.hasAllFilesAccess
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.receiveAsFlow
-import kotlinx.coroutines.launch
-import com.luckycatpaw.luckyfilestv.ui.main.model.MainUiState
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
-internal class MainViewModel(
-    application: Application
-) : AndroidViewModel(application) {
+internal class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val appContext = application.applicationContext
     private val modelScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -43,7 +40,6 @@ internal class MainViewModel(
     private val storageRepository = StorageRepository(appContext)
     private val settingsRepository = SettingsRepository(appContext)
     private val fileRepository = FileRepository(appContext, fileTreeWalker)
-    private val transferCoordinator = TransferCoordinator(appContext, fileTreeWalker)
 
     private val _uiState = MutableStateFlow(MainUiState())
     internal val uiState = combine(
@@ -75,11 +71,21 @@ internal class MainViewModel(
         appContext = appContext,
         modelScope = modelScope,
         uiState = _uiState,
-        transferCoordinator = transferCoordinator,
         onTransferFinished = { targetPath, resultFocusPath ->
             navigationHandler.openDirectory(targetPath, resultFocusPath)
+        },
+        onNotificationPermissionNeeded = {
+            eventChannel.trySend(MainUiEvent.RequestNotificationAccess)
         }
     )
+
+    internal val browserActions: BrowserActionHandler by lazy {
+        BrowserActionHandler(
+            appContext = appContext,
+            modelScope = modelScope,
+            viewModel = this
+        )
+    }
 
     init {
         modelScope.launch {
@@ -90,7 +96,7 @@ internal class MainViewModel(
         showStorages()
     }
 
-    internal fun applySettings(settings: FileManagerSettings) {
+    private fun applySettings(settings: FileManagerSettings) {
         if (settings != currentSettings) {
             navigationHandler.clearSnapshots()
         }
@@ -102,14 +108,11 @@ internal class MainViewModel(
         }
     }
 
-    internal suspend fun getProperties(path: String): Result<FileProperties> =
-        fileRepository.getProperties(path)
+    internal suspend fun getProperties(path: String): Result<FileProperties> = fileRepository.getProperties(path)
 
-    internal suspend fun rename(path: String, newName: String): Result<String> =
-        fileRepository.rename(path, newName)
+    internal suspend fun rename(path: String, newName: String): Result<String> = fileRepository.rename(path, newName)
 
-    internal suspend fun delete(path: String): Result<Unit> =
-        fileRepository.delete(path)
+    internal suspend fun delete(path: String): Result<Unit> = fileRepository.delete(path)
 
     internal suspend fun createFolder(parentPath: String, name: String): Result<String> =
         fileRepository.createFolder(parentPath, name)
@@ -118,33 +121,23 @@ internal class MainViewModel(
     internal fun prepareTransfer(mode: TransferMode, sources: List<BrowserItem>) =
         transferManager.prepareTransfer(mode, sources)
 
-    internal fun cancelPreparedTransfer() =
-        transferManager.cancelPreparedTransfer()
+    internal fun cancelPreparedTransfer() = transferManager.cancelPreparedTransfer()
 
-    internal fun startPreparedTransfer(targetPath: String) =
-        transferManager.startPreparedTransfer(targetPath)
+    internal fun startPreparedTransfer(targetPath: String) = transferManager.startPreparedTransfer(targetPath)
 
-    internal fun cancelRunningTransfer() =
-        transferManager.cancelRunningTransfer()
+    internal fun cancelRunningTransfer() = transferManager.cancelRunningTransfer()
 
-    internal fun answerTransferConflict(answer: TransferConflictAnswer) =
-        transferManager.answerTransferConflict(answer)
+    internal fun answerTransferConflict(answer: TransferConflictAnswer) = transferManager.answerTransferConflict(answer)
 
-    internal fun consumeTransferCompletion() =
-        transferManager.consumeTransferCompletion()
+    internal fun consumeTransferCompletion() = transferManager.consumeTransferCompletion()
 
     // Navigation Delegation
-    internal fun showStorages(focusPath: String? = null) =
-        navigationHandler.showStorages(focusPath)
+    internal fun showStorages(focusPath: String? = null) = navigationHandler.showStorages(focusPath)
 
-    internal fun openDirectory(
-        path: String,
-        focusPath: String? = null,
-        restoreCachedState: Boolean = false
-    ) = navigationHandler.openDirectory(path, focusPath, restoreCachedState)
+    internal fun openDirectory(path: String, focusPath: String? = null, restoreCachedState: Boolean = false) =
+        navigationHandler.openDirectory(path, focusPath, restoreCachedState)
 
-    internal fun directoryGridPosition(path: String?): TvGridPosition? =
-        navigationHandler.directoryGridPosition(path)
+    internal fun directoryGridPosition(path: String?): TvGridPosition? = navigationHandler.directoryGridPosition(path)
 
     internal fun saveDirectoryGridPosition(path: String?, position: TvGridPosition) =
         navigationHandler.saveDirectoryGridPosition(path, position)
@@ -190,12 +183,14 @@ internal class MainViewModel(
             if (state.currentPath == null) {
                 val previousFocus = state.focusedPath
 
-                _uiState.update { currentState -> currentState.copy(
-                    browserItems = storages,
-                    focusTargetPath = previousFocus?.takeIf { path ->
-                        storages.any { it.path == path }
-                    }
-                )}
+                _uiState.update { currentState ->
+                    currentState.copy(
+                        browserItems = storages,
+                        focusTargetPath = previousFocus?.takeIf { path ->
+                            storages.any { it.path == path }
+                        }
+                    )
+                }
             }
         }
     }

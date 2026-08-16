@@ -49,9 +49,10 @@ import com.luckycatpaw.luckyfilestv.data.repository.ImageRepository
 import com.luckycatpaw.luckyfilestv.ui.picker.model.PickerBrowserItem
 import com.luckycatpaw.luckyfilestv.util.FileNameOptimizer
 import com.luckycatpaw.luckyfilestv.util.MimeTypes
+import java.io.File
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.File
 
 @Composable
 fun BrowserGridItem(
@@ -167,12 +168,26 @@ private fun CommonBrowserGridItem(
     preview: @Composable () -> Unit
 ) {
     val shape = RoundedCornerShape(12.dp)
-    val backgroundColor = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
-    val contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+    val backgroundColor = if (selected) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.colorScheme.surface
+    }
+    val contentColor = if (selected) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
 
     val lineBreakIndex = displayName.indexOf('\n')
     val primaryText = if (lineBreakIndex >= 0) displayName.substring(0, lineBreakIndex) else displayName
-    val secondLine = if (lineBreakIndex >= 0 && lineBreakIndex < displayName.lastIndex) displayName.substring(lineBreakIndex + 1) else secondaryText
+    val secondLine = if (lineBreakIndex >= 0 &&
+        lineBreakIndex < displayName.lastIndex
+    ) {
+        displayName.substring(lineBreakIndex + 1)
+    } else {
+        secondaryText
+    }
 
     Box(
         modifier = modifier
@@ -235,14 +250,31 @@ private fun LocalItemPreview(item: BrowserItem, selected: Boolean, useFolderJpgA
         key2 = if (item is BrowserItem.Folder) useFolderJpgAsIcon else null
     ) {
         val previewRequest = withContext(Dispatchers.IO) {
-            val type = when (item) {
-                is BrowserItem.Folder -> if (useFolderJpgAsIcon && LocalThumbnailDecoder.findFolderCover(item.path) != null) "folder" else null
-                is BrowserItem.File -> LocalThumbnailDecoder.previewTypeForExtension(File(item.path).extension.lowercase())
+            val source: Pair<String, String>? = when (item) {
+                is BrowserItem.Folder -> if (useFolderJpgAsIcon) {
+                    LocalThumbnailDecoder.findFolderCover(item.path)?.let { cover -> "folder" to cover }
+                } else {
+                    null
+                }
+
+                is BrowserItem.File ->
+                    LocalThumbnailDecoder
+                        .previewTypeForExtension(File(item.path).extension.lowercase(Locale.ROOT))
+                        ?.let { type -> type to item.path }
+
                 is BrowserItem.Storage -> null
             }
-            type?.let {
-                val path = if (it == "folder") LocalThumbnailDecoder.findFolderCover(item.path)!! else item.path
-                Triple(it, path, "$it:${File(path).absolutePath}:${File(path).length()}:${File(path).lastModified()}")
+
+            source?.let { (type, path) ->
+                val file = File(path)
+                val length = file.length()
+                val lastModified = file.lastModified()
+
+                if (!file.isFile) {
+                    null
+                } else {
+                    Triple(type, path, "$type:${file.absolutePath}:$length:$lastModified")
+                }
             }
         }
 
@@ -257,7 +289,12 @@ private fun LocalItemPreview(item: BrowserItem, selected: Boolean, useFolderJpgA
     }
 
     bitmap?.let {
-        Image(bitmap = it, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(3.dp))
+        Image(
+            bitmap = it,
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize().padding(3.dp)
+        )
     } ?: Icon(
         imageVector = localFallbackIcon(item),
         contentDescription = null,
@@ -274,16 +311,23 @@ private fun ProviderItemPreview(item: PickerBrowserItem, selected: Boolean) {
     val bitmap by produceState<ImageBitmap?>(initialValue = null, key1 = item.key, key2 = item) {
         value = when (item) {
             is PickerBrowserItem.ProviderRoot -> imageRepository.getRootIcon(item.root)?.asImageBitmap()
+
             is PickerBrowserItem.ProviderDocument -> {
                 val thumb = imageRepository.getProviderThumbnail(item.document)
                 thumb?.asImageBitmap() ?: imageRepository.getProviderIcon(item.document)?.asImageBitmap()
             }
+
             is PickerBrowserItem.Local -> null
         }
     }
 
     bitmap?.let {
-        Image(bitmap = it, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(3.dp))
+        Image(
+            bitmap = it,
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize().padding(3.dp)
+        )
     } ?: Icon(
         imageVector = providerFallbackIcon(item),
         contentDescription = null,
@@ -293,38 +337,32 @@ private fun ProviderItemPreview(item: PickerBrowserItem, selected: Boolean) {
 }
 
 @Composable
-private fun previewIconColor(selected: Boolean): ComposeColor {
-    return if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+private fun previewIconColor(selected: Boolean): ComposeColor =
+    if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+
+private fun localFallbackIcon(item: BrowserItem): ImageVector = when (item) {
+    is BrowserItem.Storage -> Icons.Filled.Storage
+    is BrowserItem.Folder -> Icons.Filled.Folder
+    is BrowserItem.File -> fileIconForExtension(File(item.path).extension.lowercase(Locale.ROOT))
 }
 
-private fun localFallbackIcon(item: BrowserItem): ImageVector {
-    return when (item) {
-        is BrowserItem.Storage -> Icons.Filled.Storage
-        is BrowserItem.Folder -> Icons.Filled.Folder
-        is BrowserItem.File -> fileIconForExtension(File(item.path).extension.lowercase())
-    }
-}
+private fun providerFallbackIcon(item: PickerBrowserItem): ImageVector = when (item) {
+    is PickerBrowserItem.ProviderRoot -> Icons.Filled.Storage
 
-private fun providerFallbackIcon(item: PickerBrowserItem): ImageVector {
-    return when (item) {
-        is PickerBrowserItem.ProviderRoot -> Icons.Filled.Storage
-        is PickerBrowserItem.ProviderDocument -> when {
-            item.document.isDirectory -> Icons.Filled.Folder
-            item.document.mimeType.startsWith("image/", ignoreCase = true) -> Icons.Filled.Image
-            item.document.mimeType.startsWith("video/", ignoreCase = true) -> Icons.Filled.Movie
-            item.document.mimeType.startsWith("audio/", ignoreCase = true) -> Icons.Filled.Audiotrack
-            else -> Icons.AutoMirrored.Filled.InsertDriveFile
-        }
-        is PickerBrowserItem.Local -> localFallbackIcon(item.item)
-    }
-}
-
-private fun fileIconForExtension(extension: String): ImageVector {
-    return when (extension) {
-        in MimeTypes.IMAGE_EXTENSIONS -> Icons.Filled.Image
-        in MimeTypes.VIDEO_EXTENSIONS -> Icons.Filled.Movie
-        in MimeTypes.AUDIO_EXTENSIONS -> Icons.Filled.Audiotrack
+    is PickerBrowserItem.ProviderDocument -> when {
+        item.document.isDirectory -> Icons.Filled.Folder
+        item.document.mimeType.startsWith("image/", ignoreCase = true) -> Icons.Filled.Image
+        item.document.mimeType.startsWith("video/", ignoreCase = true) -> Icons.Filled.Movie
+        item.document.mimeType.startsWith("audio/", ignoreCase = true) -> Icons.Filled.Audiotrack
         else -> Icons.AutoMirrored.Filled.InsertDriveFile
     }
+
+    is PickerBrowserItem.Local -> localFallbackIcon(item.item)
 }
 
+private fun fileIconForExtension(extension: String): ImageVector = when (extension) {
+    in MimeTypes.IMAGE_EXTENSIONS -> Icons.Filled.Image
+    in MimeTypes.VIDEO_EXTENSIONS -> Icons.Filled.Movie
+    in MimeTypes.AUDIO_EXTENSIONS -> Icons.Filled.Audiotrack
+    else -> Icons.AutoMirrored.Filled.InsertDriveFile
+}

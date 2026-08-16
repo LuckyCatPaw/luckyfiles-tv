@@ -8,11 +8,11 @@ import com.luckycatpaw.luckyfilestv.data.repository.FileRepository
 import com.luckycatpaw.luckyfilestv.data.repository.StorageRepository
 import com.luckycatpaw.luckyfilestv.ui.common.model.TvGridPosition
 import com.luckycatpaw.luckyfilestv.util.FileUtil
+import java.io.File
+import java.util.LinkedHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import java.io.File
-import java.util.LinkedHashMap
 
 internal class LocalBrowserCoordinator<T>(
     private val appContext: Context,
@@ -24,9 +24,10 @@ internal class LocalBrowserCoordinator<T>(
 ) {
     private var loadJob: Job? = null
     private var loadGeneration = 0
-    
+
     private val snapshots = object : LinkedHashMap<String, DirectorySnapshot<T>>(cacheLimit, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, DirectorySnapshot<T>>): Boolean = size > cacheLimit
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, DirectorySnapshot<T>>): Boolean =
+            size > cacheLimit
     }
 
     fun getGridPosition(path: String?): TvGridPosition? = path?.let { snapshots[it]?.gridPosition }
@@ -60,10 +61,12 @@ internal class LocalBrowserCoordinator<T>(
         loadJob?.cancel()
 
         val enteringNew = !isCurrentPath(path)
-        val cached = snapshots[path]?.let { 
+        val cached = snapshots[path]?.let {
             if (enteringNew && !restoreCachedState) {
                 it.copy(gridPosition = TvGridPosition()).also { s -> snapshots[path] = s }
-            } else it
+            } else {
+                it
+            }
         }
 
         onLoading(cached?.items)
@@ -71,16 +74,16 @@ internal class LocalBrowserCoordinator<T>(
         loadJob = modelScope.launch {
             val result = FileUtil.runCancellable {
                 val rawItems = fileRepository.getItems(
-                    path, 
-                    settings.hideFolderJpg, 
-                    settings.sortMode, 
-                    settings.sortAscending, 
+                    path,
+                    settings.hideFolderJpg,
+                    settings.sortMode,
+                    settings.sortAscending,
                     settings.foldersFirst
                 ).getOrThrow()
 
                 val transformedItems = rawItems.mapNotNull(filter)
                 val title = calculateTitle(path)
-                
+
                 val metadata = mutableMapOf<String, Any>()
                 // common metadata
                 metadata["writable"] = File(path).canWrite()
@@ -108,7 +111,7 @@ internal class LocalBrowserCoordinator<T>(
 
     private suspend fun calculateTitle(path: String): String {
         val storages = storageRepository.getStorages()
-        storages.firstOrNull { 
+        storages.firstOrNull {
             runCatching { File(it.path).canonicalPath == File(path).canonicalPath }.getOrDefault(it.path == path)
         }?.let { return it.name }
 

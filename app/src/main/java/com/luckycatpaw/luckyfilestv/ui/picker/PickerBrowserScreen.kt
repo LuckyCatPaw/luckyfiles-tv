@@ -64,7 +64,7 @@ internal fun PickerBrowserScreen(
         ?.takeIf { requestedInitialIndex == initialGridIndex }
         ?.coerceAtLeast(0)
         ?: 0
-        
+
     val gridState = key(gridStateKey) {
         rememberLazyGridState(
             initialFirstVisibleItemIndex = initialGridIndex,
@@ -102,24 +102,22 @@ internal fun PickerBrowserScreen(
         initialGridIndex
     )
 
-    fun headerFocusRequester(target: HeaderFocusTarget?): FocusRequester? {
-        return target?.let {
-            when (it) {
-                HeaderFocusTarget.SEARCH -> searchFocusRequester.takeIf { showSearchAction }
-                HeaderFocusTarget.RECENTS -> recentsFocusRequester.takeIf { showRecentsAction }
-                HeaderFocusTarget.CREATE_FOLDER -> createFolderFocusRequester.takeIf { canCreateFolder }
-                HeaderFocusTarget.CANCEL -> cancelFocusRequester.takeIf { showCancelAction }
-                HeaderFocusTarget.PRIMARY -> primaryFocusRequester.takeIf { primaryActionLabel != null }
-                else -> null
-            }
-        } ?: listOf(
-            searchFocusRequester.takeIf { showSearchAction },
-            recentsFocusRequester.takeIf { showRecentsAction },
-            createFolderFocusRequester.takeIf { canCreateFolder },
-            cancelFocusRequester.takeIf { showCancelAction },
-            primaryFocusRequester.takeIf { primaryActionLabel != null }
-        ).firstOrNull { it != null }
-    }
+    fun headerFocusRequester(target: HeaderFocusTarget?): FocusRequester? = target?.let {
+        when (it) {
+            HeaderFocusTarget.SEARCH -> searchFocusRequester.takeIf { showSearchAction }
+            HeaderFocusTarget.RECENTS -> recentsFocusRequester.takeIf { showRecentsAction }
+            HeaderFocusTarget.CREATE_FOLDER -> createFolderFocusRequester.takeIf { canCreateFolder }
+            HeaderFocusTarget.CANCEL -> cancelFocusRequester.takeIf { showCancelAction }
+            HeaderFocusTarget.PRIMARY -> primaryFocusRequester.takeIf { primaryActionLabel != null }
+            else -> null
+        }
+    } ?: listOf(
+        searchFocusRequester.takeIf { showSearchAction },
+        recentsFocusRequester.takeIf { showRecentsAction },
+        createFolderFocusRequester.takeIf { canCreateFolder },
+        cancelFocusRequester.takeIf { showCancelAction },
+        primaryFocusRequester.takeIf { primaryActionLabel != null }
+    ).firstOrNull { it != null }
 
     val safeSpace = TvFileGridDefaults.SafeHorizontalSpace
     val availableWidth = configuration.screenWidthDp.dp - safeSpace * 2
