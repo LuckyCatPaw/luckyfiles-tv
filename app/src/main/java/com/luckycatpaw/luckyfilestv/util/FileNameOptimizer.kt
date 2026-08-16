@@ -155,8 +155,8 @@ object FileNameOptimizer {
         // Two or more dots separate multiple episode titles.
         return cleaned
             .split(multipleDotsRegex)
-            .map { it.normalizeSeparators() }
-            .map { it.trimNameSeparators() }
+            .asSequence()
+            .map { it.normalizeSeparators().trimNameSeparators() }
             .filter(String::isNotBlank)
             .map { it.capitalizeFirstCharacter() }
             .joinToString(separator = " / ")

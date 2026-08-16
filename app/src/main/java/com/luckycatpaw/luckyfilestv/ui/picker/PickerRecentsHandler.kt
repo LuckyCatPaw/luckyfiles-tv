@@ -132,7 +132,7 @@ internal class PickerRecentsHandler(
 
             if (uiState.value.displayMode != DisplayMode.RECENTS) return@launch
             uiState.update { it.copy(providerLoading = false, providerInfoMessage = when {
-                providerErrors > 0 -> appContext.getString(R.string.provider_load_errors, providerErrors)
+                providerErrors > 0 -> appContext.resources.getQuantityString(R.plurals.provider_load_errors, providerErrors, providerErrors)
                 it.pickerItems.isEmpty() -> appContext.getString(R.string.no_recent_files)
                 loadingTimeouts > 0 -> appContext.getString(R.string.providers_still_loading)
                 else -> null

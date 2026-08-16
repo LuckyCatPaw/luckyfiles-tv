@@ -122,7 +122,7 @@ internal class PickerSearchHandler(
 
             if (!isCurrentSearch(query)) return@launch
             uiState.update { it.copy(providerLoading = false, providerInfoMessage = when {
-                providerErrors > 0 -> appContext.getString(R.string.provider_search_errors, providerErrors)
+                providerErrors > 0 -> appContext.resources.getQuantityString(R.plurals.provider_search_errors, providerErrors, providerErrors)
                 it.pickerItems.isEmpty() -> appContext.getString(R.string.no_search_results, query)
                 loadingTimeouts > 0 -> appContext.getString(R.string.providers_still_loading)
                 else -> null
@@ -140,11 +140,13 @@ internal class PickerSearchHandler(
         uiState.update { state ->
             state.copy(
                 pickerItems = (localResults + providerResults.values.flatten())
+                    .asSequence()
                     .distinctBy { it.key }
                     .map { RankedSearchItem(it, searchRank(it.name, query)) }
                     .sortedWith(compareBy<RankedSearchItem> { it.rank }.thenBy { !it.item.isDirectory }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.item.name })
                     .take(300)
                     .map { it.item }
+                    .toList()
             )
         }
     }

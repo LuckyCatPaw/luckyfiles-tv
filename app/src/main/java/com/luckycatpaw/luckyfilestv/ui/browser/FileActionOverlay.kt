@@ -36,6 +36,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -250,7 +251,7 @@ fun MultiDeleteConfirmOverlay(
                 .padding(28.dp)
         ) {
             Text(
-                text = stringResource(R.string.confirm_delete_count, count),
+                text = pluralStringResource(R.plurals.confirm_delete_count, count, count),
                 color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 21.sp,
                 fontWeight = FontWeight.Medium

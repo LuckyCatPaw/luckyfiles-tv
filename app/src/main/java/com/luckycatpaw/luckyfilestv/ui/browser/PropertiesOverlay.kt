@@ -33,6 +33,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -88,9 +89,13 @@ fun PropertiesOverlay(
                     PropertyRow(stringResource(R.string.properties_size), formatBytes(properties.size))
 
                     if (properties.isDirectory) {
+                        val fileQuantity = properties.fileCount.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+                        val folderQuantity = properties.folderCount.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+                        val fileCount = pluralStringResource(R.plurals.properties_file_count, fileQuantity, properties.fileCount)
+                        val folderCount = pluralStringResource(R.plurals.properties_folder_count, folderQuantity, properties.folderCount)
                         PropertyRow(
                             stringResource(R.string.properties_contents),
-                            stringResource(R.string.properties_content_counts, properties.fileCount, properties.folderCount)
+                            stringResource(R.string.properties_content_counts, fileCount, folderCount)
                         )
                     }
 

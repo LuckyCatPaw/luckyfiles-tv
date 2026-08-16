@@ -9,7 +9,6 @@ import java.nio.charset.StandardCharsets
 
 object DocumentUriMapper {
 
-    @Suppress("unused") // Core mapping logic for custom DocumentsProvider URIs
     fun documentUri(context: Context, path: String): Uri {
         return DocumentsContract.buildDocumentUri(
             authority(context),
@@ -17,7 +16,6 @@ object DocumentUriMapper {
         )
     }
 
-    @Suppress("unused") // Core mapping logic for custom DocumentsProvider tree URIs
     fun treeUri(context: Context, path: String): Uri {
         return DocumentsContract.buildTreeDocumentUri(
             authority(context),

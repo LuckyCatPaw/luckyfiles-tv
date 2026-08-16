@@ -29,7 +29,7 @@ class DocumentPickerActivity : ComponentActivity() {
             return
         }
 
-        viewModel = ViewModelProvider(this).get(DocumentPickerViewModel::class.java)
+        viewModel = ViewModelProvider(this)[DocumentPickerViewModel::class.java]
         viewModel.initialize(request)
 
         setContent {

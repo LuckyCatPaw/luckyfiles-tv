@@ -1,12 +1,12 @@
-<p>
+<p align="center">
   <img src="app/src/main/res/mipmap-xhdpi/tv_banner.png" alt="LuckyFiles TV" width="320">
 </p>
 
-<p>
+<p align="center">
   <strong>A remote friendly file manager for Android TV</strong>
 </p>
 
-<p>
+<p align="center">
   <img src="https://img.shields.io/badge/Android_TV-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Android TV">
   <img src="https://img.shields.io/badge/Kotlin-7F52FF?style=flat-square&logo=kotlin&logoColor=white" alt="Kotlin">
   <img src="https://img.shields.io/badge/Jetpack_Compose-4285F4?style=flat-square&logo=jetpackcompose&logoColor=white" alt="Jetpack Compose">
@@ -75,7 +75,7 @@ flowchart TD
 
 ## Document access
 
-The project includes Android document provider support and a document picker made for TV screens. The optional system picker integration is disabled in regular builds. It can be enabled with the resource overlay in `src/system` for installations that have the required system privileges.
+The project includes Android document provider support and a document picker made for TV screens. The optional system picker integration is disabled in regular builds. It can be enabled with the resource overlay in `app/src/system` for installations that have the required system privileges.
 
 ## Storage permission
 

@@ -120,13 +120,40 @@ internal fun MainScreen(viewModel: MainViewModel) {
         val message = when {
             transferResult.cancelled -> context.getString(R.string.operation_cancelled_partial)
             transferResult.issues.isNotEmpty() || transferResult.skippedCount > 0 ->
-                context.getString(R.string.transfer_summary, transferResult.completedPaths.size, transferResult.skippedCount, transferResult.issues.size)
-            transferResult.sourceDeleteWarningCount > 0 && transferResult.cleanupWarningCount > 0 ->
-                context.getString(R.string.transfer_multiple_warnings, transferResult.sourceDeleteWarningCount, transferResult.cleanupWarningCount)
-            transferResult.sourceDeleteWarningCount > 0 -> context.getString(R.string.move_source_delete_warning, transferResult.sourceDeleteWarningCount)
-            transferResult.cleanupWarningCount > 0 -> context.getString(R.string.transfer_cleanup_warning, transferResult.cleanupWarningCount)
-            completion.operation == TransferMode.COPY -> context.getString(R.string.items_copied, transferResult.completedPaths.size)
-            else -> context.getString(R.string.items_moved, transferResult.completedPaths.size)
+                context.resources.getQuantityString(
+                    R.plurals.transfer_summary,
+                    transferResult.completedPaths.size,
+                    transferResult.completedPaths.size,
+                    transferResult.skippedCount,
+                    transferResult.issues.size
+                )
+            transferResult.sourceDeleteWarningCount > 0 && transferResult.cleanupWarningCount > 0 -> {
+                val sourceCount = transferResult.sourceDeleteWarningCount
+                val backupCount = transferResult.cleanupWarningCount
+                val sourceMessage = context.resources.getQuantityString(R.plurals.transfer_source_warning_count, sourceCount, sourceCount)
+                val backupMessage = context.resources.getQuantityString(R.plurals.transfer_backup_warning_count, backupCount, backupCount)
+                context.getString(R.string.transfer_multiple_warnings, sourceMessage, backupMessage)
+            }
+            transferResult.sourceDeleteWarningCount > 0 -> context.resources.getQuantityString(
+                R.plurals.move_source_delete_warning,
+                transferResult.sourceDeleteWarningCount,
+                transferResult.sourceDeleteWarningCount
+            )
+            transferResult.cleanupWarningCount > 0 -> context.resources.getQuantityString(
+                R.plurals.transfer_cleanup_warning,
+                transferResult.cleanupWarningCount,
+                transferResult.cleanupWarningCount
+            )
+            completion.operation == TransferMode.COPY -> context.resources.getQuantityString(
+                R.plurals.items_copied,
+                transferResult.completedPaths.size,
+                transferResult.completedPaths.size
+            )
+            else -> context.resources.getQuantityString(
+                R.plurals.items_moved,
+                transferResult.completedPaths.size,
+                transferResult.completedPaths.size
+            )
         }
 
         Toast.makeText(context, message, if (transferResult.cancelled || transferResult.issues.isNotEmpty() || transferResult.cleanupWarningCount > 0 || transferResult.sourceDeleteWarningCount > 0) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show()
@@ -232,7 +259,7 @@ internal fun MainScreen(viewModel: MainViewModel) {
                                 val message = if (failureCount == 0) {
                                     context.getString(R.string.deleted)
                                 } else {
-                                    context.getString(R.string.delete_summary, successCount, failureCount)
+                                    context.resources.getQuantityString(R.plurals.delete_summary, successCount, successCount, failureCount)
                                 }
                                 Toast.makeText(
                                     context,
@@ -265,8 +292,8 @@ internal fun MainScreen(viewModel: MainViewModel) {
                                 operationMessage = null
                                 viewModel.refreshCurrentDirectory()
                                 restoreBrowserFocus()
-                                if (failureCount == 0) { Toast.makeText(context, context.getString(R.string.items_deleted, successCount), Toast.LENGTH_SHORT).show() }
-                                else { Toast.makeText(context, context.getString(R.string.delete_summary, successCount, failureCount), Toast.LENGTH_LONG).show() }
+                                if (failureCount == 0) { Toast.makeText(context, context.resources.getQuantityString(R.plurals.items_deleted, successCount, successCount), Toast.LENGTH_SHORT).show() }
+                                else { Toast.makeText(context, context.resources.getQuantityString(R.plurals.delete_summary, successCount, successCount, failureCount), Toast.LENGTH_LONG).show() }
                             }
                         },
                         onDismiss = { multiDeleteItems = null; restoreBrowserFocus() }
@@ -274,7 +301,7 @@ internal fun MainScreen(viewModel: MainViewModel) {
                 }
 
                 if (showNewFolderDialog) {
-                    NameInputOverlay(title = context.getString(R.string.new_folder), initialValue = "", confirmLabel = context.getString(R.string.create), onConfirm = { name -> uiState.currentPath?.let { actionHandler.createFolder(it, name) { showNewFolderDialog = false; restoreBrowserFocus(it) } } }, onDismiss = { showNewFolderDialog = false; restoreBrowserFocus() })
+                    NameInputOverlay(title = context.getString(R.string.new_folder), initialValue = "", confirmLabel = context.getString(R.string.create), onConfirm = { name -> uiState.currentPath?.let { parentPath -> actionHandler.createFolder(parentPath, name) { createdPath -> showNewFolderDialog = false; restoreBrowserFocus(createdPath) } } }, onDismiss = { showNewFolderDialog = false; restoreBrowserFocus() })
                 }
 
                 if (showSettings) {

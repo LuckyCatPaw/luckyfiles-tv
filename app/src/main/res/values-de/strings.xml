@@ -33,11 +33,17 @@
     <string name="error_generic">Fehler</string>
     <string name="save_file">Datei speichern</string>
     <string name="search_running">Suche läuft …</string>
-    <string name="provider_search_errors">%1$d Speicherquelle(n) konnten nicht durchsucht werden.</string>
+    <plurals name="provider_search_errors">
+        <item quantity="one">%1$d Speicherquelle konnte nicht durchsucht werden.</item>
+        <item quantity="other">%1$d Speicherquellen konnten nicht durchsucht werden.</item>
+    </plurals>
     <string name="no_search_results">Keine Treffer für „%1$s“.</string>
     <string name="providers_still_loading">Einige Speicherquellen laden noch …</string>
     <string name="recents_loading">Zuletzt verwendete Dateien werden geladen …</string>
-    <string name="provider_load_errors">%1$d Speicherquelle(n) konnten nicht geladen werden.</string>
+    <plurals name="provider_load_errors">
+        <item quantity="one">%1$d Speicherquelle konnte nicht geladen werden.</item>
+        <item quantity="other">%1$d Speicherquellen konnten nicht geladen werden.</item>
+    </plurals>
     <string name="no_recent_files">Keine zuletzt verwendeten Dateien.</string>
     <string name="storage_source_open_failed">Speicherquelle konnte nicht geöffnet werden.</string>
     <string name="folder_load_failed">Ordner konnte nicht geladen werden.</string>
@@ -47,17 +53,35 @@
     <string name="internal_storage">Interner Speicher</string>
     <string name="copying">Kopieren …</string>
     <string name="moving">Verschieben …</string>
-    <string name="items_copied">%1$d Elemente kopiert.</string>
-    <string name="items_moved">%1$d Elemente verschoben.</string>
-    <string name="transfer_summary">%1$d erfolgreich, %2$d übersprungen, %3$d fehlgeschlagen.</string>
+    <plurals name="items_copied">
+        <item quantity="one">%1$d Element kopiert.</item>
+        <item quantity="other">%1$d Elemente kopiert.</item>
+    </plurals>
+    <plurals name="items_moved">
+        <item quantity="one">%1$d Element verschoben.</item>
+        <item quantity="other">%1$d Elemente verschoben.</item>
+    </plurals>
+    <plurals name="transfer_summary">
+        <item quantity="one">%1$d Element erfolgreich abgeschlossen, %2$d übersprungen, %3$d fehlgeschlagen.</item>
+        <item quantity="other">%1$d Elemente erfolgreich abgeschlossen, %2$d übersprungen, %3$d fehlgeschlagen.</item>
+    </plurals>
     <string name="operation_cancelled_partial">Vorgang abgebrochen. Bereits fertige Dateien bleiben erhalten.</string>
     <string name="deleting_item">Lösche %1$s</string>
     <string name="deleted">Gelöscht.</string>
     <string name="deleting_item_progress">Lösche %1$d/%2$d: %3$s</string>
-    <string name="items_deleted">%1$d Elemente gelöscht.</string>
-    <string name="delete_summary">%1$d gelöscht, %2$d fehlgeschlagen.</string>
+    <plurals name="items_deleted">
+        <item quantity="one">%1$d Element gelöscht.</item>
+        <item quantity="other">%1$d Elemente gelöscht.</item>
+    </plurals>
+    <plurals name="delete_summary">
+        <item quantity="one">%1$d Element gelöscht, %2$d fehlgeschlagen.</item>
+        <item quantity="other">%1$d Elemente gelöscht, %2$d fehlgeschlagen.</item>
+    </plurals>
     <string name="confirm_delete">Wirklich löschen?</string>
-    <string name="confirm_delete_count">%1$d Elemente löschen?</string>
+    <plurals name="confirm_delete_count">
+        <item quantity="one">%1$d Element löschen?</item>
+        <item quantity="other">%1$d Elemente löschen?</item>
+    </plurals>
     <string name="confirm_delete_selected_description">Die ausgewählten Dateien und Ordner werden endgültig gelöscht.</string>
     <string name="file_already_exists">Datei bereits vorhanden</string>
     <string name="target_path">Ziel: %1$s</string>
@@ -72,7 +96,15 @@
     <string name="properties_contents">Inhalt</string>
     <string name="properties_modified">Geändert</string>
     <string name="properties_path">Pfad</string>
-    <string name="properties_content_counts">%1$d Dateien, %2$d Ordner</string>
+    <string name="properties_content_counts">%1$s, %2$s</string>
+    <plurals name="properties_file_count">
+        <item quantity="one">%1$d Datei</item>
+        <item quantity="other">%1$d Dateien</item>
+    </plurals>
+    <plurals name="properties_folder_count">
+        <item quantity="one">%1$d Ordner</item>
+        <item quantity="other">%1$d Ordner</item>
+    </plurals>
     <string name="properties_calculating">Berechne %1$s …</string>
     <string name="type_folder">Ordner</string>
     <string name="type_file">Datei</string>
@@ -138,9 +170,23 @@
     <string name="replace_failed">Ersetzen fehlgeschlagen.</string>
     <string name="symbolic_links_not_supported">Symbolische Links können mit dieser Aktion nicht sicher kopiert werden.</string>
     <string name="unsafe_file_tree">Die Ordnerstruktur ist unsicher oder enthält einen Verzeichniszyklus.</string>
-    <string name="transfer_cleanup_warning">Übertragung abgeschlossen, aber %1$d temporäre Sicherung(en) konnten nicht entfernt werden.</string>
-    <string name="move_source_delete_warning">Verschieben abgeschlossen, aber %1$d Quelle(n) konnten nicht entfernt werden.</string>
-    <string name="transfer_multiple_warnings">Übertragung abgeschlossen, aber %1$d Quelle(n) und %2$d temporäre Sicherung(en) konnten nicht entfernt werden.</string>
+    <plurals name="transfer_cleanup_warning">
+        <item quantity="one">Übertragung abgeschlossen, aber %1$d temporäre Sicherung konnte nicht entfernt werden.</item>
+        <item quantity="other">Übertragung abgeschlossen, aber %1$d temporäre Sicherungen konnten nicht entfernt werden.</item>
+    </plurals>
+    <plurals name="move_source_delete_warning">
+        <item quantity="one">Verschieben abgeschlossen, aber %1$d Quellelement konnte nicht entfernt werden.</item>
+        <item quantity="other">Verschieben abgeschlossen, aber %1$d Quellelemente konnten nicht entfernt werden.</item>
+    </plurals>
+    <string name="transfer_multiple_warnings">Übertragung abgeschlossen, aber %1$s und %2$s konnten nicht entfernt werden.</string>
+    <plurals name="transfer_source_warning_count">
+        <item quantity="one">%1$d Quellelement</item>
+        <item quantity="other">%1$d Quellelemente</item>
+    </plurals>
+    <plurals name="transfer_backup_warning_count">
+        <item quantity="one">%1$d temporäre Sicherung</item>
+        <item quantity="other">%1$d temporäre Sicherungen</item>
+    </plurals>
     <string name="folder_named_create_failed">Ordner „%1$s“ konnte nicht erstellt werden.</string>
     <string name="folder_named_read_failed">Ordner „%1$s“ konnte nicht gelesen werden.</string>
     <string name="target_read_only">Zielordner ist schreibgeschützt.</string>

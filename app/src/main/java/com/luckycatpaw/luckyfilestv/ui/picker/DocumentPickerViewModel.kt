@@ -355,8 +355,8 @@ internal class DocumentPickerViewModel(
             }
 
             if (!documentsRepository.hasSystemDocumentAccess()) {
-                _uiState.update { it.copy(
-                    focusTargetKey = focusKey?.takeIf { target -> local.any { it.key == target } },
+                _uiState.update { state -> state.copy(
+                    focusTargetKey = focusKey?.takeIf { target -> local.any { item -> item.key == target } },
                     pickerItems = local,
                     providerLoading = false
                 )}
@@ -378,7 +378,9 @@ internal class DocumentPickerViewModel(
                 pickerItems = allItems,
                 focusTargetKey = focusKey?.takeIf { target -> allItems.any { it.key == target } },
                 providerLoading = false,
-                providerInfoMessage = rootsResult.errors.size.takeIf { it > 0 }?.let { appContext.getString(R.string.provider_load_errors, it) }
+                providerInfoMessage = rootsResult.errors.size.takeIf { it > 0 }?.let { errorCount ->
+                    appContext.resources.getQuantityString(R.plurals.provider_load_errors, errorCount, errorCount)
+                }
             )}
         }
     }
@@ -444,7 +446,7 @@ internal class DocumentPickerViewModel(
                 )}
             },
             onLoaded = { items, title, metadata ->
-                _uiState.update { it.copy(
+                _uiState.update { state -> state.copy(
                     pickerItems = items,
                     currentLocalTitle = title,
                     currentLocalDirectoryWritable = (metadata["writable"] as? Boolean) ?: false,
@@ -452,7 +454,7 @@ internal class DocumentPickerViewModel(
                         path = path,
                         storageRoot = currentStorageRoot
                     ),
-                    focusTargetKey = focusKey?.takeIf { target -> items.any { it.key == target } },
+                    focusTargetKey = focusKey?.takeIf { target -> items.any { item -> item.key == target } },
                     providerLoading = false
                 )}
             },

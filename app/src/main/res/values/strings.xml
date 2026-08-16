@@ -33,11 +33,17 @@
     <string name="error_generic">Error</string>
     <string name="save_file">Save file</string>
     <string name="search_running">Searching…</string>
-    <string name="provider_search_errors">%1$d storage source(s) could not be searched.</string>
+    <plurals name="provider_search_errors">
+        <item quantity="one">%1$d storage source could not be searched.</item>
+        <item quantity="other">%1$d storage sources could not be searched.</item>
+    </plurals>
     <string name="no_search_results">No results for “%1$s”.</string>
     <string name="providers_still_loading">Some storage sources are still loading…</string>
     <string name="recents_loading">Loading recently used files…</string>
-    <string name="provider_load_errors">%1$d storage source(s) could not be loaded.</string>
+    <plurals name="provider_load_errors">
+        <item quantity="one">%1$d storage source could not be loaded.</item>
+        <item quantity="other">%1$d storage sources could not be loaded.</item>
+    </plurals>
     <string name="no_recent_files">No recently used files.</string>
     <string name="storage_source_open_failed">Storage source could not be opened.</string>
     <string name="folder_load_failed">Folder could not be loaded.</string>
@@ -47,17 +53,35 @@
     <string name="internal_storage">Internal storage</string>
     <string name="copying">Copying…</string>
     <string name="moving">Moving…</string>
-    <string name="items_copied">%1$d item(s) copied.</string>
-    <string name="items_moved">%1$d item(s) moved.</string>
-    <string name="transfer_summary">%1$d successful, %2$d skipped, %3$d failed.</string>
+    <plurals name="items_copied">
+        <item quantity="one">%1$d item copied.</item>
+        <item quantity="other">%1$d items copied.</item>
+    </plurals>
+    <plurals name="items_moved">
+        <item quantity="one">%1$d item moved.</item>
+        <item quantity="other">%1$d items moved.</item>
+    </plurals>
+    <plurals name="transfer_summary">
+        <item quantity="one">%1$d item completed successfully, %2$d skipped, %3$d failed.</item>
+        <item quantity="other">%1$d items completed successfully, %2$d skipped, %3$d failed.</item>
+    </plurals>
     <string name="operation_cancelled_partial">Operation cancelled. Files already completed are kept.</string>
     <string name="deleting_item">Deleting %1$s</string>
     <string name="deleted">Deleted.</string>
     <string name="deleting_item_progress">Deleting %1$d/%2$d: %3$s</string>
-    <string name="items_deleted">%1$d item(s) deleted.</string>
-    <string name="delete_summary">%1$d deleted, %2$d failed.</string>
+    <plurals name="items_deleted">
+        <item quantity="one">%1$d item deleted.</item>
+        <item quantity="other">%1$d items deleted.</item>
+    </plurals>
+    <plurals name="delete_summary">
+        <item quantity="one">%1$d item deleted, %2$d failed.</item>
+        <item quantity="other">%1$d items deleted, %2$d failed.</item>
+    </plurals>
     <string name="confirm_delete">Delete permanently?</string>
-    <string name="confirm_delete_count">Delete %1$d items?</string>
+    <plurals name="confirm_delete_count">
+        <item quantity="one">Delete %1$d item?</item>
+        <item quantity="other">Delete %1$d items?</item>
+    </plurals>
     <string name="confirm_delete_selected_description">The selected files and folders will be permanently deleted.</string>
     <string name="file_already_exists">File already exists</string>
     <string name="target_path">Target: %1$s</string>
@@ -72,7 +96,15 @@
     <string name="properties_contents">Contents</string>
     <string name="properties_modified">Modified</string>
     <string name="properties_path">Path</string>
-    <string name="properties_content_counts">%1$d files, %2$d folders</string>
+    <string name="properties_content_counts">%1$s, %2$s</string>
+    <plurals name="properties_file_count">
+        <item quantity="one">%1$d file</item>
+        <item quantity="other">%1$d files</item>
+    </plurals>
+    <plurals name="properties_folder_count">
+        <item quantity="one">%1$d folder</item>
+        <item quantity="other">%1$d folders</item>
+    </plurals>
     <string name="properties_calculating">Calculating %1$s…</string>
     <string name="type_folder">Folder</string>
     <string name="type_file">File</string>
@@ -138,9 +170,23 @@
     <string name="replace_failed">Replacement failed.</string>
     <string name="symbolic_links_not_supported">This operation cannot safely copy symbolic links.</string>
     <string name="unsafe_file_tree">The folder tree is unsafe or contains a directory cycle.</string>
-    <string name="transfer_cleanup_warning">Transfer completed, but %1$d temporary backup(s) could not be removed.</string>
-    <string name="move_source_delete_warning">Move completed, but %1$d source item(s) could not be removed.</string>
-    <string name="transfer_multiple_warnings">Transfer completed, but %1$d source item(s) and %2$d temporary backup(s) could not be removed.</string>
+    <plurals name="transfer_cleanup_warning">
+        <item quantity="one">Transfer completed, but %1$d temporary backup could not be removed.</item>
+        <item quantity="other">Transfer completed, but %1$d temporary backups could not be removed.</item>
+    </plurals>
+    <plurals name="move_source_delete_warning">
+        <item quantity="one">Move completed, but %1$d source item could not be removed.</item>
+        <item quantity="other">Move completed, but %1$d source items could not be removed.</item>
+    </plurals>
+    <string name="transfer_multiple_warnings">Transfer completed, but %1$s and %2$s could not be removed.</string>
+    <plurals name="transfer_source_warning_count">
+        <item quantity="one">%1$d source item</item>
+        <item quantity="other">%1$d source items</item>
+    </plurals>
+    <plurals name="transfer_backup_warning_count">
+        <item quantity="one">%1$d temporary backup</item>
+        <item quantity="other">%1$d temporary backups</item>
+    </plurals>
     <string name="folder_named_create_failed">Folder “%1$s” could not be created.</string>
     <string name="folder_named_read_failed">Folder “%1$s” could not be read.</string>
     <string name="target_read_only">Target folder is read-only.</string>
