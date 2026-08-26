@@ -1,8 +1,14 @@
 package com.luckycatpaw.luckyfilestv.util
 
 import java.io.File
+import java.io.IOException
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.LinkOption
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.BasicFileAttributes
 import kotlinx.coroutines.CancellationException
 
 /**
@@ -103,6 +109,69 @@ object FileUtil {
             number++
         }
         return candidate
+    }
+
+    /**
+     * Moves [source] to [target] without ever replacing existing data.
+     *
+     * Both [File.renameTo] and [Files.move] with [StandardCopyOption.ATOMIC_MOVE] map to
+     * `rename(2)`, which replaces an existing target atomically and silently. A preceding
+     * existence check only narrows the race window (TOCTOU), it does not close it.
+     *
+     * Therefore the target name is first reserved with an atomic, exclusive create
+     * (`O_CREAT | O_EXCL` for files, `mkdir(2)` for directories). Both fail with `EEXIST`
+     * if anything at all occupies the name — including a dangling symbolic link, which
+     * `File.exists()` would not report. Only afterwards is the atomic move performed, and it
+     * can then merely replace the placeholder this method owns itself.
+     *
+     * @throws FileAlreadyExistsException if the target name is already taken.
+     * @throws AtomicMoveNotSupportedException if source and target live on different volumes.
+     * @throws IOException on any other failure.
+     */
+    @Throws(IOException::class)
+    fun moveWithoutReplacing(source: File, target: File) {
+        val sourcePath = source.toPath()
+        val targetPath = target.toPath()
+
+        val sourceIsDirectory = Files
+            .readAttributes(sourcePath, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+            .isDirectory
+
+        if (sourceIsDirectory) {
+            Files.createDirectory(targetPath)
+        } else {
+            Files.createFile(targetPath)
+        }
+
+        try {
+            Files.move(sourcePath, targetPath, StandardCopyOption.ATOMIC_MOVE)
+        } catch (atomicUnsupported: AtomicMoveNotSupportedException) {
+            releaseReservation(targetPath)
+            throw atomicUnsupported
+        } catch (moveFailed: IOException) {
+            // Some filesystems refuse rename(2) onto an existing name even when the entry is an
+            // empty directory. Hand the reservation back and retry without it: Files.move without
+            // REPLACE_EXISTING still refuses an occupied target, so no foreign data is overwritten.
+            // A cross-volume move can never reach this branch, it surfaces as
+            // AtomicMoveNotSupportedException above.
+            releaseReservation(targetPath)
+
+            try {
+                Files.move(sourcePath, targetPath)
+            } catch (fallbackFailed: IOException) {
+                fallbackFailed.addSuppressed(moveFailed)
+                throw fallbackFailed
+            }
+        }
+    }
+
+    /**
+     * Removes a placeholder created by [moveWithoutReplacing]. Deleting a directory only
+     * succeeds while it is still empty, so a target that meanwhile received content is kept.
+     * Must never run after the reservation has been given up.
+     */
+    private fun releaseReservation(target: Path) {
+        runCatching { Files.deleteIfExists(target) }
     }
 
     /**

@@ -39,6 +39,20 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!--
+            Lets AppCompatDelegate persist and restore the selected app language below API 33.
+            The service is never started, it only carries the meta-data; appcompat reads the
+            stored locale when the first activity attaches, so no recreation flash on cold start.
+        -->
+        <service
+            android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"
+            android:enabled="false"
+            android:exported="false">
+            <meta-data
+                android:name="autoStoreLocales"
+                android:value="true" />
+        </service>
+
         <provider
             android:name=".data.provider.FileContentProvider"
             android:authorities="${applicationId}.files"

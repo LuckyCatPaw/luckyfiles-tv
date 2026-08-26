@@ -3,6 +3,7 @@ package com.luckycatpaw.luckyfilestv.data.transfer
 import android.content.Context
 import com.luckycatpaw.luckyfilestv.R
 import com.luckycatpaw.luckyfilestv.data.common.FileTreeWalker
+import com.luckycatpaw.luckyfilestv.util.DirectorySync
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
@@ -143,7 +144,12 @@ internal class ReplacementTransactionStore(context: Context, private val fileTre
     }
 
     private fun writeJournal(journal: File, transaction: ReplacementTransaction) {
-        check(journalDirectory.exists() || journalDirectory.mkdirs())
+        val journalDirectoryCreated = !journalDirectory.exists() && journalDirectory.mkdirs()
+        check(journalDirectory.exists())
+
+        if (journalDirectoryCreated) {
+            DirectorySync.syncParentOf(journalDirectory)
+        }
 
         val temporary = File(journalDirectory, ".${journal.name}.tmp")
 
@@ -168,6 +174,11 @@ internal class ReplacementTransactionStore(context: Context, private val fileTre
         } catch (_: Exception) {
             check(journal.exists() || temporary.renameTo(journal))
         }
+
+        // fd.sync() above made the journal contents durable, but not the directory entry that
+        // gives it its final name. Without this the recovery scan can come up empty after a crash
+        // and the half-finished replacement below would never be rolled back.
+        DirectorySync.sync(journalDirectory)
     }
 
     private fun readJournal(journal: File): ReplacementTransaction? = runCatching {

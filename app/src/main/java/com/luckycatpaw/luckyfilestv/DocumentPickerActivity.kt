@@ -4,8 +4,8 @@ import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
@@ -17,7 +17,7 @@ import com.luckycatpaw.luckyfilestv.ui.picker.model.PickerUiEvent
 import com.luckycatpaw.luckyfilestv.util.requestAllFilesAccess
 import kotlinx.coroutines.launch
 
-class DocumentPickerActivity : ComponentActivity() {
+class DocumentPickerActivity : AppCompatActivity() {
 
     private lateinit var viewModel: DocumentPickerViewModel
 

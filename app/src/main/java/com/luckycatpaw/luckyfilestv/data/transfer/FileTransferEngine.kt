@@ -4,9 +4,12 @@ import android.content.Context
 import com.luckycatpaw.luckyfilestv.R
 import com.luckycatpaw.luckyfilestv.data.common.FileTreeWalker
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeEntryType
+import com.luckycatpaw.luckyfilestv.util.DirectorySync
+import com.luckycatpaw.luckyfilestv.util.FileUtil
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileInputStream
+import java.io.IOException
 import java.nio.channels.Channels
 import java.nio.channels.FileChannel
 import java.nio.file.Files
@@ -74,14 +77,18 @@ internal class FileTransferEngine(context: Context, private val fileTreeWalker: 
 
         if (replace) return null
 
-        if (source.renameTo(target)) {
-            return TransferItemResult(
-                cleanupWarning = false,
-                bytesTransferred = 0L
-            )
+        try {
+            FileUtil.moveWithoutReplacing(source, target)
+        } catch (ignored: IOException) {
+            // Occupied target, different volume or any other rename(2) failure: fall back to the
+            // copy path, which reports an occupied target with a proper message.
+            return null
         }
 
-        return null
+        return TransferItemResult(
+            cleanupWarning = false,
+            bytesTransferred = 0L
+        )
     }
 
     suspend fun delete(file: File) {
@@ -266,11 +273,7 @@ internal class FileTransferEngine(context: Context, private val fileTreeWalker: 
     }
 
     private fun syncDirectory(directory: File?) {
-        val path = directory?.toPath() ?: return
-
-        runCatching {
-            FileChannel.open(path, StandardOpenOption.READ).use { it.force(true) }
-        }
+        DirectorySync.sync(directory)
     }
 
     private suspend fun deleteForCleanup(file: File): Boolean = withContext(NonCancellable) {

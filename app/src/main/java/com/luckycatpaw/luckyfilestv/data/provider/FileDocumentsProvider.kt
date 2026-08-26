@@ -19,6 +19,8 @@ import com.luckycatpaw.luckyfilestv.data.transfer.model.TransferOperation
 import com.luckycatpaw.luckyfilestv.util.FileUtil
 import java.io.File
 import java.io.FileNotFoundException
+import java.io.IOException
+import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -198,12 +200,15 @@ class FileDocumentsProvider : DocumentsProvider() {
 
         if (safeName == source.name) return documentId
 
-        val destination = File(parent, safeName).canonicalFile
-        if (destination.exists()) {
-            notFound(R.string.provider_document_exists, safeName)
-        }
+        // Deliberately not canonicalized: [parent] already is, and canonicalizing a name that is
+        // currently a dangling symbolic link would resolve to the link target outside [parent].
+        val destination = File(parent, safeName)
 
-        if (!source.renameTo(destination)) {
+        try {
+            FileUtil.moveWithoutReplacing(source, destination)
+        } catch (exists: FileAlreadyExistsException) {
+            notFound(R.string.provider_document_exists, safeName)
+        } catch (renameFailed: IOException) {
             notFound(R.string.provider_could_not_rename, source.name)
         }
 

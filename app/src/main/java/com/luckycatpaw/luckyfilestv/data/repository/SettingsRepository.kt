@@ -10,8 +10,10 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.luckycatpaw.luckyfilestv.data.common.model.FileManagerSettings
 import com.luckycatpaw.luckyfilestv.data.common.model.FileSortMode
 import com.luckycatpaw.luckyfilestv.util.AppLocaleManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 
 private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "filemanager_settings")
 
@@ -54,7 +56,11 @@ class SettingsRepository(private val context: Context) {
             }
         }
 
-        AppLocaleManager.apply(context, normalizedTag)
+        // setApplicationLocales recreates the running activities, which the appcompat backport
+        // does synchronously, so it must not be invoked from the DataStore's IO dispatcher.
+        withContext(Dispatchers.Main) {
+            AppLocaleManager.apply(normalizedTag)
+        }
     }
 
     suspend fun setHideFolderJpg(enabled: Boolean) {

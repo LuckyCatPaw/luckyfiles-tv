@@ -9,6 +9,8 @@ import com.luckycatpaw.luckyfilestv.data.common.model.FileSortMode
 import com.luckycatpaw.luckyfilestv.util.FileUtil
 import com.luckycatpaw.luckyfilestv.util.MimeTypes
 import java.io.File as JavaFile
+import java.io.IOException
+import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.util.Locale
@@ -100,10 +102,17 @@ internal class FileRepository(
 
             val target = JavaFile(parent, cleanName).absoluteFile
             require(target.parentFile?.canonicalFile == parent) { context.getString(R.string.invalid_name) }
-            require(!Files.exists(target.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-                context.getString(R.string.already_exists, cleanName)
+
+            try {
+                FileUtil.moveWithoutReplacing(source, target)
+            } catch (exists: FileAlreadyExistsException) {
+                throw IllegalStateException(
+                    context.getString(R.string.already_exists, cleanName),
+                    exists
+                )
+            } catch (renameFailed: IOException) {
+                throw IllegalStateException(context.getString(R.string.rename_failed), renameFailed)
             }
-            check(source.renameTo(target)) { context.getString(R.string.rename_failed) }
 
             target.absolutePath
         }

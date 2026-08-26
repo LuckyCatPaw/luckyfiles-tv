@@ -478,8 +478,13 @@ class TransferCoordinator(
     private fun insufficientSpaceIssue(targetDirectory: File, requiredBytes: Long): TransferIssue? {
         if (requiredBytes <= 0L) return null
 
-        val usableBytes = runCatching { targetDirectory.usableSpace }.getOrDefault(0L)
-        if (usableBytes <= 0L) return null
+        // usableSpace returns 0 for a full volume as well as for a failed statfs(2), so the two
+        // cases are told apart via totalSpace: it is only 0 when the measurement itself is
+        // unavailable. A genuine "0 bytes free" has to fail the check instead of skipping it.
+        val volumeBytes = runCatching { targetDirectory.totalSpace }.getOrNull() ?: return null
+        if (volumeBytes <= 0L) return null
+
+        val usableBytes = runCatching { targetDirectory.usableSpace }.getOrNull() ?: return null
 
         val requiredWithMargin = safeAdd(requiredBytes, FREE_SPACE_MARGIN_BYTES)
         if (usableBytes >= requiredWithMargin) return null
