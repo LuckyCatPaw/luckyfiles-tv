@@ -8,12 +8,21 @@
         </intent>
     </queries>
 
+    <!--
+        TV only. Leanback is now required, which makes Google Play filter the app to
+        Android TV devices. Touchscreen and faketouch stay optional because TVs have
+        neither; declaring them as not required is what keeps TV devices eligible.
+    -->
+    <uses-feature
+        android:name="android.software.leanback"
+        android:required="true" />
+
     <uses-feature
         android:name="android.hardware.touchscreen"
         android:required="false" />
 
     <uses-feature
-        android:name="android.software.leanback"
+        android:name="android.hardware.faketouch"
         android:required="false" />
 
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
@@ -25,6 +34,7 @@
     <application
         android:name=".LuckyFilesTVApplication"
         android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
         android:banner="@mipmap/tv_banner"
         android:enableOnBackInvokedCallback="true"
         android:icon="@mipmap/ic_launcher"
@@ -73,10 +83,13 @@
         <activity
             android:name=".MainActivity"
             android:exported="true">
+            <!--
+                LEANBACK_LAUNCHER only. The regular LAUNCHER category was removed so the
+                app no longer shows up in a phone or tablet launcher.
+            -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
-                <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>

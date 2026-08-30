@@ -226,4 +226,6 @@
     </plurals>
     <string name="storage_permission_screen_missing">This device has no settings screen for full file access. Please grant it manually under Settings &gt; Apps.</string>
     <string name="not_enough_space">Not enough space in the target folder: %1$s required, %2$s available.</string>
+    <string name="transfer_stopped_time_limit">Transfer stopped. Android limits background transfers to six hours per day. Open LuckyFiles TV to start the remaining files again.</string>
+    <string name="transfer_stopped_no_foreground">Transfer could not be started. The daily limit for background transfers is used up. Open LuckyFiles TV and try again later.</string>
 </resources>
