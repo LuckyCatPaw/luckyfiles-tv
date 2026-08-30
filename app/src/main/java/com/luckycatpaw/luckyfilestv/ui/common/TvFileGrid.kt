@@ -113,20 +113,14 @@ internal fun <T> TvFileGrid(
 
     /**
      * Scrolls the target into view and declares it as the focus target.
-     *
-     * The job ends there. It no longer waits for focus to be granted: if the item is
-     * not composed yet it will claim the declared index by itself, so there is
-     * nothing left here to wait for.
      */
-    fun startNavigation(targetIndex: Int) {
+    fun startNavigation(targetIndex: Int, isRepeat: Boolean = false) {
         val oldIndex = selectedIndex
         val rowChanged = (targetIndex / columnCount) != (oldIndex / columnCount)
 
         pendingNavigationIndex = targetIndex
         navigationJob?.cancel()
 
-        // Performance Optimization: Sync-check if the item is already visible and positioned correctly.
-        // If so, we can skip the coroutine overhead entirely.
         val layoutInfo = gridState.layoutInfo
         val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
 
@@ -141,7 +135,7 @@ internal fun <T> TvFileGrid(
 
             if (!scrollResult.needed) {
                 if (focusState.focusIndex(targetIndex)) {
-                    return // Instant focus granted, no job needed.
+                    return
                 }
             }
         }
@@ -154,7 +148,6 @@ internal fun <T> TvFileGrid(
                 gridState.layoutInfo.viewportStartOffset
 
             if (currentViewportHeight <= 0) {
-                // Not yet laid out, just jump
                 gridState.scrollToItem(target)
             } else {
                 val scrollResult = calculateInstantScroll(
@@ -166,7 +159,14 @@ internal fun <T> TvFileGrid(
                 )
 
                 if (scrollResult.needed) {
-                    gridState.scrollToItem(scrollResult.index, scrollResult.offset)
+                    if (isRepeat) {
+                        gridState.scrollToItem(scrollResult.index, scrollResult.offset)
+                    } else {
+                        // Animation and focus in parallel so focus doesn't lag behind the scroll
+                        launch {
+                            gridState.animateScrollToItem(scrollResult.index, scrollResult.offset)
+                        }
+                    }
                 }
             }
 
@@ -309,7 +309,7 @@ internal fun <T> TvFileGrid(
 
                 if (nextIndex != null) {
                     onSelectionChanged(nextIndex, items[nextIndex])
-                    startNavigation(nextIndex)
+                    startNavigation(nextIndex, isRepeat = event.nativeKeyEvent.repeatCount > 0)
                 }
 
                 true

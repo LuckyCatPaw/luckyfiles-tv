@@ -1,5 +1,7 @@
 package com.luckycatpaw.luckyfilestv.ui.browser
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -302,21 +304,31 @@ private fun LocalItemPreview(item: BrowserItem, selected: Boolean, useFolderJpgA
         }
     }
 
-    bitmap?.let {
-        Image(
-            bitmap = it,
-            contentDescription = null,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(3.dp)
-        )
-    } ?: Icon(
-        imageVector = localFallbackIcon(item),
-        contentDescription = null,
-        tint = previewIconColor(selected),
-        modifier = Modifier.size(54.dp)
-    )
+    Crossfade(
+        targetState = bitmap,
+        animationSpec = tween(durationMillis = 300),
+        label = "LocalItemPreviewFade"
+    ) { currentBitmap ->
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            if (currentBitmap != null) {
+                Image(
+                    bitmap = currentBitmap,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(3.dp)
+                )
+            } else {
+                Icon(
+                    imageVector = localFallbackIcon(item),
+                    contentDescription = null,
+                    tint = previewIconColor(selected),
+                    modifier = Modifier.size(54.dp)
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -337,21 +349,31 @@ private fun ProviderItemPreview(item: PickerBrowserItem, selected: Boolean) {
         }
     }
 
-    bitmap?.let {
-        Image(
-            bitmap = it,
-            contentDescription = null,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(3.dp)
-        )
-    } ?: Icon(
-        imageVector = providerFallbackIcon(item),
-        contentDescription = null,
-        tint = previewIconColor(selected),
-        modifier = Modifier.size(54.dp)
-    )
+    Crossfade(
+        targetState = bitmap,
+        animationSpec = tween(durationMillis = 300),
+        label = "ProviderItemPreviewFade"
+    ) { currentBitmap ->
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            if (currentBitmap != null) {
+                Image(
+                    bitmap = currentBitmap,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(3.dp)
+                )
+            } else {
+                Icon(
+                    imageVector = providerFallbackIcon(item),
+                    contentDescription = null,
+                    tint = previewIconColor(selected),
+                    modifier = Modifier.size(54.dp)
+                )
+            }
+        }
+    }
 }
 
 @Composable

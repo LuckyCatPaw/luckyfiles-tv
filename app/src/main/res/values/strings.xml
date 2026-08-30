@@ -137,8 +137,8 @@
     <string name="descending">Descending</string>
     <string name="folders_first">Folders first</string>
     <string name="folders_first_desc">Shows folders before regular files regardless of the selected sort property.</string>
-    <string name="state_on">On</string>
-    <string name="state_off">Off</string>
+    <string name="app_state_on">On</string>
+    <string name="app_state_off">Off</string>
     <string name="active">Active</string>
     <string name="sort_name_ascending_desc">Sorts names from A to Z.</string>
     <string name="sort_name_descending_desc">Sorts names from Z to A.</string>

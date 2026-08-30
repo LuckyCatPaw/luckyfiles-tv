@@ -46,10 +46,14 @@ internal object TvFileGridDefaults {
  * made the previous frame-counting approach fragile on slow hardware.
  */
 @Stable
-internal class TvFileGridFocusState internal constructor(private val itemCount: Int) {
+internal class TvFileGridFocusState internal constructor(private var itemCount: Int) {
     // Lazy grids only compose a small window. Keep requesters for that window
     // instead of allocating one object for every file in a huge directory.
     private val requesters = mutableMapOf<Int, FocusRequester>()
+
+    fun updateItemCount(newCount: Int) {
+        itemCount = newCount
+    }
 
     /**
      * The index that should hold focus, or -1 once the request has been served or
@@ -141,6 +145,14 @@ internal class TvFileGridFocusState internal constructor(private val itemCount: 
 }
 
 @Composable
-internal fun rememberTvFileGridFocusState(itemKeys: List<*>): TvFileGridFocusState = remember(itemKeys) {
-    TvFileGridFocusState(itemKeys.size)
+internal fun rememberTvFileGridFocusState(itemKeys: List<*>, key: Any? = Unit): TvFileGridFocusState {
+    val state = remember(key) {
+        TvFileGridFocusState(itemKeys.size)
+    }
+
+    androidx.compose.runtime.SideEffect {
+        state.updateItemCount(itemKeys.size)
+    }
+
+    return state
 }

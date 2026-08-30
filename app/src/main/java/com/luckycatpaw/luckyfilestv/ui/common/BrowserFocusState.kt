@@ -28,7 +28,7 @@ internal enum class BrowserFocusArea {
  */
 @Stable
 internal class BrowserFocusState<K> internal constructor(
-    private val keys: List<K>,
+    private var keys: List<K>,
     private val gridFocusState: TvFileGridFocusState,
     private val gridState: LazyGridState,
     private val scope: CoroutineScope,
@@ -38,6 +38,30 @@ internal class BrowserFocusState<K> internal constructor(
     var focusedIndex by mutableIntStateOf(initialFocusIndex)
     var activeFocusArea by mutableStateOf(BrowserFocusArea.GRID)
     var gridSelectionVisible by mutableStateOf(value = true)
+
+    fun updateKeys(newKeys: List<K>) {
+        if (newKeys == keys) return
+
+        val oldKey = selectedIndex.let { if (it in keys.indices) keys[it] else null }
+        keys = newKeys
+
+        if (oldKey != null) {
+            val newIndex = newKeys.indexOf(oldKey)
+            if (newIndex >= 0) {
+                selectedIndex = newIndex
+                if (focusedIndex >= 0) focusedIndex = newIndex
+            } else {
+                selectedIndex = selectedIndex.coerceAtLeast(0).coerceAtMost(newKeys.lastIndex)
+                if (focusedIndex >= 0) focusedIndex = selectedIndex
+            }
+        } else if (selectedIndex < 0 && newKeys.isNotEmpty()) {
+            // Keep it at -1 if it was -1, unless we want a default.
+            // For now, staying at -1 is safer for initial focus logic.
+        } else {
+            selectedIndex = selectedIndex.coerceAtLeast(-1).coerceAtMost(newKeys.lastIndex)
+            if (focusedIndex >= 0) focusedIndex = selectedIndex
+        }
+    }
 
     /**
      * Index whose focus event is expected next, used to ignore focus callbacks from
@@ -108,6 +132,14 @@ internal class BrowserFocusState<K> internal constructor(
         gridSelectionVisible = true
         selectedIndex = index
         headerFocusIsExplicit = false
+
+        // Optimization: Try immediate focus to beat the native D-pad movement if
+        // the item is already visible.
+        if (gridFocusState.focusIndex(index)) {
+            focusedIndex = index
+            cancelActiveJobs()
+            return
+        }
 
         focusRestoreJob?.cancel()
         focusRestoreJob = scope.launch {
@@ -218,13 +250,22 @@ internal fun <K> rememberBrowserFocusState(
     gridFocusState: TvFileGridFocusState,
     gridState: LazyGridState,
     scope: CoroutineScope,
-    initialFocusIndex: Int
-): BrowserFocusState<K> = remember(keys) {
-    BrowserFocusState(
-        keys = keys,
-        gridFocusState = gridFocusState,
-        gridState = gridState,
-        scope = scope,
-        initialFocusIndex = initialFocusIndex
-    )
+    initialFocusIndex: Int,
+    key: Any? = Unit
+): BrowserFocusState<K> {
+    val state = remember(key) {
+        BrowserFocusState(
+            keys = keys,
+            gridFocusState = gridFocusState,
+            gridState = gridState,
+            scope = scope,
+            initialFocusIndex = initialFocusIndex
+        )
+    }
+
+    androidx.compose.runtime.SideEffect {
+        state.updateKeys(keys)
+    }
+
+    return state
 }

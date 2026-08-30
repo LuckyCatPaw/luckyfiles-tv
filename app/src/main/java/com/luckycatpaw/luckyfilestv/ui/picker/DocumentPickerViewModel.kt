@@ -769,6 +769,5 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
         localCoordinator.clearCache()
         storageRepository.stopWatching()
         eventChannel.close()
-        super.onCleared()
     }
 }

@@ -11,7 +11,7 @@ android {
     defaultConfig {
         applicationId = "com.luckycatpaw.luckyfilestv"
         minSdk = 30
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 1
         versionName = "1.0"
     }

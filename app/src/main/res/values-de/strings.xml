@@ -137,8 +137,8 @@
     <string name="descending">Absteigend</string>
     <string name="folders_first">Ordner zuerst</string>
     <string name="folders_first_desc">Zeigt Ordner unabhängig vom gewählten Sortiermerkmal vor normalen Dateien an.</string>
-    <string name="state_on">Ein</string>
-    <string name="state_off">Aus</string>
+    <string name="app_state_on">Ein</string>
+    <string name="app_state_off">Aus</string>
     <string name="active">Aktiv</string>
     <string name="sort_name_ascending_desc">Sortiert Namen von A bis Z.</string>
     <string name="sort_name_descending_desc">Sortiert Namen von Z bis A.</string>

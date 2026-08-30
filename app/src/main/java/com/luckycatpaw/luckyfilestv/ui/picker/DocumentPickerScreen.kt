@@ -14,6 +14,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.SurfaceDefaults
@@ -32,6 +33,10 @@ internal fun DocumentPickerScreen(viewModel: DocumentPickerViewModel) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val uiState by viewModel.uiState.collectAsState()
+
+    val noFilesSelectedText = stringResource(R.string.no_files_selected)
+    val searchEmptyText = stringResource(R.string.search_empty)
+    val errorGenericText = stringResource(R.string.error_generic)
 
     var showCreateFileDialog by remember { mutableStateOf(false) }
     var showCreateFolderDialog by remember { mutableStateOf(false) }
@@ -64,7 +69,7 @@ internal fun DocumentPickerScreen(viewModel: DocumentPickerViewModel) {
         if (uris.isEmpty()) {
             Toast.makeText(
                 context,
-                context.getString(R.string.no_files_selected),
+                noFilesSelectedText,
                 Toast.LENGTH_SHORT
             ).show()
             return
@@ -92,7 +97,7 @@ internal fun DocumentPickerScreen(viewModel: DocumentPickerViewModel) {
                 // for provider locations as well as local ones.
                 val primaryActionLabel = when {
                     viewModel.request.allowMultiple ->
-                        context.getString(R.string.select_count, selectedItems.size)
+                        stringResource(R.string.select_count, selectedItems.size)
 
                     browsing -> uiState.primaryActionLabel
 
@@ -238,16 +243,16 @@ internal fun DocumentPickerScreen(viewModel: DocumentPickerViewModel) {
 
                 if (showSearchDialog) {
                     NameInputOverlay(
-                        title = context.getString(R.string.search),
+                        title = stringResource(R.string.search),
                         initialValue = uiState.currentSearchQuery,
-                        confirmLabel = context.getString(R.string.search),
+                        confirmLabel = stringResource(R.string.search),
                         onConfirm = search@{ query ->
                             val cleanQuery = query.trim()
 
                             if (cleanQuery.isBlank()) {
                                 Toast.makeText(
                                     context,
-                                    context.getString(R.string.search_empty),
+                                    searchEmptyText,
                                     Toast.LENGTH_SHORT
                                 ).show()
                                 return@search
@@ -265,9 +270,9 @@ internal fun DocumentPickerScreen(viewModel: DocumentPickerViewModel) {
 
                 if (showCreateFolderDialog) {
                     NameInputOverlay(
-                        title = context.getString(R.string.new_folder),
+                        title = stringResource(R.string.new_folder),
                         initialValue = "",
-                        confirmLabel = context.getString(R.string.create),
+                        confirmLabel = stringResource(R.string.create),
                         onConfirm = createFolder@{ folderName ->
                             val cleanName = folderName.trim()
                             if (cleanName.isBlank()) return@createFolder
@@ -293,7 +298,7 @@ internal fun DocumentPickerScreen(viewModel: DocumentPickerViewModel) {
                                         }.onFailure {
                                             Toast.makeText(
                                                 context,
-                                                it.message ?: context.getString(R.string.error_generic),
+                                                it.message ?: errorGenericText,
                                                 Toast.LENGTH_LONG
                                             ).show()
                                         }
@@ -320,7 +325,7 @@ internal fun DocumentPickerScreen(viewModel: DocumentPickerViewModel) {
                                             Toast.makeText(
                                                 context,
                                                 error.message
-                                                    ?: context.getString(R.string.error_generic),
+                                                    ?: errorGenericText,
                                                 Toast.LENGTH_LONG
                                             ).show()
                                         }
@@ -337,9 +342,9 @@ internal fun DocumentPickerScreen(viewModel: DocumentPickerViewModel) {
 
                 if (showCreateFileDialog) {
                     NameInputOverlay(
-                        title = context.getString(R.string.save_file),
+                        title = stringResource(R.string.save_file),
                         initialValue = viewModel.request.suggestedFileName,
-                        confirmLabel = context.getString(R.string.save),
+                        confirmLabel = stringResource(R.string.save),
                         onConfirm = createFile@{ name ->
                             val cleanName = name.trim()
                             if (cleanName.isBlank()) return@createFile
@@ -359,7 +364,7 @@ internal fun DocumentPickerScreen(viewModel: DocumentPickerViewModel) {
                                         }.onFailure {
                                             Toast.makeText(
                                                 context,
-                                                it.message ?: context.getString(R.string.error_generic),
+                                                it.message ?: errorGenericText,
                                                 Toast.LENGTH_LONG
                                             ).show()
                                         }
@@ -384,7 +389,7 @@ internal fun DocumentPickerScreen(viewModel: DocumentPickerViewModel) {
                                             Toast.makeText(
                                                 context,
                                                 error.message
-                                                    ?: context.getString(R.string.error_generic),
+                                                    ?: errorGenericText,
                                                 Toast.LENGTH_LONG
                                             ).show()
                                         }

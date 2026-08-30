@@ -1,6 +1,7 @@
 package com.luckycatpaw.luckyfilestv.data.transfer
 
 import android.content.Context
+import android.os.storage.StorageManager
 import com.luckycatpaw.luckyfilestv.R
 import com.luckycatpaw.luckyfilestv.data.common.FileTreeWalker
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeCycleException
@@ -475,6 +476,16 @@ class TransferCoordinator(
         )
     }
 
+    private fun getAvailableBytes(file: File): Long? {
+        val storageManager = appContext.getSystemService(StorageManager::class.java)
+        return runCatching {
+            val uuid = storageManager.getUuidForPath(file)
+            storageManager.getAllocatableBytes(uuid)
+        }.getOrElse {
+            runCatching { file.usableSpace }.getOrNull()
+        }
+    }
+
     private fun insufficientSpaceIssue(targetDirectory: File, requiredBytes: Long): TransferIssue? {
         if (requiredBytes <= 0L) return null
 
@@ -484,7 +495,7 @@ class TransferCoordinator(
         val volumeBytes = runCatching { targetDirectory.totalSpace }.getOrNull() ?: return null
         if (volumeBytes <= 0L) return null
 
-        val usableBytes = runCatching { targetDirectory.usableSpace }.getOrNull() ?: return null
+        val usableBytes = getAvailableBytes(targetDirectory) ?: return null
 
         val requiredWithMargin = safeAdd(requiredBytes, FREE_SPACE_MARGIN_BYTES)
         if (usableBytes >= requiredWithMargin) return null

@@ -11,6 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -31,7 +32,6 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
-import java.util.Locale
 
 @Composable
 fun PropertiesOverlay(itemName: String, properties: FileProperties?, error: String?, onDismiss: () -> Unit) {
@@ -163,9 +163,10 @@ private fun PropertyRow(label: String, value: String) {
 @Composable
 private fun formatType(properties: FileProperties): String {
     if (properties.isDirectory) return stringResource(R.string.type_folder)
+    val locale = LocalConfiguration.current.locales[0]
     return properties.extension
         ?.takeIf { it.isNotBlank() }
-        ?.uppercase(Locale.getDefault())
+        ?.uppercase(locale)
         ?.let { stringResource(R.string.type_file_extension, it) }
         ?: stringResource(R.string.type_file)
 }
@@ -173,8 +174,9 @@ private fun formatType(properties: FileProperties): String {
 @Composable
 private fun formatDate(timestamp: Long): String {
     if (timestamp <= 0L) return stringResource(R.string.unknown)
+    val locale = LocalConfiguration.current.locales[0]
     return DateTimeFormatter
         .ofLocalizedDateTime(FormatStyle.MEDIUM)
-        .withLocale(Locale.getDefault())
+        .withLocale(locale)
         .format(Instant.ofEpochMilli(timestamp).atZone(ZoneId.systemDefault()))
 }

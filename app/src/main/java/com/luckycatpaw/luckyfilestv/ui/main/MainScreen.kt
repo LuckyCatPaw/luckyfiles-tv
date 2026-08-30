@@ -49,6 +49,10 @@ internal fun MainScreen(viewModel: MainViewModel) {
     val scope = rememberCoroutineScope()
     val uiState by viewModel.uiState.collectAsState()
 
+    val propertiesReadFailedText = stringResource(R.string.properties_read_failed)
+    val noAppToOpenText = stringResource(R.string.no_app_to_open)
+    val noItemsSelectedText = stringResource(R.string.no_items_selected)
+
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var focusRestoreKey by rememberSaveable { mutableIntStateOf(0) }
 
@@ -113,66 +117,82 @@ internal fun MainScreen(viewModel: MainViewModel) {
                 }
                 .onFailure {
                     propertiesData = null
-                    propertiesError = it.message ?: context.getString(R.string.properties_read_failed)
+                    propertiesError = it.message ?: propertiesReadFailedText
                 }
         }
     }
+
+    val operationCancelledPartialText = stringResource(R.string.operation_cancelled_partial)
+    val transferCompletion = uiState.transferCompletion
+    val transferSummaryText = if (transferCompletion != null) {
+        val result = transferCompletion.result
+        val completedCount = result.completedPaths.size
+        pluralStringResource(
+            R.plurals.transfer_summary,
+            completedCount,
+            completedCount,
+            result.skippedCount,
+            result.issues.size
+        )
+    } else ""
+
+    val transferMultipleWarningsText = stringResource(R.string.transfer_multiple_warnings)
+    val transferSourceWarningCountText = if (transferCompletion != null) {
+        val count = transferCompletion.result.sourceDeleteWarningCount
+        pluralStringResource(R.plurals.transfer_source_warning_count, count, count)
+    } else ""
+    val transferBackupWarningCountText = if (transferCompletion != null) {
+        val count = transferCompletion.result.cleanupWarningCount
+        pluralStringResource(R.plurals.transfer_backup_warning_count, count, count)
+    } else ""
+
+    val moveSourceDeleteWarningText = if (transferCompletion != null) {
+        val count = transferCompletion.result.sourceDeleteWarningCount
+        pluralStringResource(R.plurals.move_source_delete_warning, count, count)
+    } else ""
+    val transferCleanupWarningText = if (transferCompletion != null) {
+        val count = transferCompletion.result.cleanupWarningCount
+        pluralStringResource(R.plurals.transfer_cleanup_warning, count, count)
+    } else ""
+
+    val itemsCopiedText = if (transferCompletion != null) {
+        val count = transferCompletion.result.completedPaths.size
+        pluralStringResource(R.plurals.items_copied, count, count)
+    } else ""
+    val itemsMovedText = if (transferCompletion != null) {
+        val count = transferCompletion.result.completedPaths.size
+        pluralStringResource(R.plurals.items_moved, count, count)
+    } else ""
 
     LaunchedEffect(uiState.transferCompletion) {
         val completion = uiState.transferCompletion ?: return@LaunchedEffect
         restoreBrowserFocus(completion.focusPath)
 
         val result = completion.result
-        val resources = context.resources
-        val completedCount = result.completedPaths.size
-
         val message = when {
             result.cancelled ->
-                context.getString(R.string.operation_cancelled_partial)
+                operationCancelledPartialText
 
             result.issues.isNotEmpty() || result.skippedCount > 0 ->
-                resources.getQuantityString(
-                    R.plurals.transfer_summary,
-                    completedCount,
-                    completedCount,
-                    result.skippedCount,
-                    result.issues.size
-                )
+                transferSummaryText
 
             result.sourceDeleteWarningCount > 0 && result.cleanupWarningCount > 0 ->
-                context.getString(
-                    R.string.transfer_multiple_warnings,
-                    resources.getQuantityString(
-                        R.plurals.transfer_source_warning_count,
-                        result.sourceDeleteWarningCount,
-                        result.sourceDeleteWarningCount
-                    ),
-                    resources.getQuantityString(
-                        R.plurals.transfer_backup_warning_count,
-                        result.cleanupWarningCount,
-                        result.cleanupWarningCount
-                    )
+                transferMultipleWarningsText.format(
+                    transferSourceWarningCountText,
+                    transferBackupWarningCountText
                 )
 
             result.sourceDeleteWarningCount > 0 ->
-                resources.getQuantityString(
-                    R.plurals.move_source_delete_warning,
-                    result.sourceDeleteWarningCount,
-                    result.sourceDeleteWarningCount
-                )
+                moveSourceDeleteWarningText
 
             result.cleanupWarningCount > 0 ->
-                resources.getQuantityString(
-                    R.plurals.transfer_cleanup_warning,
-                    result.cleanupWarningCount,
-                    result.cleanupWarningCount
-                )
+                transferCleanupWarningText
 
             completion.operation == TransferMode.COPY ->
-                resources.getQuantityString(R.plurals.items_copied, completedCount, completedCount)
+                itemsCopiedText
 
             else ->
-                resources.getQuantityString(R.plurals.items_moved, completedCount, completedCount)
+                itemsMovedText
         }
 
         val needsAttention = result.cancelled ||
@@ -214,15 +234,15 @@ internal fun MainScreen(viewModel: MainViewModel) {
                 val transferCount = uiState.transferSources.size
                 val transferActionLabel = when (uiState.transferMode) {
                     TransferMode.COPY -> if (transferCount > 1) {
-                        context.getString(R.string.copy_here_count, transferCount)
+                        stringResource(R.string.copy_here_count, transferCount)
                     } else {
-                        context.getString(R.string.copy_here)
+                        stringResource(R.string.copy_here)
                     }
 
                     TransferMode.MOVE -> if (transferCount > 1) {
-                        context.getString(R.string.move_here_count, transferCount)
+                        stringResource(R.string.move_here_count, transferCount)
                     } else {
-                        context.getString(R.string.move_here)
+                        stringResource(R.string.move_here)
                     }
 
                     null -> null
@@ -263,7 +283,7 @@ internal fun MainScreen(viewModel: MainViewModel) {
                                 Toast
                                     .makeText(
                                         context,
-                                        context.getString(R.string.no_app_to_open),
+                                        noAppToOpenText,
                                         Toast.LENGTH_SHORT
                                     )
                                     .show()
@@ -308,7 +328,7 @@ internal fun MainScreen(viewModel: MainViewModel) {
                             Toast
                                 .makeText(
                                     context,
-                                    context.getString(R.string.no_items_selected),
+                                    noItemsSelectedText,
                                     Toast.LENGTH_SHORT
                                 )
                                 .show()
@@ -395,6 +415,7 @@ internal fun MainScreen(viewModel: MainViewModel) {
                 }
 
                 deleteItem?.let { item ->
+                    val deletingItemText = stringResource(R.string.deleting_item, item.name)
                     ConfirmOverlay(
                         title = stringResource(R.string.confirm_delete),
                         message = item.name,
@@ -402,7 +423,7 @@ internal fun MainScreen(viewModel: MainViewModel) {
                         focusKey = item.path,
                         onConfirm = {
                             deleteItem = null
-                            operationMessage = context.getString(R.string.deleting_item, item.name)
+                            operationMessage = deletingItemText
 
                             viewModel.deleteItems(listOf(item)) { successCount, failureCount ->
                                 operationMessage = null
@@ -418,6 +439,7 @@ internal fun MainScreen(viewModel: MainViewModel) {
                 }
 
                 multiDeleteItems?.let { items ->
+                    val deletingItemProgressPattern = stringResource(R.string.deleting_item_progress)
                     ConfirmOverlay(
                         title = pluralStringResource(R.plurals.confirm_delete_count, items.size, items.size),
                         message = stringResource(R.string.confirm_delete_selected_description),
@@ -430,8 +452,7 @@ internal fun MainScreen(viewModel: MainViewModel) {
                             viewModel.deleteItems(
                                 items = items,
                                 onProgress = { index, total, item ->
-                                    operationMessage = context.getString(
-                                        R.string.deleting_item_progress,
+                                    operationMessage = deletingItemProgressPattern.format(
                                         index,
                                         total,
                                         item.name
@@ -547,15 +568,16 @@ internal fun MainScreen(viewModel: MainViewModel) {
 }
 
 private fun showDeleteResult(context: Context, successCount: Int, failureCount: Int, multiple: Boolean = false) {
+    val resources = context.resources
     val message = when {
-        failureCount > 0 -> context.resources.getQuantityString(
+        failureCount > 0 -> resources.getQuantityString(
             R.plurals.delete_summary,
             successCount,
             successCount,
             failureCount
         )
 
-        multiple -> context.resources.getQuantityString(
+        multiple -> resources.getQuantityString(
             R.plurals.items_deleted,
             successCount,
             successCount

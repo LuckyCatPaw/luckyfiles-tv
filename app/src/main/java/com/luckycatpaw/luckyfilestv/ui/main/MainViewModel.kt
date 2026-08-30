@@ -289,6 +289,5 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
         navigationHandler.clearSnapshots()
         storageRepository.stopWatching()
         eventChannel.close()
-        super.onCleared()
     }
 }

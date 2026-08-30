@@ -1,5 +1,6 @@
 package com.luckycatpaw.luckyfilestv.ui.common
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -8,19 +9,23 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.luckycatpaw.luckyfilestv.ui.common.model.TvGridPosition
@@ -48,6 +53,7 @@ internal data class BrowserHeaderAction(
  * is rendered, so those are the parameters; everything else — grid position
  * save/restore, column count, focus restoration across directory changes — lives here.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun <T : Any> TvBrowserScaffold(
     items: List<T>,
@@ -90,23 +96,40 @@ internal fun <T : Any> TvBrowserScaffold(
 
     val gridState =
         key(gridStateKey) {
-            rememberLazyGridState(
-                initialFirstVisibleItemIndex = initialGridIndex,
-                initialFirstVisibleItemScrollOffset = initialGridOffset
-            )
+            val cacheWindow = remember { LazyLayoutCacheWindow(aheadFraction = 0.5f, behindFraction = 0.2f) }
+            val gridStateSaver = remember(cacheWindow) {
+                listSaver(
+                    save = { listOf(it.firstVisibleItemIndex, it.firstVisibleItemScrollOffset) },
+                    restore = {
+                        LazyGridState(
+                            cacheWindow = cacheWindow,
+                            firstVisibleItemIndex = it[0],
+                            firstVisibleItemScrollOffset = it[1]
+                        )
+                    }
+                )
+            }
+            rememberSaveable(saver = gridStateSaver) {
+                LazyGridState(
+                    cacheWindow = cacheWindow,
+                    firstVisibleItemIndex = initialGridIndex,
+                    firstVisibleItemScrollOffset = initialGridOffset
+                )
+            }
         }
 
     val scope = rememberCoroutineScope()
-    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
+    val windowInfo = LocalWindowInfo.current
 
     val safeSpace = TvFileGridDefaults.SafeHorizontalSpace
-    val availableWidth = configuration.screenWidthDp.dp - safeSpace * 2
+    val availableWidth = with(density) { windowInfo.containerSize.width.toDp() } - safeSpace * 2
     val columnCount = TvFileGridDefaults.columnCount(availableWidth)
 
     // Key focus state by stable keys. A repository refresh may return a new list
     // instance holding the same entries and must not reset focus.
     val itemKeys = remember(items) { items.map(itemKey) }
-    val gridFocusState = rememberTvFileGridFocusState(itemKeys)
+    val gridFocusState = rememberTvFileGridFocusState(itemKeys, key = gridStateKey)
 
     val requesters =
         remember {
@@ -134,7 +157,8 @@ internal fun <T : Any> TvBrowserScaffold(
             gridFocusState = gridFocusState,
             gridState = gridState,
             scope = scope,
-            initialFocusIndex = initialFocusIndex
+            initialFocusIndex = initialFocusIndex,
+            key = gridStateKey
         )
 
     DisposableEffect(gridState) {
@@ -170,19 +194,6 @@ internal fun <T : Any> TvBrowserScaffold(
             modifier
                 .fillMaxSize()
                 .padding(contentPadding)
-                // Focus entering the screen goes to the grid unless the user parked it
-                // in the header themselves. Without this the header wins by position:
-                // it is simply the first focusable node in the Column.
-                .focusProperties {
-                    onEnter = {
-                        if (
-                            focusEnabled &&
-                            focusState.activeFocusArea == BrowserFocusArea.GRID
-                        ) {
-                            runCatching { gridEnterRequester.requestFocus() }
-                        }
-                    }
-                }
                 .focusGroup()
     ) {
         BrowserHeader(
@@ -236,6 +247,7 @@ internal fun <T : Any> TvBrowserScaffold(
                     // relies on. The grid is virtualised anyway, so a saved child is
                     // often gone by the time it would be restored.
                     .focusRequester(gridEnterRequester)
+                    .focusRestorer()
                     .focusGroup(),
             itemContent = itemContent
         )

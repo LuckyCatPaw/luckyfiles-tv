@@ -76,8 +76,8 @@ fun SettingsOverlay(
     }
     var focusedItem by remember { mutableStateOf(SettingsFocusItem.LANGUAGE_SYSTEM) }
 
-    val onLabel = stringResource(R.string.state_on)
-    val offLabel = stringResource(R.string.state_off)
+    val onLabel = stringResource(R.string.app_state_on)
+    val offLabel = stringResource(R.string.app_state_off)
 
     // LazyListScope is not a composable scope, so every string has to be resolved here.
     val labels = SettingsTexts(
