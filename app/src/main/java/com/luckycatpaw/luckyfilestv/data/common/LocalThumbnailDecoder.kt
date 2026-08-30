@@ -41,7 +41,12 @@ internal object LocalThumbnailDecoder {
             0L,
             TimeUnit.MILLISECONDS,
             LinkedBlockingQueue()
-        ) { runnable -> Thread(runnable, "TVFM-VideoThumbnail").apply { isDaemon = true } }
+        ) { runnable ->
+            Thread({
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+                runnable.run()
+            }, "TVFM-VideoThumbnail").apply { isDaemon = true }
+        }
             .asCoroutineDispatcher()
     }
 
@@ -52,7 +57,12 @@ internal object LocalThumbnailDecoder {
             0L,
             TimeUnit.MILLISECONDS,
             LinkedBlockingQueue()
-        ) { runnable -> Thread(runnable, "TVFM-ThumbnailDecode").apply { isDaemon = true } }
+        ) { runnable ->
+            Thread({
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+                runnable.run()
+            }, "TVFM-ThumbnailDecode").apply { isDaemon = true }
+        }
             .asCoroutineDispatcher()
     }
 

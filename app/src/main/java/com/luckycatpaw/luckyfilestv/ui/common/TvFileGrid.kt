@@ -1,11 +1,8 @@
 package com.luckycatpaw.luckyfilestv.ui.common
 
 import android.view.KeyEvent as AndroidKeyEvent
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
@@ -28,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -40,8 +38,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import kotlin.math.abs
-import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -77,14 +73,13 @@ internal fun <T> TvFileGrid(
     val density = LocalDensity.current
     val currentItems by rememberUpdatedState(items)
     val currentSelectedIndex by rememberUpdatedState(selectedIndex)
+    val currentSelectionVisible by rememberUpdatedState(selectionVisible)
+    val currentEnabled by rememberUpdatedState(enabled)
     val currentOnItemLongClick by rememberUpdatedState(onItemLongClick)
     val emptyFocusRequester = remember { FocusRequester() }
 
-    val rowStepPx = with(density) {
-        (
-            TvFileGridDefaults.ItemHeight +
-                TvFileGridDefaults.VerticalSpacing
-            ).toPx()
+    val itemHeightPx = remember(density) {
+        with(density) { TvFileGridDefaults.ItemHeight.toPx() }
     }
 
     var activationJob by remember {
@@ -113,72 +108,69 @@ internal fun <T> TvFileGrid(
         navigationJob?.cancel()
         navigationJob = null
         pendingNavigationIndex = -1
+        focusState.cancelPendingFocus()
     }
 
+    /**
+     * Scrolls the target into view and declares it as the focus target.
+     *
+     * The job ends there. It no longer waits for focus to be granted: if the item is
+     * not composed yet it will claim the declared index by itself, so there is
+     * nothing left here to wait for.
+     */
     fun startNavigation(targetIndex: Int) {
-        pendingNavigationIndex = targetIndex
+        val oldIndex = selectedIndex
+        val rowChanged = (targetIndex / columnCount) != (oldIndex / columnCount)
 
-        if (navigationJob?.isActive == true) {
-            return
+        pendingNavigationIndex = targetIndex
+        navigationJob?.cancel()
+
+        // Performance Optimization: Sync-check if the item is already visible and positioned correctly.
+        // If so, we can skip the coroutine overhead entirely.
+        val layoutInfo = gridState.layoutInfo
+        val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
+
+        if (viewportHeight > 0) {
+            val scrollResult = calculateInstantScroll(
+                gridState = gridState,
+                index = targetIndex,
+                viewportHeight = viewportHeight,
+                itemHeightPx = itemHeightPx,
+                rowChanged = rowChanged
+            )
+
+            if (!scrollResult.needed) {
+                if (focusState.focusIndex(targetIndex)) {
+                    return // Instant focus granted, no job needed.
+                }
+            }
         }
 
         navigationJob = scope.launch {
-            while (isActive) {
-                val target = pendingNavigationIndex
-                if (target !in currentItems.indices) {
-                    break
-                }
+            val target = pendingNavigationIndex
+            if (target !in currentItems.indices) return@launch
 
-                val scrollAmount = requiredScrollForIndex(
+            val currentViewportHeight = gridState.layoutInfo.viewportEndOffset -
+                gridState.layoutInfo.viewportStartOffset
+
+            if (currentViewportHeight <= 0) {
+                // Not yet laid out, just jump
+                gridState.scrollToItem(target)
+            } else {
+                val scrollResult = calculateInstantScroll(
                     gridState = gridState,
                     index = target,
-                    columnCount = columnCount,
-                    rowStepPx = rowStepPx
+                    viewportHeight = currentViewportHeight,
+                    itemHeightPx = itemHeightPx,
+                    rowChanged = rowChanged
                 )
 
-                if (abs(scrollAmount) > 1f) {
-                    val rows = (
-                        abs(scrollAmount) / rowStepPx
-                        ).roundToInt().coerceAtLeast(1)
-
-                    val duration = (
-                        82 + (rows - 1) * 22
-                        ).coerceIn(82, 155)
-
-                    gridState.animateScrollBy(
-                        value = scrollAmount,
-                        animationSpec = tween(
-                            durationMillis = duration,
-                            easing = LinearEasing
-                        )
-                    )
-
-                    withFrameNanos { }
+                if (scrollResult.needed) {
+                    gridState.scrollToItem(scrollResult.index, scrollResult.offset)
                 }
-
-                if (target != pendingNavigationIndex) {
-                    continue
-                }
-
-                val visible = gridState.layoutInfo.visibleItemsInfo.any {
-                    it.index == target
-                }
-
-                if (!visible) {
-                    gridState.scrollToItem(target)
-                    withFrameNanos { }
-                }
-
-                if (target != pendingNavigationIndex) {
-                    continue
-                }
-
-                if (focusState.requestFocus(target)) {
-                    break
-                }
-
-                withFrameNanos { }
             }
+
+            focusState.focusIndex(target)
         }
     }
 
@@ -195,10 +187,22 @@ internal fun <T> TvFileGrid(
     }
 
     if (items.isEmpty()) {
+        // The placeholder is composed here but placed on the next layout pass, so a
+        // single attempt can be too early. requestFocus also throws while no node is
+        // attached, hence the guard around every attempt rather than just the first.
         LaunchedEffect(enabled, focusState) {
             if (enabled) {
-                withFrameNanos { }
-                emptyFocusRequester.requestFocus()
+                repeat(EMPTY_STATE_PLACEMENT_FRAMES) {
+                    val granted = runCatching {
+                        emptyFocusRequester.requestFocus(FocusDirection.Enter)
+                    }.getOrDefault(false)
+
+                    if (granted) {
+                        return@LaunchedEffect
+                    }
+
+                    withFrameNanos { }
+                }
             }
         }
 
@@ -324,27 +328,45 @@ internal fun <T> TvFileGrid(
             val requester = focusState.requesterAt(index)
 
             DisposableEffect(itemKey(item), index, requester) {
-                focusState.attach(index, requester)
+                focusState.register(index, requester)
 
                 onDispose {
-                    focusState.detach(index, requester)
+                    focusState.release(index, requester)
                 }
+            }
+
+            // Optimization: Only observe focus changes for this specific index.
+            // Using derivedStateOf prevents every item from waking up when focus moves elsewhere.
+            val isTargeted by remember(index) {
+                androidx.compose.runtime.derivedStateOf { focusState.requestedIndex == index }
+            }
+            LaunchedEffect(isTargeted, enabled) {
+                if (isTargeted && enabled) {
+                    focusState.claim(index)
+                }
+            }
+
+            // Optimization: Prevent recomposing the whole item when selectedIndex changes for other items.
+            val isSelected by remember(index) {
+                androidx.compose.runtime.derivedStateOf {
+                    currentEnabled && currentSelectionVisible && index == currentSelectedIndex
+                }
+            }
+
+            // Optimization: Stabilize lambdas to prevent unnecessary recompositions of itemContent.
+            val onClick = remember(item, enabled, onItemClick) {
+                { if (enabled) onItemClick(item) }
+            }
+            val onFocused = remember(index, item, enabled, onItemFocused) {
+                { if (enabled) onItemFocused(index, item) }
             }
 
             Box {
                 itemContent(
                     item,
-                    enabled && selectionVisible && index == selectedIndex,
-                    {
-                        if (enabled) {
-                            onItemClick(item)
-                        }
-                    },
-                    {
-                        if (enabled) {
-                            onItemFocused(index, item)
-                        }
-                    },
+                    isSelected,
+                    onClick,
+                    onFocused,
                     Modifier
                         .focusRequester(requester)
                         .focusProperties {
@@ -409,52 +431,55 @@ private fun targetIndex(currentIndex: Int, itemCount: Int, columnCount: Int, key
     }
 }
 
-private fun requiredScrollForIndex(gridState: LazyGridState, index: Int, columnCount: Int, rowStepPx: Float): Float {
+private data class ScrollResult(val index: Int, val offset: Int, val needed: Boolean)
+
+private fun calculateInstantScroll(
+    gridState: LazyGridState,
+    index: Int,
+    viewportHeight: Int,
+    itemHeightPx: Float,
+    rowChanged: Boolean
+): ScrollResult {
     val layoutInfo = gridState.layoutInfo
     val visibleItems = layoutInfo.visibleItemsInfo
 
     if (visibleItems.isEmpty()) {
-        return 0f
+        return ScrollResult(index, 0, false)
     }
 
-    val target = visibleItems.firstOrNull {
-        it.index == index
-    }
+    val target = visibleItems.firstOrNull { it.index == index }
 
     if (target != null) {
         val top = target.offset.y
         val bottom = top + target.size.height
-        val viewportTop = layoutInfo.viewportStartOffset
-        val viewportBottom = layoutInfo.viewportEndOffset
+
+        // Only scroll if actually off-screen vertically
+        if (!rowChanged) {
+            return ScrollResult(index, 0, false)
+        }
 
         return when {
-            top < viewportTop ->
-                (top - viewportTop).toFloat()
+            top < 0 ->
+                ScrollResult(index, 0, true)
 
-            bottom > viewportBottom ->
-                (bottom - viewportBottom).toFloat()
+            bottom > viewportHeight ->
+                ScrollResult(index, -(viewportHeight - target.size.height), true)
 
-            else -> 0f
+            else -> ScrollResult(index, 0, false)
         }
     }
 
-    val first = visibleItems.minByOrNull {
-        it.index
-    } ?: return 0f
+    // Off-screen: Just jump so it's visible at the edge
+    val currentFirstItem = visibleItems.minByOrNull { it.index } ?: return ScrollResult(index, 0, false)
 
-    val last = visibleItems.maxByOrNull {
-        it.index
-    } ?: return 0f
-
-    val targetRow = index / columnCount
-
-    return if (index < first.index) {
-        val firstRow = first.index / columnCount
-        (targetRow - firstRow) * rowStepPx
+    return if (index < currentFirstItem.index) {
+        ScrollResult(index, 0, true)
     } else {
-        val lastRow = last.index / columnCount
-        (targetRow - lastRow) * rowStepPx
+        ScrollResult(index, -(viewportHeight - itemHeightPx.toInt()), true)
     }
 }
 
 private val LONG_PRESS_DELAY = 550.milliseconds
+
+/** Frames the empty-directory placeholder may spend waiting to be placed. */
+private const val EMPTY_STATE_PLACEMENT_FRAMES = 3

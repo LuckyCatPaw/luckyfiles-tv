@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -167,7 +168,7 @@ private fun CommonBrowserGridItem(
     modifier: Modifier,
     preview: @Composable () -> Unit
 ) {
-    val shape = RoundedCornerShape(12.dp)
+    val shape = remember { RoundedCornerShape(12.dp) }
     val backgroundColor = if (selected) {
         MaterialTheme.colorScheme.primaryContainer
     } else {
@@ -179,26 +180,28 @@ private fun CommonBrowserGridItem(
         MaterialTheme.colorScheme.onSurface
     }
 
-    val lineBreakIndex = displayName.indexOf('\n')
-    val primaryText = if (lineBreakIndex >= 0) displayName.substring(0, lineBreakIndex) else displayName
-    val secondLine = if (lineBreakIndex >= 0 &&
-        lineBreakIndex < displayName.lastIndex
-    ) {
-        displayName.substring(lineBreakIndex + 1)
-    } else {
-        secondaryText
+    val lineBreakIndex = remember(displayName) { displayName.indexOf('\n') }
+    val primaryText = remember(displayName, lineBreakIndex) {
+        if (lineBreakIndex >= 0) displayName.substring(0, lineBreakIndex) else displayName
+    }
+    val secondLine = remember(displayName, lineBreakIndex, secondaryText) {
+        if (lineBreakIndex >= 0 && lineBreakIndex < displayName.lastIndex) {
+            displayName.substring(lineBreakIndex + 1)
+        } else {
+            secondaryText
+        }
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(198.dp)
-            .background(backgroundColor, shape)
-            .then(if (selected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape) else Modifier)
-            .onFocusChanged { if (it.isFocused) onFocused() }
-            .clickable { onClick() }
-            .padding(10.dp)
-    ) {
+    val itemModifier = modifier
+        .fillMaxWidth()
+        .height(198.dp)
+        .background(backgroundColor, shape)
+        .then(if (selected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape) else Modifier)
+        .onFocusChanged { if (it.isFocused) onFocused() }
+        .clickable { onClick() }
+        .padding(10.dp)
+
+    Box(modifier = itemModifier) {
         Column(
             modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -212,18 +215,17 @@ private fun CommonBrowserGridItem(
                 preview()
             }
             Spacer(modifier = Modifier.height(6.dp))
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
-                contentAlignment = Alignment.Center
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
-                Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                    MarqueeNameLine(text = primaryText, selected = selected, color = contentColor, fontSize = 15)
-                    if (!secondLine.isNullOrBlank()) {
-                        Spacer(modifier = Modifier.height(2.dp))
-                        MarqueeNameLine(text = secondLine, selected = selected, color = contentColor, fontSize = 14)
-                    }
+                MarqueeNameLine(text = primaryText, selected = selected, color = contentColor, fontSize = 15)
+                if (!secondLine.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    MarqueeNameLine(text = secondLine, selected = selected, color = contentColor, fontSize = 14)
                 }
             }
         }

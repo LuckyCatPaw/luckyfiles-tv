@@ -1,5 +1,6 @@
 package com.luckycatpaw.luckyfilestv.ui.common
 
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -8,6 +9,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -26,17 +29,29 @@ internal data class HeaderButtonConfig(
     val visible: Boolean = true
 )
 
+/**
+ * The button row above the file grid.
+ *
+ * The row is a focus group addressed through [focusRequester]. `focusRestorer` makes
+ * it remember which button was focused when the user left it, so callers do not have
+ * to name a button to return to — coming back up from the grid lands where the user
+ * was. If nothing is saved yet, the default enter behaviour picks the first button.
+ */
 @Composable
 internal fun BrowserHeader(
     title: String,
     buttons: List<HeaderButtonConfig>,
     onDown: () -> Unit,
+    focusRequester: FocusRequester,
     focusEnabled: Boolean = true
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(42.dp),
+            .height(42.dp)
+            .focusRequester(focusRequester)
+            .focusRestorer()
+            .focusGroup(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {

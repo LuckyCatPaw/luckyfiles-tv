@@ -1,13 +1,14 @@
 [versions]
-agp = "9.3.1"
+agp = "9.3.2"
 kotlin = "2.4.10"
 coreKtx = "1.13.1"
 appcompat = "1.7.1"
-composeBom = "2024.04.01"
-tvMaterial = "1.0.0"
+composeBom = "2026.08.00"
+tvMaterial = "1.1.0"
 lifecycleRuntimeKtx = "2.8.7"
 activityCompose = "1.9.3"
 datastore = "1.2.1"
+materialIcons = "1.7.8"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -23,7 +24,7 @@ androidx-tv-material = { group = "androidx.tv", name = "tv-material", version.re
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
-androidx-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
+androidx-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended", version.ref = "materialIcons" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

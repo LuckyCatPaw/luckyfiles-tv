@@ -1,5 +1,6 @@
 package com.luckycatpaw.luckyfilestv.ui.common
 
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +17,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.Dp
@@ -110,6 +113,11 @@ internal fun <T : Any> TvBrowserScaffold(
             HeaderFocusTarget.entries.associateWith { FocusRequester() }
         }
 
+    // Group-level entry points. Focus is addressed to a region, not to a widget: the
+    // header restores its own last button, the grid enters at its first child.
+    val headerEnterRequester = remember { FocusRequester() }
+    val gridEnterRequester = remember { FocusRequester() }
+
     // Resolve an explicit return target before the new list is first rendered.
     // This prevents a one-frame highlight on a stale index during back navigation.
     val explicitFocusIndex = focusKey?.let(itemKeys::indexOf) ?: -1
@@ -121,7 +129,7 @@ internal fun <T : Any> TvBrowserScaffold(
         }
 
     val focusState =
-        rememberBrowserFocusState<String, HeaderFocusTarget>(
+        rememberBrowserFocusState<String>(
             keys = itemKeys,
             gridFocusState = gridFocusState,
             gridState = gridState,
@@ -140,18 +148,9 @@ internal fun <T : Any> TvBrowserScaffold(
         }
     }
 
-    /**
-     * Focus requester for [target], falling back to the first visible button.
-     * Visibility comes from [headerActions], so it is stated exactly once.
-     */
-    fun requesterFor(target: HeaderFocusTarget?): FocusRequester? {
-        if (!focusEnabled) return null
-
-        val visibleActions = headerActions.filter { it.visible }
-        val match = target?.let { wanted -> visibleActions.firstOrNull { it.target == wanted } }
-
-        return (match ?: visibleActions.firstOrNull())?.let { requesters.getValue(it.target) }
-    }
+    /** The header group, or null when it holds nothing focusable. */
+    fun headerRequester(): FocusRequester? =
+        headerEnterRequester.takeIf { focusEnabled && headerActions.any { it.visible } }
 
     fun requestedFocusIndex(): Int {
         val requested = focusKey?.let(itemKeys::indexOf) ?: -1
@@ -171,10 +170,25 @@ internal fun <T : Any> TvBrowserScaffold(
             modifier
                 .fillMaxSize()
                 .padding(contentPadding)
+                // Focus entering the screen goes to the grid unless the user parked it
+                // in the header themselves. Without this the header wins by position:
+                // it is simply the first focusable node in the Column.
+                .focusProperties {
+                    onEnter = {
+                        if (
+                            focusEnabled &&
+                            focusState.activeFocusArea == BrowserFocusArea.GRID
+                        ) {
+                            runCatching { gridEnterRequester.requestFocus() }
+                        }
+                    }
+                }
+                .focusGroup()
     ) {
         BrowserHeader(
             title = title,
             focusEnabled = focusEnabled,
+            focusRequester = headerEnterRequester,
             buttons =
                 headerActions.map { action ->
                     HeaderButtonConfig(
@@ -182,7 +196,7 @@ internal fun <T : Any> TvBrowserScaffold(
                         icon = action.icon,
                         contentDescription = action.contentDescription,
                         focusRequester = requesters.getValue(action.target),
-                        onFocused = { focusState.onHeaderFocused(action.target) },
+                        onFocused = { focusState.onHeaderFocused() },
                         onClick = action.onClick,
                         visible = action.visible
                     )
@@ -206,7 +220,7 @@ internal fun <T : Any> TvBrowserScaffold(
                 focusState.onSelectionChanged(index)
                 onItemFocused(item)
             },
-            onExitUp = { focusState.onExitUp(requesterFor(focusState.lastHeaderTarget)) },
+            onExitUp = { focusState.onExitUp(headerRequester()) },
             onItemClick = onItemClick,
             onItemLongClick = onItemLongClick,
             onItemFocused = { index, item ->
@@ -216,7 +230,13 @@ internal fun <T : Any> TvBrowserScaffold(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .weight(1f),
+                    .weight(1f)
+                    // No focusRestorer here on purpose: it hooks onEnter of the group
+                    // and would redirect the explicit index requests this screen
+                    // relies on. The grid is virtualised anyway, so a saved child is
+                    // often gone by the time it would be restored.
+                    .focusRequester(gridEnterRequester)
+                    .focusGroup(),
             itemContent = itemContent
         )
     }
@@ -226,7 +246,7 @@ internal fun <T : Any> TvBrowserScaffold(
             targetIndex = requestedFocusIndex(),
             enabled = focusEnabled,
             onItemFocused = { index -> onItemFocused(items[index]) },
-            headerRequester = ::requesterFor
+            headerRequester = ::headerRequester
         )
     }
 }
