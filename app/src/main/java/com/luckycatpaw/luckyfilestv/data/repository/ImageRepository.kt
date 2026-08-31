@@ -1,5 +1,6 @@
 package com.luckycatpaw.luckyfilestv.data.repository
 
+import android.content.ComponentCallbacks2
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.SystemClock
@@ -15,14 +16,25 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 
+/**
+ * Single entry point for every bitmap the UI displays, and the only place in the app that
+ * keeps bitmaps in memory. [GeneratedThumbnailCache] below it is disk only and
+ * [com.luckycatpaw.luckyfilestv.data.common.LocalThumbnailDecoder] is stateless, so a
+ * thumbnail exists exactly once in RAM regardless of how it was produced.
+ */
 class ImageRepository private constructor(context: Context) {
 
     private val appContext = context.applicationContext
     private val providerVisualRepository = ProviderVisualRepository.get(appContext)
     private val generatedThumbnailCache = GeneratedThumbnailCache.get(appContext)
 
+    /**
+     * An eighth of the heap, bounded so that neither a 1 GB TV stick nor a large-heap device
+     * ends up with an unreasonable budget. A 384x240 RGB_565 preview costs about 180 KB, so
+     * even the lower bound holds roughly 45 of them, well beyond one screen of the grid.
+     */
     private val maxMemoryKb = (Runtime.getRuntime().maxMemory() / 1024L / 8L).toInt()
-        .coerceIn(16 * 1024, 64 * 1024)
+        .coerceIn(MIN_MEMORY_CACHE_KB, MAX_MEMORY_CACHE_KB)
 
     private val memoryCache = object : LruCache<String, Bitmap>(maxMemoryKb) {
         override fun sizeOf(key: String, value: Bitmap): Int = (value.byteCount / 1024).coerceAtLeast(1)
@@ -31,6 +43,26 @@ class ImageRepository private constructor(context: Context) {
     private val keyLocks = Array(32) { Mutex() }
     private val negativeCache = ConcurrentHashMap<String, Long>()
     private val globalLoadSemaphore = Semaphore(4)
+
+    /**
+     * Hands memory back when the system asks for it. Everything dropped here is still on disk
+     * and costs one JPEG decode to come back, so the cache can afford to be generous.
+     *
+     * Evicted bitmaps are deliberately not recycled: a Compose `Image` may still be drawing
+     * one. Releasing the reference is enough, the collector reclaims it once nothing holds it.
+     */
+    fun trimMemory(level: Int) {
+        when {
+            level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND ||
+                level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL -> {
+                memoryCache.evictAll()
+                negativeCache.clear()
+            }
+
+            level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW ->
+                memoryCache.trimToSize(maxMemoryKb / 2)
+        }
+    }
 
     suspend fun getLocalThumbnail(key: String, generator: suspend () -> Bitmap?): Bitmap? = getOrCreate(key) {
         generatedThumbnailCache.getOrCreate(key, generator)
@@ -101,6 +133,9 @@ class ImageRepository private constructor(context: Context) {
     }
 
     companion object {
+        private const val MIN_MEMORY_CACHE_KB = 8 * 1024
+        private const val MAX_MEMORY_CACHE_KB = 48 * 1024
+
         @Volatile
         private var instance: ImageRepository? = null
 

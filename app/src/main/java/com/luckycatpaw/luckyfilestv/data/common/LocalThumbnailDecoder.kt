@@ -14,7 +14,6 @@ import android.os.Build
 import android.os.CancellationSignal
 import android.os.ParcelFileDescriptor
 import android.util.Log
-import android.util.LruCache
 import android.util.Size
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
@@ -66,14 +65,11 @@ internal object LocalThumbnailDecoder {
             .asCoroutineDispatcher()
     }
 
-    private val memoryCache by lazy {
-        val maxMemoryKb = (Runtime.getRuntime().maxMemory() / 1024L).toInt()
-        val cacheSize = (maxMemoryKb / 16).coerceIn(4096, 16384)
-        object : LruCache<String, Bitmap>(cacheSize) {
-            override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount / 1024
-        }
-    }
-
+    /**
+     * Decodes a preview without caching anything. Both the in-memory and the disk cache live
+     * in [com.luckycatpaw.luckyfilestv.data.repository.ImageRepository] and
+     * [GeneratedThumbnailCache]; this object is only ever called on a cache miss.
+     */
     suspend fun decode(context: Context, type: String, path: String): Bitmap? {
         if (type == "video") return decodeVideoThumbnail(path)
 
@@ -97,10 +93,7 @@ internal object LocalThumbnailDecoder {
         else -> null
     }
 
-    fun decodeImageThumbnail(path: String, requestedSize: Int): Bitmap? {
-        val cacheKey = "img:$requestedSize:$path"
-        memoryCache[cacheKey]?.let { return it }
-
+    private fun decodeImageThumbnail(path: String, requestedSize: Int): Bitmap? {
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(path, options)
         if (options.outWidth <= 0 || options.outHeight <= 0) return null
@@ -111,13 +104,11 @@ internal object LocalThumbnailDecoder {
         }
 
         return BitmapFactory.decodeFile(path, decodeOptions)?.let {
-            scaleBitmapToFit(it, requestedSize, requestedSize).also { scaled ->
-                memoryCache.put(cacheKey, scaled)
-            }
+            scaleBitmapToFit(it, requestedSize, requestedSize)
         }
     }
 
-    fun decodeVideoThumbnailBlocking(path: String, cancellationSignal: CancellationSignal): Bitmap? {
+    private fun decodeVideoThumbnailBlocking(path: String, cancellationSignal: CancellationSignal): Bitmap? {
         val file = File(path)
         if (!file.exists() || !file.canRead()) return null
         return decodeVideoWithAndroid(file, cancellationSignal)
@@ -143,7 +134,7 @@ internal object LocalThumbnailDecoder {
         null
     }
 
-    fun decodePdfThumbnail(path: String, maxWidth: Int = 384, maxHeight: Int = 240): Bitmap? = runCatching {
+    private fun decodePdfThumbnail(path: String, maxWidth: Int = 384, maxHeight: Int = 240): Bitmap? = runCatching {
         ParcelFileDescriptor.open(File(path), ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
             PdfRenderer(fd).use { renderer ->
                 if (renderer.pageCount <= 0) return@runCatching null
@@ -160,7 +151,7 @@ internal object LocalThumbnailDecoder {
         }
     }.getOrNull()
 
-    fun decodeAudioArtwork(path: String, requestedSize: Int = 384): Bitmap? {
+    private fun decodeAudioArtwork(path: String, requestedSize: Int = 384): Bitmap? {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(path)
@@ -192,7 +183,7 @@ internal object LocalThumbnailDecoder {
         }
     }
 
-    fun decodeApkIcon(context: Context, path: String, requestedSize: Int = 192): Bitmap? = runCatching {
+    private fun decodeApkIcon(context: Context, path: String, requestedSize: Int = 192): Bitmap? = runCatching {
         val pm = context.packageManager
         val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             pm.getPackageArchiveInfo(path, PackageManager.PackageInfoFlags.of(0))

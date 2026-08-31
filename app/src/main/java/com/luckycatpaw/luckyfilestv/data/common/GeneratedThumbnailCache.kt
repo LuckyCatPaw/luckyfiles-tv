@@ -1,12 +1,10 @@
 package com.luckycatpaw.luckyfilestv.data.common
 
-import android.app.ActivityManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.storage.StorageManager
 import android.util.Log
-import android.util.LruCache
 import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
@@ -22,6 +20,13 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
+/**
+ * Persistent thumbnail cache on top of [Context.getCacheDir].
+ *
+ * Deliberately holds no bitmaps in memory: the single in-memory LRU of the app lives in
+ * [com.luckycatpaw.luckyfilestv.data.repository.ImageRepository], which is the only caller
+ * of this class. Every entry reaching this point is therefore already a memory cache miss.
+ */
 class GeneratedThumbnailCache private constructor(context: Context) {
 
     private val appContext = context.applicationContext
@@ -59,17 +64,6 @@ class GeneratedThumbnailCache private constructor(context: Context) {
     private val pendingDiskWrites = ConcurrentHashMap.newKeySet<String>()
     private val writesSinceMaintenance = AtomicInteger(0)
 
-    private val memoryCache = object : LruCache<String, Bitmap>(calculateMemoryCacheSize()) {
-        override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount / 1024
-    }
-
-    private fun calculateMemoryCacheSize(): Int {
-        val am = appContext.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        val memoryClass = am.memoryClass
-
-        return (memoryClass * 1024 / 16).coerceIn(4096, 32768)
-    }
-
     init {
         currentDirectory.mkdirs()
         maintenanceExecutor.execute {
@@ -81,14 +75,11 @@ class GeneratedThumbnailCache private constructor(context: Context) {
     suspend fun getOrCreate(key: String, generator: suspend () -> Bitmap?): Bitmap? {
         val hashedKey = hashKey(key)
 
-        memoryCache[hashedKey]?.let { return it }
-
         val diskBitmap = withContext(Dispatchers.IO) {
             readFromDisk(hashedKey)
         }
 
         if (diskBitmap != null) {
-            memoryCache.put(hashedKey, diskBitmap)
             return diskBitmap
         }
 
@@ -96,8 +87,6 @@ class GeneratedThumbnailCache private constructor(context: Context) {
         val generated = generator() ?: return null
 
         currentCoroutineContext().ensureActive()
-
-        memoryCache.put(hashedKey, generated)
 
         scheduleDiskWrite(
             hashedKey = hashedKey,
@@ -114,8 +103,15 @@ class GeneratedThumbnailCache private constructor(context: Context) {
             return null
         }
 
+        // The cache files are opaque JPEGs and the result goes straight into the single
+        // in-memory LRU, so decoding them as ARGB_8888 would double their footprint there
+        // compared to a freshly generated thumbnail.
+        val options = BitmapFactory.Options().apply {
+            inPreferredConfig = Bitmap.Config.RGB_565
+        }
+
         val bitmap = runCatching {
-            BitmapFactory.decodeFile(file.absolutePath)
+            BitmapFactory.decodeFile(file.absolutePath, options)
         }.getOrNull()
 
         if (bitmap == null) {
