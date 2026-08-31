@@ -16,12 +16,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -82,32 +79,18 @@ internal fun <T> TvFileGrid(
         with(density) { TvFileGridDefaults.ItemHeight.toPx() }
     }
 
-    var activationJob by remember {
-        mutableStateOf<Job?>(null)
-    }
-
-    var navigationJob by remember {
-        mutableStateOf<Job?>(null)
-    }
-
-    var pendingNavigationIndex by remember {
-        mutableIntStateOf(-1)
-    }
-
-    var longPressTriggered by remember {
-        mutableStateOf(false)
-    }
+    val interaction = remember { GridInteraction() }
 
     fun cancelActivation() {
-        activationJob?.cancel()
-        activationJob = null
-        longPressTriggered = false
+        interaction.activationJob?.cancel()
+        interaction.activationJob = null
+        interaction.longPressTriggered = false
     }
 
     fun cancelNavigation() {
-        navigationJob?.cancel()
-        navigationJob = null
-        pendingNavigationIndex = -1
+        interaction.navigationJob?.cancel()
+        interaction.navigationJob = null
+        interaction.pendingNavigationIndex = -1
         focusState.cancelPendingFocus()
     }
 
@@ -118,8 +101,8 @@ internal fun <T> TvFileGrid(
         val oldIndex = selectedIndex
         val rowChanged = (targetIndex / columnCount) != (oldIndex / columnCount)
 
-        pendingNavigationIndex = targetIndex
-        navigationJob?.cancel()
+        interaction.pendingNavigationIndex = targetIndex
+        interaction.navigationJob?.cancel()
 
         val layoutInfo = gridState.layoutInfo
         val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
@@ -140,8 +123,8 @@ internal fun <T> TvFileGrid(
             }
         }
 
-        navigationJob = scope.launch {
-            val target = pendingNavigationIndex
+        interaction.navigationJob = scope.launch {
+            val target = interaction.pendingNavigationIndex
             if (target !in currentItems.indices) return@launch
 
             val currentViewportHeight = gridState.layoutInfo.viewportEndOffset -
@@ -245,10 +228,10 @@ internal fun <T> TvFileGrid(
                     if (event.type == KeyEventType.KeyDown) {
                         if (
                             event.nativeKeyEvent.repeatCount == 0 &&
-                            activationJob?.isActive != true
+                            interaction.activationJob?.isActive != true
                         ) {
-                            longPressTriggered = false
-                            activationJob = scope.launch {
+                            interaction.longPressTriggered = false
+                            interaction.activationJob = scope.launch {
                                 delay(LONG_PRESS_DELAY)
 
                                 if (
@@ -256,7 +239,7 @@ internal fun <T> TvFileGrid(
                                     selectedIndex == currentSelectedIndex &&
                                     selectedIndex in currentItems.indices
                                 ) {
-                                    longPressTriggered = true
+                                    interaction.longPressTriggered = true
                                     currentOnItemLongClick(
                                         currentItems[selectedIndex]
                                     )
@@ -267,17 +250,17 @@ internal fun <T> TvFileGrid(
                         return@onPreviewKeyEvent true
                     }
 
-                    activationJob?.cancel()
-                    activationJob = null
+                    interaction.activationJob?.cancel()
+                    interaction.activationJob = null
 
                     if (
-                        !longPressTriggered &&
+                        !interaction.longPressTriggered &&
                         selectedIndex in items.indices
                     ) {
                         onItemClick(items[selectedIndex])
                     }
 
-                    longPressTriggered = false
+                    interaction.longPressTriggered = false
                     return@onPreviewKeyEvent true
                 }
 
@@ -424,11 +407,38 @@ private fun targetIndex(currentIndex: Int, itemCount: Int, columnCount: Int, key
         AndroidKeyEvent.KEYCODE_DPAD_UP ->
             (currentIndex - columnCount).takeIf { it >= 0 }
 
-        AndroidKeyEvent.KEYCODE_DPAD_DOWN ->
-            (currentIndex + columnCount).takeIf { it < itemCount }
+        AndroidKeyEvent.KEYCODE_DPAD_DOWN -> {
+            val sameColumnBelow = currentIndex + columnCount
+
+            when {
+                sameColumnBelow < itemCount -> sameColumnBelow
+
+                // The last row is incomplete and does not reach this column. Fall back to its
+                // last item: without this the key press is swallowed and the user has to go
+                // up and left to reach entries that are visibly one row below.
+                currentIndex / columnCount < (itemCount - 1) / columnCount -> itemCount - 1
+
+                else -> null
+            }
+        }
 
         else -> null
     }
+}
+
+/**
+ * Bookkeeping for key handling, held across recompositions by a single [remember].
+ *
+ * Deliberately plain `var`s rather than `mutableStateOf`: none of these are read while
+ * composing, they only feed the key handler and the coroutines it starts. As snapshot state
+ * every D-pad press would write two or three of them and recompose the whole grid, including
+ * the `LazyVerticalGrid` call, without a single pixel changing as a result.
+ */
+private class GridInteraction {
+    var activationJob: Job? = null
+    var navigationJob: Job? = null
+    var pendingNavigationIndex: Int = -1
+    var longPressTriggered: Boolean = false
 }
 
 private data class ScrollResult(val index: Int, val offset: Int, val needed: Boolean)

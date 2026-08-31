@@ -6,7 +6,6 @@ import com.luckycatpaw.luckyfilestv.data.common.model.FileManagerSettings
 internal data class MainUiState(
     val currentPath: String? = null,
     val currentStorageRoot: String? = null,
-    val focusedPath: String? = null,
     val focusTargetPath: String? = null,
     val browserItems: List<BrowserItem> = emptyList(),
     val title: String = "",

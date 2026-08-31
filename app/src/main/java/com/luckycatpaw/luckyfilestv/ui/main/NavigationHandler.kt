@@ -36,7 +36,7 @@ internal class NavigationHandler(
         fileRepository = fileRepository,
         storageRepository = storageRepository,
         cacheLimit = 20,
-        maxItemsToCache = 500
+        maxItemsToCache = 5000
     )
 
     fun clearSnapshots() {

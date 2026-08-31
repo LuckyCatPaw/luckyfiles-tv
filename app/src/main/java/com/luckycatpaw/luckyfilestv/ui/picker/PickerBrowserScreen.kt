@@ -2,6 +2,7 @@ package com.luckycatpaw.luckyfilestv.ui.picker
 
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.luckycatpaw.luckyfilestv.R
@@ -36,37 +37,53 @@ internal fun PickerBrowserScreen(
     onPrimaryActionClick: () -> Unit = {},
     onCancelClick: () -> Unit = {}
 ) {
+    val searchLabel = stringResource(R.string.search)
+    val recentsLabel = stringResource(R.string.recents)
+    val newFolderLabel = stringResource(R.string.new_folder)
+    val cancelLabel = stringResource(R.string.cancel)
+
     val headerActions =
-        listOf(
-            BrowserHeaderAction(
-                target = HeaderFocusTarget.SEARCH,
-                text = stringResource(R.string.search),
-                onClick = onSearchClick
-            ),
-            BrowserHeaderAction(
-                target = HeaderFocusTarget.RECENTS,
-                text = stringResource(R.string.recents),
-                onClick = onRecentsClick,
-                visible = showRecentsAction
-            ),
-            BrowserHeaderAction(
-                target = HeaderFocusTarget.CREATE_FOLDER,
-                text = stringResource(R.string.new_folder),
-                onClick = onCreateFolderClick,
-                visible = canCreateFolder
-            ),
-            BrowserHeaderAction(
-                target = HeaderFocusTarget.CANCEL,
-                text = stringResource(R.string.cancel),
-                onClick = onCancelClick
-            ),
-            BrowserHeaderAction(
-                target = HeaderFocusTarget.PRIMARY,
-                text = primaryActionLabel,
-                onClick = onPrimaryActionClick,
-                visible = primaryActionLabel != null
+        remember(
+            showRecentsAction,
+            canCreateFolder,
+            primaryActionLabel,
+            onSearchClick,
+            onRecentsClick,
+            onCreateFolderClick,
+            onCancelClick,
+            onPrimaryActionClick
+        ) {
+            listOf(
+                BrowserHeaderAction(
+                    target = HeaderFocusTarget.SEARCH,
+                    text = searchLabel,
+                    onClick = onSearchClick
+                ),
+                BrowserHeaderAction(
+                    target = HeaderFocusTarget.RECENTS,
+                    text = recentsLabel,
+                    onClick = onRecentsClick,
+                    visible = showRecentsAction
+                ),
+                BrowserHeaderAction(
+                    target = HeaderFocusTarget.CREATE_FOLDER,
+                    text = newFolderLabel,
+                    onClick = onCreateFolderClick,
+                    visible = canCreateFolder
+                ),
+                BrowserHeaderAction(
+                    target = HeaderFocusTarget.CANCEL,
+                    text = cancelLabel,
+                    onClick = onCancelClick
+                ),
+                BrowserHeaderAction(
+                    target = HeaderFocusTarget.PRIMARY,
+                    text = primaryActionLabel,
+                    onClick = onPrimaryActionClick,
+                    visible = primaryActionLabel != null
+                )
             )
-        )
+        }
 
     TvBrowserScaffold(
         items = items,

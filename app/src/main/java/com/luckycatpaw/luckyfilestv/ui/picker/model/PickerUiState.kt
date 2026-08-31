@@ -10,7 +10,6 @@ internal data class PickerUiState(
     val currentLocalDirectoryWritable: Boolean = false,
     val currentLocalTreeSelectable: Boolean = false,
     val providerStack: List<ProviderLocation> = emptyList(),
-    val focusedKey: String? = null,
     val focusTargetKey: String? = null,
     val settings: FileManagerSettings = FileManagerSettings(),
     val providerLoading: Boolean = false,

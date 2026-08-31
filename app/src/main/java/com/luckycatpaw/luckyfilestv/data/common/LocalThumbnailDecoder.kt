@@ -13,13 +13,14 @@ import android.media.ThumbnailUtils
 import android.os.Build
 import android.os.CancellationSignal
 import android.os.ParcelFileDescriptor
+import android.os.SystemClock
 import android.util.Log
 import android.util.Size
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
 import com.luckycatpaw.luckyfilestv.util.MimeTypes
 import java.io.File
-import java.nio.file.Files
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
@@ -249,17 +250,47 @@ internal object LocalThumbnailDecoder {
         return inSampleSize
     }
 
+    /**
+     * Locates the artwork of [directoryPath], or null when there is none.
+     *
+     * This used to fall back to a full `Files.newDirectoryStream` scan whenever `folder.jpg`
+     * was missing, in order to catch differently cased names. That scan ran for every
+     * coverless folder scrolling into view and could not be cached: the thumbnail caches are
+     * keyed on the cover file, which does not exist in exactly this case. A media library of
+     * season folders therefore re-listed every one of them on every pass through the grid.
+     *
+     * Instead a handful of known spellings are probed with a plain stat each, and folders
+     * without a cover are remembered for a while so repeated scrolling costs nothing.
+     */
     fun findFolderCover(directoryPath: String): String? {
-        val directory = File(directoryPath)
-        val conventionalCover = File(directory, "folder.jpg")
-        if (conventionalCover.isFile) return conventionalCover.absolutePath
+        val cachedMiss = coverMisses[directoryPath]
 
-        return runCatching {
-            Files.newDirectoryStream(directory.toPath()).use { entries ->
-                entries.firstOrNull { path ->
-                    Files.isRegularFile(path) && path.fileName.toString().equals("folder.jpg", ignoreCase = true)
-                }?.toFile()?.absolutePath
-            }
-        }.getOrNull()
+        if (cachedMiss != null) {
+            if (cachedMiss > SystemClock.elapsedRealtime()) return null
+            coverMisses.remove(directoryPath, cachedMiss)
+        }
+
+        val directory = File(directoryPath)
+
+        for (candidate in COVER_FILE_NAMES) {
+            val cover = File(directory, candidate)
+            if (cover.isFile) return cover.absolutePath
+        }
+
+        if (coverMisses.size >= MAX_COVER_MISSES) {
+            coverMisses.clear()
+        }
+
+        coverMisses[directoryPath] = SystemClock.elapsedRealtime() + COVER_MISS_TTL_MILLIS
+        return null
     }
+
+    /** Spellings probed by [findFolderCover], in order. One stat(2) each. */
+    private val COVER_FILE_NAMES = listOf("folder.jpg", "Folder.jpg", "folder.JPG")
+
+    /** Directories known to have no cover, with the point in time the entry goes stale. */
+    private val coverMisses = ConcurrentHashMap<String, Long>()
+
+    private const val COVER_MISS_TTL_MILLIS = 60_000L
+    private const val MAX_COVER_MISSES = 512
 }

@@ -143,7 +143,13 @@ internal fun <T : Any> TvBrowserScaffold(
 
     // Resolve an explicit return target before the new list is first rendered.
     // This prevents a one-frame highlight on a stale index during back navigation.
-    val explicitFocusIndex = focusKey?.let(itemKeys::indexOf) ?: -1
+    //
+    // indexOf is O(n) over the key list. Unmemoised it ran on every recomposition, so a
+    // directory with a few thousand entries cost that many string comparisons per D-pad
+    // press. The result only changes with the list or the requested key.
+    val explicitFocusIndex = remember(itemKeys, focusKey) {
+        focusKey?.let(itemKeys::indexOf) ?: -1
+    }
     val initialFocusIndex =
         when {
             explicitFocusIndex >= 0 -> explicitFocusIndex
@@ -176,16 +182,26 @@ internal fun <T : Any> TvBrowserScaffold(
     fun headerRequester(): FocusRequester? =
         headerEnterRequester.takeIf { focusEnabled && headerActions.any { it.visible } }
 
-    fun requestedFocusIndex(): Int {
-        val requested = focusKey?.let(itemKeys::indexOf) ?: -1
+    fun requestedFocusIndex(): Int = when {
+        explicitFocusIndex >= 0 -> explicitFocusIndex
+        focusKey != null -> -1
+        focusState.selectedIndex in items.indices -> focusState.selectedIndex
+        focusState.focusedIndex in items.indices -> focusState.focusedIndex
+        items.isNotEmpty() -> 0
+        else -> -1
+    }
 
-        return when {
-            requested >= 0 -> requested
-            focusKey != null -> -1
-            focusState.selectedIndex in items.indices -> focusState.selectedIndex
-            focusState.focusedIndex in items.indices -> focusState.focusedIndex
-            items.isNotEmpty() -> 0
-            else -> -1
+    val headerButtons = remember(headerActions, requesters, focusState) {
+        headerActions.map { action ->
+            HeaderButtonConfig(
+                text = action.text,
+                icon = action.icon,
+                contentDescription = action.contentDescription,
+                focusRequester = requesters.getValue(action.target),
+                onFocused = { focusState.onHeaderFocused() },
+                onClick = action.onClick,
+                visible = action.visible
+            )
         }
     }
 
@@ -200,18 +216,7 @@ internal fun <T : Any> TvBrowserScaffold(
             title = title,
             focusEnabled = focusEnabled,
             focusRequester = headerEnterRequester,
-            buttons =
-                headerActions.map { action ->
-                    HeaderButtonConfig(
-                        text = action.text,
-                        icon = action.icon,
-                        contentDescription = action.contentDescription,
-                        focusRequester = requesters.getValue(action.target),
-                        onFocused = { focusState.onHeaderFocused() },
-                        onClick = action.onClick,
-                        visible = action.visible
-                    )
-                },
+            buttons = headerButtons,
             onDown = { focusState.restoreGridFocus(focusEnabled) }
         )
 

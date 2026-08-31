@@ -109,6 +109,14 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
     private var currentStorageRoot: String? = null
     private var pendingLocalPath: String? = null
 
+    /**
+     * The item the grid last reported as focused. Kept out of [PickerUiState] for the same
+     * reason as in MainViewModel: it is only read when an action needs a return target, and
+     * as state it recomposed the whole picker on every D-pad press.
+     */
+    internal var focusedKey: String? = null
+        private set
+
     private val localCoordinator = LocalBrowserCoordinator<PickerBrowserItem>(
         appContext = appContext,
         modelScope = viewModelScope,
@@ -202,7 +210,7 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
                 localPath = state.currentLocalPath,
                 storageRoot = currentStorageRoot,
                 providerStack = state.providerStack,
-                focusKey = state.focusedKey
+                focusKey = focusedKey
             )
         }
     }
@@ -727,7 +735,9 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
         .map { it.path }
         .firstOrNull { path == it || path.startsWith(it + File.separator) }
 
-    internal fun setFocusedKey(key: String?) = _uiState.update { it.copy(focusedKey = key) }
+    internal fun setFocusedKey(key: String?) {
+        focusedKey = key
+    }
     internal fun setFocusTargetKey(key: String?) = _uiState.update { it.copy(focusTargetKey = key) }
     internal fun dismissProviderError() = _uiState.update { it.copy(providerErrorMessage = null) }
     internal fun dismissProviderInfo() = _uiState.update { it.copy(providerInfoMessage = null) }
@@ -739,7 +749,7 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
     internal fun startWatchingStorage() {
         storageRepository.startWatching {
             if (isSourceOverview()) {
-                showSourceOverview(_uiState.value.focusedKey)
+                showSourceOverview(focusedKey)
                 return@startWatching
             }
 

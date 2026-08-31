@@ -53,6 +53,17 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
     private var pendingPath: String? = null
     private var currentSettings = FileManagerSettings()
 
+    /**
+     * The item the grid last reported as focused.
+     *
+     * Deliberately not part of [MainUiState]: it is never rendered, only read once at the
+     * moment an action needs a return target. As state it emitted on every D-pad press and
+     * recomposed the whole screen tree — header buttons, focus index lookups and all — for a
+     * value nothing on screen depends on.
+     */
+    internal var focusedPath: String? = null
+        private set
+
     private val navigationHandler = NavigationHandler(
         appContext = appContext,
         modelScope = viewModelScope,
@@ -93,7 +104,7 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
         currentSettings = settings
 
         _uiState.value.currentPath?.let { path ->
-            openDirectory(path, _uiState.value.focusedPath)
+            openDirectory(path, focusedPath)
         }
     }
 
@@ -147,11 +158,14 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
 
     // Storage Management
     internal fun handleStorageChange() {
-        val activeStorage = _uiState.value.currentStorageRoot
-        val state = _uiState.value
-
         viewModelScope.launch {
             val storages = storageRepository.getStorages()
+
+            // Read only after the suspending call above. Assembling the volume list takes long
+            // enough for the user to navigate in the meantime, so a snapshot taken beforehand
+            // can describe a screen that no longer exists.
+            val state = _uiState.value
+            val activeStorage = state.currentStorageRoot
 
             if (
                 state.currentPath != null &&
@@ -162,13 +176,15 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
                 return@launch
             }
 
-            if (state.currentPath == null) {
-                val previousFocus = state.focusedPath
-
-                _uiState.update { currentState ->
+            // The root check is repeated inside update so that navigation racing with this
+            // coroutine cannot be overwritten by a storage list that is already outdated.
+            _uiState.update { currentState ->
+                if (currentState.currentPath != null) {
+                    currentState
+                } else {
                     currentState.copy(
                         browserItems = storages,
-                        focusTargetPath = previousFocus?.takeIf { path ->
+                        focusTargetPath = focusedPath?.takeIf { path ->
                             storages.any { it.path == path }
                         }
                     )
@@ -193,7 +209,7 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
     }
 
     internal fun setFocusedPath(path: String?) {
-        _uiState.update { it.copy(focusedPath = path) }
+        focusedPath = path
     }
 
     internal fun setFocusTargetPath(path: String?) {

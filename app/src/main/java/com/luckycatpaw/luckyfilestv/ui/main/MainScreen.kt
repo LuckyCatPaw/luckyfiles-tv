@@ -72,7 +72,7 @@ internal fun MainScreen(viewModel: MainViewModel) {
 
     var operationMessage by remember { mutableStateOf<String?>(null) }
 
-    fun restoreBrowserFocus(path: String? = uiState.focusedPath) {
+    fun restoreBrowserFocus(path: String? = viewModel.focusedPath) {
         viewModel.setFocusTargetPath(path)
         focusRestoreKey++
     }

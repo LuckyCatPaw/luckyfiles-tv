@@ -46,7 +46,7 @@ internal fun DocumentPickerScreen(viewModel: DocumentPickerViewModel) {
     }
     var focusRestoreKey by remember { mutableIntStateOf(0) }
 
-    fun restoreFocus(key: String? = uiState.focusedKey) {
+    fun restoreFocus(key: String? = viewModel.focusedKey) {
         viewModel.setFocusTargetKey(key)
         focusRestoreKey++
     }

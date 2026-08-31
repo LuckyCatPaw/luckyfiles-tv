@@ -23,7 +23,15 @@ internal class LocalBrowserCoordinator<T>(
     private val fileRepository: FileRepository,
     private val storageRepository: StorageRepository,
     private val cacheLimit: Int = 12,
-    private val maxItemsToCache: Int = 1000
+    /**
+     * Above this many entries a directory is not kept for the way back.
+     *
+     * The bound exists to cap memory, but it used to sit at a point where it excluded exactly
+     * the directories whose re-listing hurts most. An entry is a small object with two string
+     * references, so a few thousand of them are a few hundred kilobytes — cheaper than
+     * listing, stat-ing and sorting them again on every step back up the tree.
+     */
+    private val maxItemsToCache: Int = 5000
 ) {
     private var loadJob: Job? = null
     private var loadGeneration = 0
@@ -107,12 +115,22 @@ internal class LocalBrowserCoordinator<T>(
     }
 
     private suspend fun calculateTitle(path: String): String {
-        val storages = storageRepository.getStorages()
-        storages.firstOrNull {
-            runCatching { File(it.path).canonicalPath == File(path).canonicalPath }.getOrDefault(it.path == path)
+        val file = File(path)
+        // One realpath(2) instead of one per volume: the old version resolved the browsed
+        // path again inside the loop body.
+        val canonical = runCatching { file.canonicalPath }.getOrNull()
+
+        storageRepository.getStorages().firstOrNull { storage ->
+            if (storage.path == path) {
+                true
+            } else if (canonical == null) {
+                false
+            } else {
+                runCatching { File(storage.path).canonicalPath == canonical }.getOrDefault(false)
+            }
         }?.let { return it.name }
 
-        return File(path).name.takeIf { it.isNotBlank() } ?: path
+        return file.name.takeIf { it.isNotBlank() } ?: path
     }
 
     private data class DirectorySnapshot<T>(val items: List<T>?, val gridPosition: TvGridPosition)

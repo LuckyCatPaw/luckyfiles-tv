@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.res.stringResource
 import com.luckycatpaw.luckyfilestv.R
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
@@ -45,64 +46,91 @@ internal fun BrowserScreen(
     val transferPending = transferActionLabel != null
     val safeSpace = TvFileGridDefaults.SafeHorizontalSpace
 
+    val allLabel = stringResource(R.string.all)
+    val copyLabel = stringResource(R.string.copy)
+    val moveLabel = stringResource(R.string.move)
+    val deleteLabel = stringResource(R.string.delete)
+    val cancelLabel = stringResource(R.string.cancel)
+    val newFolderLabel = stringResource(R.string.new_folder)
+    val settingsLabel = stringResource(R.string.settings)
+
+    // Nine objects that only depend on the flags below. Rebuilding them on every
+    // recomposition also handed TvBrowserScaffold a fresh list instance every time, which
+    // kept BrowserHeader and its buttons from ever skipping.
     val headerActions =
-        listOf(
-            BrowserHeaderAction(
-                target = HeaderFocusTarget.SELECT_ALL,
-                text = stringResource(R.string.all),
-                onClick = onSelectAllClick,
-                visible = selectionMode
-            ),
-            BrowserHeaderAction(
-                target = HeaderFocusTarget.SELECTION_COPY,
-                text = stringResource(R.string.copy),
-                onClick = onSelectionCopyClick,
-                visible = selectionMode
-            ),
-            BrowserHeaderAction(
-                target = HeaderFocusTarget.SELECTION_MOVE,
-                text = stringResource(R.string.move),
-                onClick = onSelectionMoveClick,
-                visible = selectionMode
-            ),
-            BrowserHeaderAction(
-                target = HeaderFocusTarget.SELECTION_DELETE,
-                text = stringResource(R.string.delete),
-                onClick = onSelectionDeleteClick,
-                visible = selectionMode
-            ),
-            BrowserHeaderAction(
-                target = HeaderFocusTarget.SELECTION_CANCEL,
-                text = stringResource(R.string.cancel),
-                onClick = onSelectionCancelClick,
-                visible = selectionMode
-            ),
-            BrowserHeaderAction(
-                target = HeaderFocusTarget.CREATE_FOLDER,
-                text = stringResource(R.string.new_folder),
-                onClick = onCreateFolderClick,
-                visible = !selectionMode && canCreateFolder
-            ),
-            BrowserHeaderAction(
-                target = HeaderFocusTarget.TRANSFER_CANCEL,
-                text = stringResource(R.string.cancel),
-                onClick = onTransferCancelClick,
-                visible = !selectionMode && transferPending
-            ),
-            BrowserHeaderAction(
-                target = HeaderFocusTarget.TRANSFER_HERE,
-                text = transferActionLabel,
-                onClick = onTransferHereClick,
-                visible = !selectionMode && transferPending
-            ),
-            BrowserHeaderAction(
-                target = HeaderFocusTarget.SETTINGS,
-                icon = Icons.Filled.Settings,
-                contentDescription = stringResource(R.string.settings),
-                onClick = onSettingsClick,
-                visible = !selectionMode
+        remember(
+            selectionMode,
+            canCreateFolder,
+            transferPending,
+            transferActionLabel,
+            onSelectAllClick,
+            onSelectionCopyClick,
+            onSelectionMoveClick,
+            onSelectionDeleteClick,
+            onSelectionCancelClick,
+            onCreateFolderClick,
+            onTransferCancelClick,
+            onTransferHereClick,
+            onSettingsClick
+        ) {
+            listOf(
+                BrowserHeaderAction(
+                    target = HeaderFocusTarget.SELECT_ALL,
+                    text = allLabel,
+                    onClick = onSelectAllClick,
+                    visible = selectionMode
+                ),
+                BrowserHeaderAction(
+                    target = HeaderFocusTarget.SELECTION_COPY,
+                    text = copyLabel,
+                    onClick = onSelectionCopyClick,
+                    visible = selectionMode
+                ),
+                BrowserHeaderAction(
+                    target = HeaderFocusTarget.SELECTION_MOVE,
+                    text = moveLabel,
+                    onClick = onSelectionMoveClick,
+                    visible = selectionMode
+                ),
+                BrowserHeaderAction(
+                    target = HeaderFocusTarget.SELECTION_DELETE,
+                    text = deleteLabel,
+                    onClick = onSelectionDeleteClick,
+                    visible = selectionMode
+                ),
+                BrowserHeaderAction(
+                    target = HeaderFocusTarget.SELECTION_CANCEL,
+                    text = cancelLabel,
+                    onClick = onSelectionCancelClick,
+                    visible = selectionMode
+                ),
+                BrowserHeaderAction(
+                    target = HeaderFocusTarget.CREATE_FOLDER,
+                    text = newFolderLabel,
+                    onClick = onCreateFolderClick,
+                    visible = !selectionMode && canCreateFolder
+                ),
+                BrowserHeaderAction(
+                    target = HeaderFocusTarget.TRANSFER_CANCEL,
+                    text = cancelLabel,
+                    onClick = onTransferCancelClick,
+                    visible = !selectionMode && transferPending
+                ),
+                BrowserHeaderAction(
+                    target = HeaderFocusTarget.TRANSFER_HERE,
+                    text = transferActionLabel,
+                    onClick = onTransferHereClick,
+                    visible = !selectionMode && transferPending
+                ),
+                BrowserHeaderAction(
+                    target = HeaderFocusTarget.SETTINGS,
+                    icon = Icons.Filled.Settings,
+                    contentDescription = settingsLabel,
+                    onClick = onSettingsClick,
+                    visible = !selectionMode
+                )
             )
-        )
+        }
 
     TvBrowserScaffold(
         items = items,
