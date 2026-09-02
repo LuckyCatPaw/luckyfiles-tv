@@ -5,10 +5,7 @@ import com.luckycatpaw.luckyfilestv.R
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import com.luckycatpaw.luckyfilestv.data.common.model.FileManagerSettings
 import com.luckycatpaw.luckyfilestv.data.repository.FileRepository
-import com.luckycatpaw.luckyfilestv.data.repository.StorageRepository
 import com.luckycatpaw.luckyfilestv.ui.common.model.TvGridPosition
-import com.luckycatpaw.luckyfilestv.util.FileUtil
-import java.io.File
 import java.util.LinkedHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -21,7 +18,6 @@ internal class LocalBrowserCoordinator<T>(
     private val appContext: Context,
     private val modelScope: CoroutineScope,
     private val fileRepository: FileRepository,
-    private val storageRepository: StorageRepository,
     private val cacheLimit: Int = 12,
     /**
      * Above this many entries a directory is not kept for the way back.
@@ -83,54 +79,26 @@ internal class LocalBrowserCoordinator<T>(
         onLoading(cached?.items)
 
         loadJob = modelScope.launch {
-            val result = FileUtil.runCancellable {
-                val rawItems = fileRepository.getItems(
-                    path,
-                    settings.hideFolderJpg,
-                    settings.sortMode,
-                    settings.sortAscending,
-                    settings.foldersFirst
-                ).getOrThrow()
-
-                val transformedItems = rawItems.mapNotNull(filter)
-                val title = calculateTitle(path)
-
-                Triple(transformedItems, title, DirectoryInfo(writable = File(path).canWrite()))
-            }
+            // Name, writability and contents come from one background call, so nothing here
+            // touches the file system on the main thread.
+            val result = fileRepository.list(path, settings)
 
             if (!isCurrentPath(path) || loadGeneration != generation) return@launch
 
-            val (items, title, info) = result.getOrElse { error ->
+            val content = result.getOrElse { error ->
                 onError(error.message ?: appContext.getString(R.string.folder_load_failed))
                 return@launch
             }
+
+            val items = content.items.mapNotNull(filter)
 
             snapshots[path] = DirectorySnapshot(
                 items = if (items.size <= maxItemsToCache) items else null,
                 gridPosition = snapshots[path]?.gridPosition ?: TvGridPosition()
             )
 
-            onLoaded(items, title, info)
+            onLoaded(items, content.title, DirectoryInfo(writable = content.writable))
         }
-    }
-
-    private suspend fun calculateTitle(path: String): String {
-        val file = File(path)
-        // One realpath(2) instead of one per volume: the old version resolved the browsed
-        // path again inside the loop body.
-        val canonical = runCatching { file.canonicalPath }.getOrNull()
-
-        storageRepository.getStorages().firstOrNull { storage ->
-            if (storage.path == path) {
-                true
-            } else if (canonical == null) {
-                false
-            } else {
-                runCatching { File(storage.path).canonicalPath == canonical }.getOrDefault(false)
-            }
-        }?.let { return it.name }
-
-        return file.name.takeIf { it.isNotBlank() } ?: path
     }
 
     private data class DirectorySnapshot<T>(val items: List<T>?, val gridPosition: TvGridPosition)

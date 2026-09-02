@@ -5,13 +5,11 @@ import com.luckycatpaw.luckyfilestv.R
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import com.luckycatpaw.luckyfilestv.data.common.model.FileManagerSettings
 import com.luckycatpaw.luckyfilestv.data.repository.FileRepository
-import com.luckycatpaw.luckyfilestv.data.repository.StorageRepository
 import com.luckycatpaw.luckyfilestv.ui.common.LocalBrowserCoordinator
 import com.luckycatpaw.luckyfilestv.ui.common.model.TvGridPosition
 import com.luckycatpaw.luckyfilestv.ui.main.model.MainUiEvent
 import com.luckycatpaw.luckyfilestv.ui.main.model.MainUiState
 import com.luckycatpaw.luckyfilestv.util.hasAllFilesAccess
-import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,7 +21,6 @@ internal class NavigationHandler(
     private val modelScope: CoroutineScope,
     private val uiState: MutableStateFlow<MainUiState>,
     private val fileRepository: FileRepository,
-    private val storageRepository: StorageRepository,
     private val eventChannel: Channel<MainUiEvent>,
     private val onPendingPathChanged: (String?) -> Unit,
     private val getSettings: () -> FileManagerSettings
@@ -34,7 +31,6 @@ internal class NavigationHandler(
         appContext = appContext,
         modelScope = modelScope,
         fileRepository = fileRepository,
-        storageRepository = storageRepository,
         cacheLimit = 20,
         maxItemsToCache = 5000
     )
@@ -49,7 +45,7 @@ internal class NavigationHandler(
         coordinator.clearCache()
 
         modelScope.launch {
-            val storages = storageRepository.getStorages()
+            val storages = fileRepository.roots()
             if (generation != navigationGeneration) return@launch
 
             uiState.update { state ->
@@ -131,19 +127,19 @@ internal class NavigationHandler(
                 return@launch
             }
 
-            val parent = File(path).parentFile
+            val parent = fileRepository.parentOf(path)
             if (parent == null) {
                 showStorages()
                 return@launch
             }
 
             openDirectory(
-                path = parent.absolutePath,
+                path = parent,
                 focusPath = path,
                 restoreCachedState = true
             )
         }
     }
 
-    private suspend fun isStorageRoot(path: String): Boolean = storageRepository.getStorages().any { it.path == path }
+    private suspend fun isStorageRoot(path: String): Boolean = fileRepository.isRoot(path)
 }

@@ -6,6 +6,7 @@ import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeEntryType
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeOutsideRootException
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeReadException
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeStats
+import com.luckycatpaw.luckyfilestv.util.FileUtil
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
@@ -114,7 +115,7 @@ class FileTreeWalker {
 
             val canonical = file.canonicalFile
 
-            if (!isSameOrChild(rootCanonical, canonical)) {
+            if (!FileUtil.isSameOrChildPath(rootCanonical.path, canonical.path)) {
                 throw FileTreeOutsideRootException(file)
             }
 
@@ -214,14 +215,6 @@ class FileTreeWalker {
             type = type,
             size = size
         )
-    }
-
-    private fun isSameOrChild(parent: File, child: File): Boolean {
-        val parentPath = parent.path
-        val childPath = child.path
-
-        return childPath == parentPath ||
-            childPath.startsWith(parentPath + File.separator)
     }
 
     private fun safeAdd(first: Long, second: Long): Long = if (Long.MAX_VALUE - first < second) {

@@ -12,6 +12,7 @@ import com.luckycatpaw.luckyfilestv.data.common.model.FileSortMode
 import com.luckycatpaw.luckyfilestv.data.repository.FileRepository
 import com.luckycatpaw.luckyfilestv.data.repository.SettingsRepository
 import com.luckycatpaw.luckyfilestv.data.repository.StorageRepository
+import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
 import com.luckycatpaw.luckyfilestv.ui.common.model.TvGridPosition
 import com.luckycatpaw.luckyfilestv.ui.main.model.MainUiEvent
 import com.luckycatpaw.luckyfilestv.ui.main.model.MainUiState
@@ -36,7 +37,10 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
     internal val events = eventChannel.receiveAsFlow()
     private val storageRepository = StorageRepository(appContext)
     private val settingsRepository = SettingsRepository(appContext)
-    private val fileRepository = FileRepository(appContext, fileTreeWalker)
+    private val fileRepository = FileRepository(
+        context = appContext,
+        sources = FileSourceRegistry.create(storageRepository, fileTreeWalker)
+    )
 
     private val _uiState = MutableStateFlow(MainUiState())
     internal val uiState = combine(
@@ -69,7 +73,6 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
         modelScope = viewModelScope,
         uiState = _uiState,
         fileRepository = fileRepository,
-        storageRepository = storageRepository,
         eventChannel = eventChannel,
         onPendingPathChanged = { pendingPath = it },
         getSettings = { currentSettings }
@@ -159,7 +162,7 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
     // Storage Management
     internal fun handleStorageChange() {
         viewModelScope.launch {
-            val storages = storageRepository.getStorages()
+            val storages = fileRepository.roots()
 
             // Read only after the suspending call above. Assembling the volume list takes long
             // enough for the user to navigate in the meantime, so a snapshot taken beforehand

@@ -16,6 +16,7 @@ import com.luckycatpaw.luckyfilestv.data.repository.FileRepository
 import com.luckycatpaw.luckyfilestv.data.repository.LocalFileSearchRepository
 import com.luckycatpaw.luckyfilestv.data.repository.SettingsRepository
 import com.luckycatpaw.luckyfilestv.data.repository.StorageRepository
+import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
 import com.luckycatpaw.luckyfilestv.ui.common.LocalBrowserCoordinator
 import com.luckycatpaw.luckyfilestv.ui.common.model.TvGridPosition
 import com.luckycatpaw.luckyfilestv.ui.picker.model.BrowseSnapshot
@@ -56,7 +57,7 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
     private val storageRepository = StorageRepository(appContext)
     private val settingsRepository = SettingsRepository(appContext)
     private val documentsRepository = DocumentsProviderRepository(appContext)
-    private val fileRepository = FileRepository(appContext)
+    private val fileRepository = FileRepository(appContext, FileSourceRegistry.create(storageRepository))
     private val localSearchRepository = LocalFileSearchRepository(storageRepository)
     private val providerQueryRunner = ProviderQueryRunner(appContext)
 
@@ -120,8 +121,7 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
     private val localCoordinator = LocalBrowserCoordinator<PickerBrowserItem>(
         appContext = appContext,
         modelScope = viewModelScope,
-        fileRepository = fileRepository,
-        storageRepository = storageRepository
+        fileRepository = fileRepository
     )
 
     private val searchHandler = PickerSearchHandler(context)
@@ -352,7 +352,7 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
             updateUiMetadata()
             val localResult = withContext(Dispatchers.IO) {
                 FileUtil.runCancellable {
-                    storageRepository.getStorages().map { PickerBrowserItem.Local(it) }
+                    fileRepository.roots().map { PickerBrowserItem.Local(it) }
                 }
             }
             if (!isSourceOverview()) return@launch
