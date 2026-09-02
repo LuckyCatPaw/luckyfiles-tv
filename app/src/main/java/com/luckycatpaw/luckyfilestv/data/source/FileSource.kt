@@ -28,7 +28,7 @@ internal interface FileSource {
      * Must not block on a server. A share that is currently unreachable is still listed and
      * only fails when it is opened.
      */
-    suspend fun roots(): List<SourceRoot>
+    suspend fun roots(): List<Volume>
 
     suspend fun list(path: SourcePath, options: ListOptions): DirectoryListing
 
@@ -68,9 +68,6 @@ internal data class SourceCapabilities(
     val cheapMetadata: Boolean,
     val requiresNetwork: Boolean
 )
-
-/** An entry point of a source, rendered as a tile on the storage screen. */
-internal data class SourceRoot(val path: SourcePath, val name: String, val removable: Boolean = false)
 
 internal data class FileEntry(
     val path: SourcePath,

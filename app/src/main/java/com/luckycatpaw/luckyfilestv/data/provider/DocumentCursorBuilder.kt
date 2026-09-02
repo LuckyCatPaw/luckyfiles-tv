@@ -2,7 +2,7 @@ package com.luckycatpaw.luckyfilestv.data.provider
 
 import android.database.MatrixCursor
 import android.provider.DocumentsContract
-import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
+import com.luckycatpaw.luckyfilestv.data.source.Volume
 import com.luckycatpaw.luckyfilestv.util.MimeTypes
 import java.io.File
 import java.nio.file.Files
@@ -39,7 +39,7 @@ internal class DocumentCursorBuilder(
         )
     }
 
-    fun addRootRow(cursor: MatrixCursor, storage: BrowserItem.Storage, root: File) {
+    fun addRootRow(cursor: MatrixCursor, volume: Volume, root: File) {
         var flags = DocumentsContract.Root.FLAG_LOCAL_ONLY or
             DocumentsContract.Root.FLAG_SUPPORTS_IS_CHILD
 
@@ -54,7 +54,7 @@ internal class DocumentCursorBuilder(
             mapOf(
                 DocumentsContract.Root.COLUMN_ROOT_ID to documentId,
                 DocumentsContract.Root.COLUMN_FLAGS to flags,
-                DocumentsContract.Root.COLUMN_TITLE to storage.name,
+                DocumentsContract.Root.COLUMN_TITLE to volume.name,
                 DocumentsContract.Root.COLUMN_DOCUMENT_ID to documentId,
                 DocumentsContract.Root.COLUMN_AVAILABLE_BYTES to root.freeSpace,
                 DocumentsContract.Root.COLUMN_CAPACITY_BYTES to root.totalSpace

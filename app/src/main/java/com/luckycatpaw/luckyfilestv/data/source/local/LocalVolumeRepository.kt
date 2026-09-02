@@ -1,4 +1,4 @@
-package com.luckycatpaw.luckyfilestv.data.repository
+package com.luckycatpaw.luckyfilestv.data.source.local
 
 import android.content.Context
 import android.os.Environment
@@ -6,11 +6,19 @@ import android.os.SystemClock
 import android.os.storage.StorageManager
 import android.os.storage.StorageVolume
 import com.luckycatpaw.luckyfilestv.R
-import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
+import com.luckycatpaw.luckyfilestv.data.source.SourcePath
+import com.luckycatpaw.luckyfilestv.data.source.Volume
+import com.luckycatpaw.luckyfilestv.data.source.VolumeKind
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-class StorageRepository(private val context: Context) {
+/**
+ * The volumes the platform has mounted.
+ *
+ * All of them come from the system, so none of them carries a [Volume.actions] entry: the
+ * user can neither reconfigure internal storage nor remove a USB stick from within the app.
+ */
+internal class LocalVolumeRepository(private val context: Context) {
 
     private val storageManager: StorageManager =
         context.getSystemService(StorageManager::class.java)
@@ -27,28 +35,28 @@ class StorageRepository(private val context: Context) {
      * the periods in which nobody is watching, e.g. while the app is in the background.
      */
     @Volatile
-    private var cachedStorages: CachedStorages? = null
+    private var cachedVolumes: CachedVolumes? = null
 
-    suspend fun getStorages(): List<BrowserItem.Storage> = withContext(Dispatchers.IO) {
-        getStoragesSync()
+    suspend fun volumes(): List<Volume> = withContext(Dispatchers.IO) {
+        volumesSync()
     }
 
-    fun getStoragesSync(): List<BrowserItem.Storage> {
-        cachedStorages
+    fun volumesSync(): List<Volume> {
+        cachedVolumes
             ?.takeIf { SystemClock.elapsedRealtime() - it.readAtMillis < CACHE_TTL_MILLIS }
-            ?.let { return it.storages }
+            ?.let { return it.volumes }
 
-        val storages = readStorages()
-        cachedStorages = CachedStorages(storages, SystemClock.elapsedRealtime())
-        return storages
+        val volumes = readVolumes()
+        cachedVolumes = CachedVolumes(volumes, SystemClock.elapsedRealtime())
+        return volumes
     }
 
     /** Forces the next lookup to ask the platform again. */
     fun invalidate() {
-        cachedStorages = null
+        cachedVolumes = null
     }
 
-    private fun readStorages(): List<BrowserItem.Storage> {
+    private fun readVolumes(): List<Volume> {
         return storageManager.storageVolumes
             .filter { volume ->
                 volume.state == Environment.MEDIA_MOUNTED ||
@@ -58,18 +66,18 @@ class StorageRepository(private val context: Context) {
                 val directory = volume.directory
                     ?: return@mapNotNull null
 
-                BrowserItem.Storage(
+                Volume(
+                    path = SourcePath.of(directory),
                     name = if (volume.isPrimary) {
                         context.getString(R.string.internal_storage)
                     } else {
                         volume.getDescription(context)
                     },
-                    path = directory.absolutePath,
-                    removable = volume.isRemovable
+                    kind = if (volume.isRemovable) VolumeKind.REMOVABLE else VolumeKind.INTERNAL
                 )
             }
-            .sortedBy { storage ->
-                storage.removable
+            .sortedBy { volume ->
+                volume.kind == VolumeKind.REMOVABLE
             }
     }
 
@@ -106,7 +114,7 @@ class StorageRepository(private val context: Context) {
         storageCallback = null
     }
 
-    private data class CachedStorages(val storages: List<BrowserItem.Storage>, val readAtMillis: Long)
+    private data class CachedVolumes(val volumes: List<Volume>, val readAtMillis: Long)
 
     private companion object {
         const val CACHE_TTL_MILLIS = 10_000L

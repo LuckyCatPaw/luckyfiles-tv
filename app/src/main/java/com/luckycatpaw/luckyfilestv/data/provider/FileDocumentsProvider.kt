@@ -10,8 +10,9 @@ import android.provider.DocumentsProvider
 import androidx.annotation.StringRes
 import com.luckycatpaw.luckyfilestv.R
 import com.luckycatpaw.luckyfilestv.data.common.FileTreeWalker
-import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
-import com.luckycatpaw.luckyfilestv.data.repository.StorageRepository
+import com.luckycatpaw.luckyfilestv.data.source.Volume
+import com.luckycatpaw.luckyfilestv.data.source.VolumeKind
+import com.luckycatpaw.luckyfilestv.data.source.local.LocalVolumeRepository
 import com.luckycatpaw.luckyfilestv.data.transfer.TransferCoordinator
 import com.luckycatpaw.luckyfilestv.data.transfer.model.FileConflictPolicy
 import com.luckycatpaw.luckyfilestv.data.transfer.model.TransferConflictDecision
@@ -27,8 +28,8 @@ import kotlinx.coroutines.runBlocking
 
 class FileDocumentsProvider : DocumentsProvider() {
 
-    private val storageRepository: StorageRepository by lazy {
-        StorageRepository(requireNotNull(context).applicationContext)
+    private val volumeRepository: LocalVolumeRepository by lazy {
+        LocalVolumeRepository(requireNotNull(context).applicationContext)
     }
 
     private val fileTreeWalker = FileTreeWalker()
@@ -63,10 +64,10 @@ class FileDocumentsProvider : DocumentsProvider() {
 
     override fun queryRoots(projection: Array<out String>?): Cursor {
         val cursor = MatrixCursor(projection ?: DEFAULT_ROOT_PROJECTION)
-        currentStorages().forEach { storage ->
-            val root = runCatching { File(storage.path).canonicalFile }.getOrNull() ?: return@forEach
+        currentVolumes().forEach { volume ->
+            val root = runCatching { volume.path.toFile().canonicalFile }.getOrNull() ?: return@forEach
             if (root.exists() && root.isDirectory) {
-                cursorBuilder.addRootRow(cursor, storage, root)
+                cursorBuilder.addRootRow(cursor, volume, root)
             }
         }
 
@@ -322,12 +323,18 @@ class FileDocumentsProvider : DocumentsProvider() {
         return destination
     }
 
-    private fun currentStorages(): List<BrowserItem.Storage> = storageRepository.getStoragesSync().filter { storage ->
-        runCatching {
-            val file = File(storage.path).canonicalFile
-            file.exists() && file.isDirectory
-        }.getOrDefault(false)
-    }
+    /**
+     * Only on-device volumes are published. A network share has no path the platform could
+     * hand to another app, so it must not appear as a document root.
+     */
+    private fun currentVolumes(): List<Volume> = volumeRepository.volumesSync()
+        .filter { volume -> volume.kind != VolumeKind.NETWORK }
+        .filter { volume ->
+            runCatching {
+                val file = volume.path.toFile().canonicalFile
+                file.exists() && file.isDirectory
+            }.getOrDefault(false)
+        }
 
     private fun managedStorageSnapshot(): DocumentIdResolver.ManagedStorageSnapshot {
         val now = SystemClock.elapsedRealtime()
@@ -337,8 +344,8 @@ class FileDocumentsProvider : DocumentsProvider() {
             return cached.snapshot
         }
 
-        val rootEntries = currentStorages().mapNotNull { storage ->
-            runCatching { File(storage.path).canonicalFile to storage.name }.getOrNull()
+        val rootEntries = currentVolumes().mapNotNull { volume ->
+            runCatching { volume.path.toFile().canonicalFile to volume.name }.getOrNull()
         }
 
         val snapshot = DocumentIdResolver.ManagedStorageSnapshot(

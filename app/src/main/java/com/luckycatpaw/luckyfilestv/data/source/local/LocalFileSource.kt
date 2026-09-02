@@ -2,7 +2,6 @@ package com.luckycatpaw.luckyfilestv.data.source.local
 
 import com.luckycatpaw.luckyfilestv.data.common.FileTreeWalker
 import com.luckycatpaw.luckyfilestv.data.common.model.FileProperties
-import com.luckycatpaw.luckyfilestv.data.repository.StorageRepository
 import com.luckycatpaw.luckyfilestv.data.source.DirectoryListing
 import com.luckycatpaw.luckyfilestv.data.source.FileEntry
 import com.luckycatpaw.luckyfilestv.data.source.FileSource
@@ -11,7 +10,7 @@ import com.luckycatpaw.luckyfilestv.data.source.SourceCapabilities
 import com.luckycatpaw.luckyfilestv.data.source.SourceException
 import com.luckycatpaw.luckyfilestv.data.source.SourceOperation
 import com.luckycatpaw.luckyfilestv.data.source.SourcePath
-import com.luckycatpaw.luckyfilestv.data.source.SourceRoot
+import com.luckycatpaw.luckyfilestv.data.source.Volume
 import com.luckycatpaw.luckyfilestv.data.source.entryComparator
 import com.luckycatpaw.luckyfilestv.util.FileUtil
 import com.luckycatpaw.luckyfilestv.util.MimeTypes
@@ -37,7 +36,7 @@ import kotlinx.coroutines.withContext
  * directory again on the main thread.
  */
 internal class LocalFileSource(
-    private val volumes: StorageRepository,
+    private val volumes: LocalVolumeRepository,
     private val fileTreeWalker: FileTreeWalker = FileTreeWalker(),
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : FileSource {
@@ -52,9 +51,7 @@ internal class LocalFileSource(
         requiresNetwork = false
     )
 
-    override suspend fun roots(): List<SourceRoot> = volumes.getStorages().map { storage ->
-        SourceRoot(path = SourcePath.parse(storage.path), name = storage.name, removable = storage.removable)
-    }
+    override suspend fun roots(): List<Volume> = volumes.volumes()
 
     override suspend fun list(path: SourcePath, options: ListOptions): DirectoryListing = withContext(dispatcher) {
         val directory = path.canonical(SourceOperation.LIST)
@@ -189,10 +186,10 @@ internal class LocalFileSource(
      * the title lookup used to run in the UI layer.
      */
     private suspend fun displayName(path: SourcePath, canonical: File): String {
-        volumes.getStorages()
-            .firstOrNull { storage ->
-                storage.path == path.value ||
-                    runCatching { File(storage.path).canonicalPath }.getOrNull() == canonical.path
+        volumes.volumes()
+            .firstOrNull { volume ->
+                volume.path == path ||
+                    runCatching { volume.path.toFile().canonicalPath }.getOrNull() == canonical.path
             }
             ?.let { return it.name }
 

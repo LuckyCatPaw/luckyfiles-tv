@@ -29,9 +29,7 @@ internal class FileRepository(context: Context, private val sources: FileSourceR
     private val messages = SourceMessages(context)
 
     /** Entry points of all sources: mounted volumes today, network shares later. */
-    suspend fun roots(): List<BrowserItem.Storage> = sources.roots().map { root ->
-        BrowserItem.Storage(name = root.name, path = root.path.value, removable = root.removable)
-    }
+    suspend fun roots(): List<BrowserItem.Storage> = sources.roots().map(BrowserItem::Storage)
 
     suspend fun isRoot(path: String): Boolean {
         val location = SourcePath.parseOrNull(path) ?: return false

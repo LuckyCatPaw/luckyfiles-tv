@@ -19,7 +19,7 @@ import java.util.Locale
  * `/` or wrap it in a [File] again.
  */
 @JvmInline
-internal value class SourcePath private constructor(val value: String) {
+value class SourcePath private constructor(val value: String) {
 
     /** `true` for on-device storage, which is the only source that owns a [File]. */
     val isLocal: Boolean

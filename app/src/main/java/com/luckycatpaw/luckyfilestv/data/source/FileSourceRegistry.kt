@@ -1,8 +1,8 @@
 package com.luckycatpaw.luckyfilestv.data.source
 
 import com.luckycatpaw.luckyfilestv.data.common.FileTreeWalker
-import com.luckycatpaw.luckyfilestv.data.repository.StorageRepository
 import com.luckycatpaw.luckyfilestv.data.source.local.LocalFileSource
+import com.luckycatpaw.luckyfilestv.data.source.local.LocalVolumeRepository
 
 /**
  * Routes a location to the source that owns it.
@@ -21,14 +21,18 @@ internal class FileSourceRegistry(private val sources: List<FileSource>) {
         ?: throw SourceException.Unsupported(path.scheme)
 
     /** Entry points of every source, in registration order: local storage first. */
-    suspend fun roots(): List<SourceRoot> = sources.flatMap { it.roots() }
+    suspend fun roots(): List<Volume> = sources.flatMap { it.roots() }
 
-    suspend fun isRoot(path: SourcePath): Boolean = roots().any { it.path == path }
+    suspend fun volumeAt(path: SourcePath): Volume? = roots().firstOrNull { it.path == path }
+
+    suspend fun isRoot(path: SourcePath): Boolean = volumeAt(path) != null
 
     companion object {
 
         /** The one place that knows which sources exist. */
-        fun create(storages: StorageRepository, fileTreeWalker: FileTreeWalker = FileTreeWalker()): FileSourceRegistry =
-            FileSourceRegistry(listOf(LocalFileSource(storages, fileTreeWalker)))
+        fun create(
+            volumes: LocalVolumeRepository,
+            fileTreeWalker: FileTreeWalker = FileTreeWalker()
+        ): FileSourceRegistry = FileSourceRegistry(listOf(LocalFileSource(volumes, fileTreeWalker)))
     }
 }

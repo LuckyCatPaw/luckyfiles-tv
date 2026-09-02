@@ -23,8 +23,10 @@ import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Lan
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Usb
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
@@ -48,6 +50,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.luckycatpaw.luckyfilestv.data.common.LocalThumbnailDecoder
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
+import com.luckycatpaw.luckyfilestv.data.source.VolumeKind
 import com.luckycatpaw.luckyfilestv.data.repository.ImageRepository
 import com.luckycatpaw.luckyfilestv.ui.picker.model.PickerBrowserItem
 import com.luckycatpaw.luckyfilestv.util.FileNameOptimizer
@@ -381,7 +384,11 @@ private fun previewIconColor(selected: Boolean): ComposeColor =
     if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
 
 private fun localFallbackIcon(item: BrowserItem): ImageVector = when (item) {
-    is BrowserItem.Storage -> Icons.Filled.Storage
+    is BrowserItem.Storage -> when (item.volume.kind) {
+        VolumeKind.INTERNAL -> Icons.Filled.Storage
+        VolumeKind.REMOVABLE -> Icons.Filled.Usb
+        VolumeKind.NETWORK -> Icons.Filled.Lan
+    }
     is BrowserItem.Folder -> Icons.Filled.Folder
     is BrowserItem.File -> fileIconForExtension(File(item.path).extension.lowercase(Locale.ROOT))
 }

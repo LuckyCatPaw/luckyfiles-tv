@@ -2,6 +2,7 @@ package com.luckycatpaw.luckyfilestv.data.repository
 
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import com.luckycatpaw.luckyfilestv.data.common.model.FileManagerSettings
+import com.luckycatpaw.luckyfilestv.data.source.local.LocalVolumeRepository
 import com.luckycatpaw.luckyfilestv.util.FileUtil
 import com.luckycatpaw.luckyfilestv.util.MimeTypes
 import java.io.File
@@ -14,7 +15,7 @@ import kotlinx.coroutines.withContext
 
 internal data class RecentBrowserItem(val item: BrowserItem.File, val modified: Long)
 
-internal class LocalFileSearchRepository(private val storageRepository: StorageRepository) {
+internal class LocalFileSearchRepository(private val volumes: LocalVolumeRepository) {
     suspend fun search(
         query: String,
         directoriesOnly: Boolean,
@@ -153,7 +154,7 @@ internal class LocalFileSearchRepository(private val storageRepository: StorageR
         return mimeMatcher(MimeTypes.forFileName(file.name))
     }
 
-    private suspend fun storageRoots(): List<File> = storageRepository.getStorages().map { File(it.path) }
+    private suspend fun storageRoots(): List<File> = volumes.volumes().map { it.path.toFile() }
 
     private fun File.canonicalOrNull(): File? = runCatching { canonicalFile }.getOrNull()
 

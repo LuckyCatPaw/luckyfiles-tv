@@ -15,8 +15,8 @@ import com.luckycatpaw.luckyfilestv.data.repository.DocumentsProviderRepository
 import com.luckycatpaw.luckyfilestv.data.repository.FileRepository
 import com.luckycatpaw.luckyfilestv.data.repository.LocalFileSearchRepository
 import com.luckycatpaw.luckyfilestv.data.repository.SettingsRepository
-import com.luckycatpaw.luckyfilestv.data.repository.StorageRepository
 import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
+import com.luckycatpaw.luckyfilestv.data.source.local.LocalVolumeRepository
 import com.luckycatpaw.luckyfilestv.ui.common.LocalBrowserCoordinator
 import com.luckycatpaw.luckyfilestv.ui.common.model.TvGridPosition
 import com.luckycatpaw.luckyfilestv.ui.picker.model.BrowseSnapshot
@@ -54,11 +54,11 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
     private val eventChannel = Channel<PickerUiEvent>(Channel.BUFFERED)
 
     internal val events: Flow<PickerUiEvent> = eventChannel.receiveAsFlow()
-    private val storageRepository = StorageRepository(appContext)
+    private val volumeRepository = LocalVolumeRepository(appContext)
     private val settingsRepository = SettingsRepository(appContext)
     private val documentsRepository = DocumentsProviderRepository(appContext)
-    private val fileRepository = FileRepository(appContext, FileSourceRegistry.create(storageRepository))
-    private val localSearchRepository = LocalFileSearchRepository(storageRepository)
+    private val fileRepository = FileRepository(appContext, FileSourceRegistry.create(volumeRepository))
+    private val localSearchRepository = LocalFileSearchRepository(volumeRepository)
     private val providerQueryRunner = ProviderQueryRunner(appContext)
 
     private val _uiState = MutableStateFlow(PickerUiState())
@@ -729,10 +729,10 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
     }
 
     private suspend fun isStorageRoot(path: String): Boolean =
-        storageRepository.getStorages().any { samePath(it.path, path) }
+        volumeRepository.volumes().any { samePath(it.path.value, path) }
 
-    private suspend fun findStorageRoot(path: String): String? = storageRepository.getStorages()
-        .map { it.path }
+    private suspend fun findStorageRoot(path: String): String? = volumeRepository.volumes()
+        .map { it.path.value }
         .firstOrNull { path == it || path.startsWith(it + File.separator) }
 
     internal fun setFocusedKey(key: String?) {
@@ -747,7 +747,7 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
 
     internal fun cancelPicker() = eventChannel.trySend(PickerUiEvent.Cancel)
     internal fun startWatchingStorage() {
-        storageRepository.startWatching {
+        volumeRepository.startWatching {
             if (isSourceOverview()) {
                 showSourceOverview(focusedKey)
                 return@startWatching
@@ -755,8 +755,8 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
 
             val activeRoot = currentStorageRoot ?: return@startWatching
             viewModelScope.launch {
-                val stillMounted = storageRepository.getStorages().any {
-                    samePath(it.path, activeRoot)
+                val stillMounted = volumeRepository.volumes().any {
+                    samePath(it.path.value, activeRoot)
                 }
                 if (!stillMounted && samePath(currentStorageRoot ?: return@launch, activeRoot)) {
                     showSourceOverview()
@@ -765,7 +765,7 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
         }
     }
 
-    internal fun stopWatchingStorage() = storageRepository.stopWatching()
+    internal fun stopWatchingStorage() = volumeRepository.stopWatching()
     internal fun resumeAfterStoragePermission() {
         pendingLocalPath?.let { if (hasAllFilesAccess()) openLocalDirectory(it) }
     }
@@ -777,7 +777,7 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
         recentsHandler.cancelRecents()
         initialLocationJob?.cancel()
         localCoordinator.clearCache()
-        storageRepository.stopWatching()
+        volumeRepository.stopWatching()
         eventChannel.close()
     }
 }

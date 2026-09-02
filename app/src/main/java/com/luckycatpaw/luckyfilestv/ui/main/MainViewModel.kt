@@ -11,8 +11,8 @@ import com.luckycatpaw.luckyfilestv.data.common.model.FileProperties
 import com.luckycatpaw.luckyfilestv.data.common.model.FileSortMode
 import com.luckycatpaw.luckyfilestv.data.repository.FileRepository
 import com.luckycatpaw.luckyfilestv.data.repository.SettingsRepository
-import com.luckycatpaw.luckyfilestv.data.repository.StorageRepository
 import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
+import com.luckycatpaw.luckyfilestv.data.source.local.LocalVolumeRepository
 import com.luckycatpaw.luckyfilestv.ui.common.model.TvGridPosition
 import com.luckycatpaw.luckyfilestv.ui.main.model.MainUiEvent
 import com.luckycatpaw.luckyfilestv.ui.main.model.MainUiState
@@ -35,11 +35,11 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
     private val fileTreeWalker = FileTreeWalker()
 
     internal val events = eventChannel.receiveAsFlow()
-    private val storageRepository = StorageRepository(appContext)
+    private val volumeRepository = LocalVolumeRepository(appContext)
     private val settingsRepository = SettingsRepository(appContext)
     private val fileRepository = FileRepository(
         context = appContext,
-        sources = FileSourceRegistry.create(storageRepository, fileTreeWalker)
+        sources = FileSourceRegistry.create(volumeRepository, fileTreeWalker)
     )
 
     private val _uiState = MutableStateFlow(MainUiState())
@@ -197,11 +197,11 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
     }
 
     internal fun startWatchingStorage() {
-        storageRepository.startWatching(::handleStorageChange)
+        volumeRepository.startWatching(::handleStorageChange)
     }
 
     internal fun stopWatchingStorage() {
-        storageRepository.stopWatching()
+        volumeRepository.stopWatching()
     }
 
     internal fun resumeAfterStoragePermission() {
@@ -306,7 +306,7 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
 
     override fun onCleared() {
         navigationHandler.clearSnapshots()
-        storageRepository.stopWatching()
+        volumeRepository.stopWatching()
         eventChannel.close()
     }
 }
