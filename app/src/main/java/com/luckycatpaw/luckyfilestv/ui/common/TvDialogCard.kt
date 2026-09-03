@@ -115,6 +115,51 @@ internal fun ConfirmOverlay(
     RequestInitialFocus(cancelFocus, focusKey)
 }
 
+/**
+ * Vertical list of actions in a dialog.
+ *
+ * Shared by the header menu and every other place that offers a short list of choices: they
+ * differ in their title and entries, not in their behaviour. Cancel is appended here so no
+ * caller can forget the way out, and the first entry owns the initial focus.
+ */
+@Composable
+internal fun ActionMenuOverlay(
+    title: String,
+    focusKey: Any?,
+    entries: List<Pair<String, () -> Unit>>,
+    onDismiss: () -> Unit
+) {
+    val firstFocus = remember { FocusRequester() }
+    val allEntries = entries + (stringResource(R.string.cancel) to onDismiss)
+
+    TvModalDialog(onDismiss = onDismiss) {
+        DialogCard(width = 560.dp, padding = 24.dp) {
+            Text(
+                text = title,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(Modifier.height(18.dp))
+
+            allEntries.forEachIndexed { index, (label, action) ->
+                if (index > 0) Spacer(Modifier.height(8.dp))
+                TvDialogButton(
+                    text = label,
+                    modifier = Modifier.fillMaxWidth(),
+                    focusRequester = firstFocus.takeIf { index == 0 },
+                    onClick = action
+                )
+            }
+        }
+    }
+
+    RequestInitialFocus(firstFocus, focusKey)
+}
+
 @Composable
 internal fun TvDialogButton(
     text: String,

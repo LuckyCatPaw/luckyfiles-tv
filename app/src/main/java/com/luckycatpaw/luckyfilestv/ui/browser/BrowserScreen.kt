@@ -2,7 +2,7 @@ package com.luckycatpaw.luckyfilestv.ui.browser
 
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.res.stringResource
@@ -41,7 +41,7 @@ internal fun BrowserScreen(
     onSelectionMoveClick: () -> Unit = {},
     onSelectionDeleteClick: () -> Unit = {},
     onSelectionCancelClick: () -> Unit = {},
-    onSettingsClick: () -> Unit = {}
+    onMenuClick: () -> Unit = {}
 ) {
     val transferPending = transferActionLabel != null
     val safeSpace = TvFileGridDefaults.SafeHorizontalSpace
@@ -52,7 +52,7 @@ internal fun BrowserScreen(
     val deleteLabel = stringResource(R.string.delete)
     val cancelLabel = stringResource(R.string.cancel)
     val newFolderLabel = stringResource(R.string.new_folder)
-    val settingsLabel = stringResource(R.string.settings)
+    val menuLabel = stringResource(R.string.menu)
 
     // Nine objects that only depend on the flags below. Rebuilding them on every
     // recomposition also handed TvBrowserScaffold a fresh list instance every time, which
@@ -71,7 +71,7 @@ internal fun BrowserScreen(
             onCreateFolderClick,
             onTransferCancelClick,
             onTransferHereClick,
-            onSettingsClick
+            onMenuClick
         ) {
             listOf(
                 BrowserHeaderAction(
@@ -123,10 +123,10 @@ internal fun BrowserScreen(
                     visible = !selectionMode && transferPending
                 ),
                 BrowserHeaderAction(
-                    target = HeaderFocusTarget.SETTINGS,
-                    icon = Icons.Filled.Settings,
-                    contentDescription = settingsLabel,
-                    onClick = onSettingsClick,
+                    target = HeaderFocusTarget.MENU,
+                    icon = Icons.Filled.MoreVert,
+                    contentDescription = menuLabel,
+                    onClick = onMenuClick,
                     visible = !selectionMode
                 )
             )

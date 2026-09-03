@@ -57,7 +57,7 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
     private val volumeRepository = LocalVolumeRepository(appContext)
     private val settingsRepository = SettingsRepository(appContext)
     private val documentsRepository = DocumentsProviderRepository(appContext)
-    private val fileRepository = FileRepository(appContext, FileSourceRegistry.create(volumeRepository))
+    private val fileRepository = FileRepository(appContext, FileSourceRegistry.create(appContext, volumeRepository))
     private val localSearchRepository = LocalFileSearchRepository(volumeRepository)
     private val providerQueryRunner = ProviderQueryRunner(appContext)
 

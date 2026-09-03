@@ -1,10 +1,11 @@
 package com.luckycatpaw.luckyfilestv.data.source
 
+import android.content.Context
 import com.luckycatpaw.luckyfilestv.data.common.FileTreeWalker
 import com.luckycatpaw.luckyfilestv.data.source.local.LocalFileSource
 import com.luckycatpaw.luckyfilestv.data.source.local.LocalVolumeRepository
-import com.luckycatpaw.luckyfilestv.data.source.smb.ConfiguredSmbShares
 import com.luckycatpaw.luckyfilestv.data.source.smb.SmbFileSource
+import com.luckycatpaw.luckyfilestv.data.source.smb.SmbShareRepository
 import com.luckycatpaw.luckyfilestv.data.source.smb.SmbShareStore
 
 /**
@@ -34,9 +35,10 @@ internal class FileSourceRegistry(private val sources: List<FileSource>) {
 
         /** The one place that knows which sources exist. */
         fun create(
-            volumes: LocalVolumeRepository,
+            context: Context,
+            volumes: LocalVolumeRepository = LocalVolumeRepository(context),
             fileTreeWalker: FileTreeWalker = FileTreeWalker(),
-            smbShares: SmbShareStore = ConfiguredSmbShares
+            smbShares: SmbShareStore = SmbShareRepository(context)
         ): FileSourceRegistry = FileSourceRegistry(
             listOf(
                 LocalFileSource(volumes, fileTreeWalker),

@@ -229,4 +229,19 @@
     <string name="transfer_stopped_time_limit">Übertragung gestoppt. Android begrenzt Übertragungen im Hintergrund auf sechs Stunden pro Tag. Öffne LuckyFiles TV, um die restlichen Dateien erneut zu starten.</string>
     <string name="transfer_stopped_no_foreground">Übertragung konnte nicht gestartet werden. Das Tageslimit für Übertragungen im Hintergrund ist aufgebraucht. Öffne LuckyFiles TV und versuche es später erneut.</string>
     <string name="share_authentication_failed">Anmeldung an der Freigabe fehlgeschlagen. Bitte Benutzername und Passwort prüfen.</string>
+    <string name="menu">Menü</string>
+    <string name="share_add_title">Freigabe hinzufügen</string>
+    <string name="share_edit_title">Freigabe bearbeiten</string>
+    <string name="share_host">Server (Name oder IP-Adresse)</string>
+    <string name="share_name">Freigabename</string>
+    <string name="share_user">Benutzername</string>
+    <string name="share_password">Passwort</string>
+    <string name="share_password_unchanged">Passwort (leer lassen, um es zu behalten)</string>
+    <string name="share_domain">Domäne (optional)</string>
+    <string name="share_display_name">Anzeigename (optional)</string>
+    <string name="share_credentials_guest">Als Gast verbinden</string>
+    <string name="share_credentials_user">Benutzernamen verwenden</string>
+    <string name="share_advanced_show">Erweitert</string>
+    <string name="share_advanced_hide">Erweitert ausblenden</string>
+    <string name="share_incomplete">Server und Freigabename sind erforderlich.</string>
 </resources>

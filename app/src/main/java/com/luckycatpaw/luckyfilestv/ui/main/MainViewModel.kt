@@ -14,6 +14,8 @@ import com.luckycatpaw.luckyfilestv.data.repository.SettingsRepository
 import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
 import com.luckycatpaw.luckyfilestv.data.source.VolumeKind
 import com.luckycatpaw.luckyfilestv.data.source.local.LocalVolumeRepository
+import com.luckycatpaw.luckyfilestv.data.source.smb.SmbShare
+import com.luckycatpaw.luckyfilestv.data.source.smb.SmbShareRepository
 import com.luckycatpaw.luckyfilestv.ui.common.model.TvGridPosition
 import com.luckycatpaw.luckyfilestv.ui.main.model.MainUiEvent
 import com.luckycatpaw.luckyfilestv.ui.main.model.MainUiState
@@ -38,10 +40,11 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
 
     internal val events = eventChannel.receiveAsFlow()
     private val volumeRepository = LocalVolumeRepository(appContext)
+    private val smbShareRepository = SmbShareRepository(appContext)
     private val settingsRepository = SettingsRepository(appContext)
     private val fileRepository = FileRepository(
         context = appContext,
-        sources = FileSourceRegistry.create(volumeRepository, fileTreeWalker)
+        sources = FileSourceRegistry.create(appContext, volumeRepository, fileTreeWalker, smbShareRepository)
     )
 
     private val _uiState = MutableStateFlow(MainUiState())
@@ -314,6 +317,17 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
                     refreshCurrentDirectory(focusPath = newPath)
                 }
                 .onFailure { reportFailure(it, R.string.folder_create_failed) }
+        }
+    }
+
+    /**
+     * Stores a share and shows the overview again, where the tile then appears or changes.
+     */
+    internal fun saveSmbShare(share: SmbShare) {
+        viewModelScope.launch {
+            runCatching { smbShareRepository.save(share) }
+                .onSuccess { showStorages() }
+                .onFailure { reportFailure(it, R.string.error_generic) }
         }
     }
 

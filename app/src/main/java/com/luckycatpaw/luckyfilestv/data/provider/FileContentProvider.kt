@@ -14,7 +14,6 @@ import android.util.Base64
 import com.luckycatpaw.luckyfilestv.R
 import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
 import com.luckycatpaw.luckyfilestv.data.source.SourcePath
-import com.luckycatpaw.luckyfilestv.data.source.local.LocalVolumeRepository
 import com.luckycatpaw.luckyfilestv.util.MimeTypes
 import java.io.File
 import java.io.FileNotFoundException
@@ -32,7 +31,7 @@ import kotlinx.coroutines.runBlocking
 class FileContentProvider : ContentProvider() {
 
     private val sources: FileSourceRegistry by lazy {
-        FileSourceRegistry.create(LocalVolumeRepository(requireNotNull(context).applicationContext))
+        FileSourceRegistry.create(requireNotNull(context).applicationContext)
     }
 
     /** Proxy reads must not run on the caller's binder thread. */

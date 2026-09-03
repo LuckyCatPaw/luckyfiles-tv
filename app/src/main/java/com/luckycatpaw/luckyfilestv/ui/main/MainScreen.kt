@@ -32,10 +32,13 @@ import com.luckycatpaw.luckyfilestv.ui.browser.OperationProgressOverlay
 import com.luckycatpaw.luckyfilestv.ui.browser.PropertiesOverlay
 import com.luckycatpaw.luckyfilestv.ui.browser.TransferConflictOverlay
 import com.luckycatpaw.luckyfilestv.ui.browser.TransferProgressOverlay
+import com.luckycatpaw.luckyfilestv.ui.common.ActionMenuOverlay
 import com.luckycatpaw.luckyfilestv.ui.common.ConfirmOverlay
 import com.luckycatpaw.luckyfilestv.ui.main.model.TransferConflictAnswer
 import com.luckycatpaw.luckyfilestv.ui.main.model.TransferMode
 import com.luckycatpaw.luckyfilestv.ui.settings.SettingsOverlay
+import com.luckycatpaw.luckyfilestv.ui.share.ShareEditorOverlay
+import com.luckycatpaw.luckyfilestv.ui.share.ShareEditorTarget
 import com.luckycatpaw.luckyfilestv.ui.theme.LuckyFilesTheme
 import com.luckycatpaw.luckyfilestv.util.FileOpener
 import kotlinx.coroutines.Dispatchers
@@ -54,6 +57,8 @@ internal fun MainScreen(viewModel: MainViewModel) {
     val noItemsSelectedText = stringResource(R.string.no_items_selected)
 
     var showSettings by rememberSaveable { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
+    var shareEditor by remember { mutableStateOf<ShareEditorTarget?>(null) }
     var focusRestoreKey by rememberSaveable { mutableIntStateOf(0) }
 
     var actionMenuItem by remember { mutableStateOf<BrowserItem?>(null) }
@@ -221,6 +226,8 @@ internal fun MainScreen(viewModel: MainViewModel) {
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 val overlayOpen = showSettings ||
+                    showMenu ||
+                    shareEditor != null ||
                     actionMenuItem != null ||
                     renameItem != null ||
                     deleteItem != null ||
@@ -337,7 +344,7 @@ internal fun MainScreen(viewModel: MainViewModel) {
                         }
                     },
                     onSelectionCancelClick = { cancelSelection() },
-                    onSettingsClick = { if (!overlayOpen && !selectionMode) showSettings = true }
+                    onMenuClick = { if (!overlayOpen && !selectionMode) showMenu = true }
                 )
 
                 actionMenuItem?.let { item ->
@@ -487,6 +494,44 @@ internal fun MainScreen(viewModel: MainViewModel) {
                         },
                         onDismiss = {
                             showNewFolderDialog = false
+                            restoreBrowserFocus()
+                        }
+                    )
+                }
+
+                if (showMenu) {
+                    val settingsLabel = stringResource(R.string.settings)
+                    val addShareLabel = stringResource(R.string.share_add_title)
+
+                    ActionMenuOverlay(
+                        title = stringResource(R.string.menu),
+                        focusKey = "menu",
+                        entries = listOf(
+                            settingsLabel to {
+                                showMenu = false
+                                showSettings = true
+                            },
+                            addShareLabel to {
+                                showMenu = false
+                                shareEditor = ShareEditorTarget.New
+                            }
+                        ),
+                        onDismiss = {
+                            showMenu = false
+                            restoreBrowserFocus()
+                        }
+                    )
+                }
+
+                shareEditor?.let { target ->
+                    ShareEditorOverlay(
+                        target = target,
+                        onSave = { share ->
+                            shareEditor = null
+                            viewModel.saveSmbShare(share)
+                        },
+                        onDismiss = {
+                            shareEditor = null
                             restoreBrowserFocus()
                         }
                     )

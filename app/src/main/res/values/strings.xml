@@ -229,4 +229,19 @@
     <string name="transfer_stopped_time_limit">Transfer stopped. Android limits background transfers to six hours per day. Open LuckyFiles TV to start the remaining files again.</string>
     <string name="transfer_stopped_no_foreground">Transfer could not be started. The daily limit for background transfers is used up. Open LuckyFiles TV and try again later.</string>
     <string name="share_authentication_failed">Sign-in to the share failed. Please check the username and password.</string>
+    <string name="menu">Menu</string>
+    <string name="share_add_title">Add share</string>
+    <string name="share_edit_title">Edit share</string>
+    <string name="share_host">Server (name or IP address)</string>
+    <string name="share_name">Share name</string>
+    <string name="share_user">User name</string>
+    <string name="share_password">Password</string>
+    <string name="share_password_unchanged">Password (leave empty to keep it)</string>
+    <string name="share_domain">Domain (optional)</string>
+    <string name="share_display_name">Display name (optional)</string>
+    <string name="share_credentials_guest">Connect as guest</string>
+    <string name="share_credentials_user">Use a user name</string>
+    <string name="share_advanced_show">Advanced</string>
+    <string name="share_advanced_hide">Hide advanced</string>
+    <string name="share_incomplete">Server and share name are required.</string>
 </resources>

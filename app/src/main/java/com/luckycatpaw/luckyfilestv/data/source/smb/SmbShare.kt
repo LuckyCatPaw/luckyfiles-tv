@@ -1,6 +1,7 @@
 package com.luckycatpaw.luckyfilestv.data.source.smb
 
 import com.luckycatpaw.luckyfilestv.data.source.SourcePath
+import java.util.UUID
 
 /**
  * A share the user configured.
@@ -11,6 +12,14 @@ import com.luckycatpaw.luckyfilestv.data.source.SourcePath
  * deliberately lives in the session layer and not here.
  */
 internal data class SmbShare(
+    /**
+     * Stable identity of the configured share.
+     *
+     * Not the location: editing a share may change host, name or even the user, and the
+     * entry has to stay the same one afterwards. The path is derived and therefore unusable
+     * as a key.
+     */
+    val id: String = UUID.randomUUID().toString(),
     val host: String,
     val name: String,
     val displayName: String,
@@ -58,15 +67,13 @@ internal fun interface SmbShareStore {
 }
 
 /**
- * The shares of a build.
+ * Shares compiled into the build.
  *
- * Empty until the configuration UI exists. To try a server out, add an entry here in a debug
- * build — the source itself needs no change for that, which is the point of testing the
- * protocol before building a screen around it.
+ * A stopgap for trying a server out while the editor does not exist yet: it is only used
+ * when nothing has been configured on the device. Once a share has been added through the
+ * UI this list is ignored, and it disappears entirely with the editor.
  */
-internal object ConfiguredSmbShares : SmbShareStore {
+internal object ConfiguredSmbShares {
 
-    private val configured: List<SmbShare> = emptyList()
-
-    override suspend fun shares(): List<SmbShare> = configured
+    val compiledIn: List<SmbShare> = emptyList()
 }

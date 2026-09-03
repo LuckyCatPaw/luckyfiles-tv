@@ -32,6 +32,7 @@ fun TvTextInput(
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
     downFocusRequester: FocusRequester? = null,
+    upFocusRequester: FocusRequester? = null,
     singleLine: Boolean = true
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -59,7 +60,12 @@ fun TvTextInput(
                     }
 
                     AndroidKeyEvent.KEYCODE_DPAD_UP -> {
-                        // Keep focus inside a single-line TV input when Up is pressed.
+                        // Without a target above, focus stays in the field: a single input
+                        // in a dialog must not lose it upwards. In a form the caller names
+                        // the previous field instead, otherwise the user would be trapped.
+                        if (event.type == KeyEventType.KeyDown) {
+                            upFocusRequester?.requestFocus()
+                        }
                         true
                     }
 

@@ -13,5 +13,5 @@ internal enum class HeaderFocusTarget {
     SELECTION_CANCEL,
     CANCEL,
     PRIMARY,
-    SETTINGS
+    MENU
 }

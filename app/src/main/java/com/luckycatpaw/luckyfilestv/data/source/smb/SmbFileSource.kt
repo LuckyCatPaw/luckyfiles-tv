@@ -73,7 +73,7 @@ internal class SmbFileSource(
 
         return DirectoryListing(
             path = path,
-            displayName = if (target.isShareRoot) target.share.displayName else path.name,
+            displayName = if (path == target.share.path) target.share.displayName else path.name,
             writable = false,
             entries = entries.sortedWith(entryComparator(options.sort))
         )
@@ -238,9 +238,7 @@ internal class SmbFileSource(
         lastModified = lastWriteTime.toEpochMillis()
     )
 
-    private data class SmbTarget(val share: SmbShare, val relativePath: String) {
-        val isShareRoot: Boolean get() = relativePath.isEmpty()
-    }
+    private data class SmbTarget(val share: SmbShare, val relativePath: String)
 
     private data class DirectoryScan(
         val size: Long,
