@@ -8,7 +8,6 @@ import com.luckycatpaw.luckyfilestv.util.DirectorySync
 import com.luckycatpaw.luckyfilestv.util.FileUtil
 import java.io.BufferedOutputStream
 import java.io.File
-import java.io.FileInputStream
 import java.io.IOException
 import java.nio.channels.Channels
 import java.nio.channels.FileChannel
@@ -38,7 +37,7 @@ internal class FileTransferEngine(context: Context, private val fileTreeWalker: 
     )
 
     suspend fun copy(
-        source: File,
+        source: TransferSource,
         target: File,
         replace: Boolean,
         totalBytes: Long,
@@ -98,7 +97,7 @@ internal class FileTransferEngine(context: Context, private val fileTreeWalker: 
     }
 
     private suspend fun copyReplacing(
-        source: File,
+        source: TransferSource,
         target: File,
         totalBytes: Long,
         onBytesCopied: suspend (Long) -> Unit,
@@ -137,7 +136,7 @@ internal class FileTransferEngine(context: Context, private val fileTreeWalker: 
     }
 
     private suspend fun copyTo(
-        source: File,
+        source: TransferSource,
         target: File,
         totalBytes: Long,
         onBytesCopied: suspend (Long) -> Unit,
@@ -155,8 +154,7 @@ internal class FileTransferEngine(context: Context, private val fileTreeWalker: 
 
             onBytesCopied(0L)
 
-            fileTreeWalker.walk(
-                root = source,
+            source.walk(
                 onEntry = { entry ->
                     val destination = destinationFor(target, entry.relativePath)
 
@@ -198,7 +196,7 @@ internal class FileTransferEngine(context: Context, private val fileTreeWalker: 
                                 error(appContext.getString(R.string.target_folder_create_failed))
                             }
 
-                            FileInputStream(entry.file).use { input ->
+                            entry.openInput().use { input ->
                                 val channel = FileChannel.open(
                                     destination.toPath(),
                                     StandardOpenOption.CREATE_NEW,
@@ -244,16 +242,16 @@ internal class FileTransferEngine(context: Context, private val fileTreeWalker: 
                                 }
                             }
 
-                            destination.setLastModified(entry.file.lastModified())
+                            destination.setLastModified(entry.lastModified)
                         }
                     }
                 },
                 onDirectoryComplete = { entry ->
                     destinationFor(target, entry.relativePath)
-                        .setLastModified(entry.file.lastModified())
+                        .setLastModified(entry.lastModified)
                 },
                 onUnreadableDirectory = { directory ->
-                    unreadableDirectories += directory.absolutePath
+                    unreadableDirectories += directory
                 }
             )
 

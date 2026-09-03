@@ -251,4 +251,6 @@
     <string name="share_test">Verbindung testen</string>
     <string name="share_testing">Teste…</string>
     <string name="share_test_success">Verbindung hergestellt.</string>
+    <string name="transfer_to_share_unsupported">Kopieren auf eine Freigabe ist noch nicht möglich.</string>
+    <string name="transfer_move_from_share_unsupported">Verschieben von einer Freigabe ist noch nicht möglich. Kopiere die Dateien und lösche sie auf dem Server.</string>
 </resources>

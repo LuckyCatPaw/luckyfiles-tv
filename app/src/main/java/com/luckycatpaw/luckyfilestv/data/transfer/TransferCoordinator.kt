@@ -7,6 +7,8 @@ import com.luckycatpaw.luckyfilestv.data.common.FileTreeWalker
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeCycleException
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeOutsideRootException
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeReadException
+import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
+import com.luckycatpaw.luckyfilestv.data.source.SourcePath
 import com.luckycatpaw.luckyfilestv.data.transfer.model.FileConflictPolicy
 import com.luckycatpaw.luckyfilestv.data.transfer.model.TransferCancelledException
 import com.luckycatpaw.luckyfilestv.data.transfer.model.TransferConflict
@@ -33,6 +35,10 @@ class TransferCoordinator(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
 
+    private val sources: FileSourceRegistry by lazy {
+        FileSourceRegistry.create(appContext, fileTreeWalker = fileTreeWalker)
+    }
+
     private val appContext = context.applicationContext
     private val transferEngine = FileTransferEngine(
         context = appContext,
@@ -53,18 +59,34 @@ class TransferCoordinator(
         var sourceDeleteWarningCount = 0
 
         try {
+            // Writing to a share is not implemented yet, so a transfer always ends on a
+            // local volume. Reading may come from anywhere.
+            if (SourcePath.parseOrNull(targetDirectoryPath)?.isLocal != true) {
+                return@withContext TransferResult(
+                    completedPaths = completedPaths,
+                    skippedCount = skippedCount,
+                    issues = listOf(
+                        TransferIssue(
+                            sourcePath = targetDirectoryPath,
+                            message = appContext.getString(R.string.transfer_to_share_unsupported)
+                        )
+                    ),
+                    cleanupWarningCount = cleanupWarningCount,
+                    sourceDeleteWarningCount = sourceDeleteWarningCount,
+                    cancelled = false
+                )
+            }
+
             val targetDirectory = requireDirectory(targetDirectoryPath)
             val uniqueSources = sourcePaths
-                .map { path ->
-                    File(path)
-                        .toPath()
-                        .toAbsolutePath()
-                        .normalize()
-                        .toFile()
-                }
+                .map(::transferSourceFor)
                 .distinctBy { source ->
-                    runCatching { source.canonicalPath }
-                        .getOrElse { source.absolutePath }
+                    when (source) {
+                        is TransferSource.Local ->
+                            runCatching { source.file.canonicalPath }.getOrElse { source.pathValue }
+
+                        is TransferSource.Remote -> source.pathValue
+                    }
                 }
             val plannedItems = mutableListOf<PlannedTransfer>()
             val reservedTargets = mutableSetOf<String>()
@@ -74,41 +96,56 @@ class TransferCoordinator(
             for (source in uniqueSources) {
                 currentCoroutineContext().ensureActive()
 
-                if (!Files.exists(source.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                // Moving off a share would have to delete on the server, which the SMB
+                // source cannot do yet. Copying works, so say which of the two it is.
+                if (operation == TransferOperation.MOVE && source !is TransferSource.Local) {
                     issues += TransferIssue(
-                        sourcePath = source.absolutePath,
+                        sourcePath = source.pathValue,
+                        message = appContext.getString(R.string.transfer_move_from_share_unsupported)
+                    )
+                    continue
+                }
+
+                if (!source.exists()) {
+                    issues += TransferIssue(
+                        sourcePath = source.pathValue,
                         message = appContext.getString(R.string.source_missing)
                     )
                     continue
                 }
 
-                val sourceIsSymbolicLink = Files.isSymbolicLink(source.toPath())
+                val localSource = (source as? TransferSource.Local)?.file
+                val sourceIsSymbolicLink = localSource != null &&
+                    Files.isSymbolicLink(localSource.toPath())
 
                 if (sourceIsSymbolicLink && operation == TransferOperation.COPY) {
                     issues += TransferIssue(
-                        sourcePath = source.absolutePath,
+                        sourcePath = source.pathValue,
                         message = appContext.getString(R.string.symbolic_links_not_supported)
                     )
                     continue
                 }
 
-                val sourceParent = source.parentFile?.canonicalFile
+                val sourceParent = localSource?.parentFile?.canonicalFile
 
                 if (
                     operation == TransferOperation.MOVE &&
                     sourceParent == targetDirectory
                 ) {
-                    completedPaths += source.absolutePath
+                    completedPaths += source.pathValue
                     continue
                 }
 
+                val sourceIsDirectory = source.isDirectory()
+
                 if (
                     !sourceIsSymbolicLink &&
-                    source.isDirectory &&
-                    FileUtil.isSameOrChild(source, targetDirectory)
+                    sourceIsDirectory &&
+                    localSource != null &&
+                    FileUtil.isSameOrChild(localSource, targetDirectory)
                 ) {
                     issues += TransferIssue(
-                        sourcePath = source.absolutePath,
+                        sourcePath = source.pathValue,
                         message = appContext.getString(
                             if (operation == TransferOperation.COPY) {
                                 R.string.copy_into_self
@@ -121,7 +158,7 @@ class TransferCoordinator(
                 }
 
                 val directTarget = File(targetDirectory, source.name).absoluteFile
-                val sameTarget = directTarget == source
+                val sameTarget = directTarget == localSource
                 val conflict = (
                     Files.exists(directTarget.toPath(), LinkOption.NOFOLLOW_LINKS) ||
                         directTarget.absolutePath in reservedTargets
@@ -164,7 +201,7 @@ class TransferCoordinator(
                     sameTarget &&
                     policy == FileConflictPolicy.REPLACE
                 ) {
-                    completedPaths += source.absolutePath
+                    completedPaths += source.pathValue
                     continue
                 }
 
@@ -176,7 +213,7 @@ class TransferCoordinator(
                     else -> FileUtil.createUniqueDestination(
                         parent = targetDirectory,
                         requestedName = source.name,
-                        isDirectory = source.isDirectory,
+                        isDirectory = sourceIsDirectory,
                         reservedTargets = reservedTargets
                     )
                 }
@@ -214,12 +251,12 @@ class TransferCoordinator(
                 }
 
                 val statsResult = try {
-                    fileTreeWalker.scan(item.source)
+                    item.source.scan()
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
                     issues += TransferIssue(
-                        sourcePath = item.source.absolutePath,
+                        sourcePath = item.source.pathValue,
                         message = readableMessage(e)
                     )
                     plannedItems[index] = item.copy(invalid = true)
@@ -228,7 +265,7 @@ class TransferCoordinator(
 
                 if (statsResult.symbolicLinkCount > 0L) {
                     issues += TransferIssue(
-                        sourcePath = item.source.absolutePath,
+                        sourcePath = item.source.pathValue,
                         message = appContext.getString(R.string.symbolic_links_not_supported)
                     )
                     plannedItems[index] = item.copy(invalid = true)
@@ -307,8 +344,10 @@ class TransferCoordinator(
                         }
 
                         TransferOperation.MOVE -> {
+                            val movableSource = (item.source as TransferSource.Local).file
+
                             val fastMove = transferEngine.tryFastMove(
-                                source = item.source,
+                                source = movableSource,
                                 target = item.target,
                                 replace = item.replace
                             )
@@ -316,11 +355,11 @@ class TransferCoordinator(
                             if (fastMove != null) {
                                 fastMove
                             } else {
-                                if (Files.isSymbolicLink(item.source.toPath())) {
+                                if (Files.isSymbolicLink(movableSource.toPath())) {
                                     error(appContext.getString(R.string.symbolic_links_not_supported))
                                 }
 
-                                val stats = fileTreeWalker.scan(item.source)
+                                val stats = item.source.scan()
 
                                 if (stats.symbolicLinkCount > 0L) {
                                     error(appContext.getString(R.string.symbolic_links_not_supported))
@@ -362,7 +401,7 @@ class TransferCoordinator(
                                 completionRecorded = true
 
                                 val sourceDeleteFailure = try {
-                                    transferEngine.delete(item.source)
+                                    transferEngine.delete(movableSource)
                                     null
                                 } catch (e: CancellationException) {
                                     throw e
@@ -412,7 +451,7 @@ class TransferCoordinator(
                 } catch (e: Exception) {
                     processedBytes = safeAdd(processedBytes, itemSize)
                     issues += TransferIssue(
-                        sourcePath = item.source.absolutePath,
+                        sourcePath = item.source.pathValue,
                         message = readableMessage(e)
                     )
                 }
@@ -438,6 +477,19 @@ class TransferCoordinator(
                 ),
                 cause = e
             )
+        }
+    }
+
+    private fun transferSourceFor(path: String): TransferSource {
+        val location = SourcePath.parseOrNull(path)
+
+        return if (location == null || location.isLocal) {
+            TransferSource.Local(
+                file = File(path).toPath().toAbsolutePath().normalize().toFile(),
+                fileTreeWalker = fileTreeWalker
+            )
+        } else {
+            TransferSource.Remote(path = location, sources = sources)
         }
     }
 
@@ -551,7 +603,7 @@ class TransferCoordinator(
     }
 
     private data class PlannedTransfer(
-        val source: File,
+        val source: TransferSource,
         val target: File,
         val replace: Boolean,
         val size: Long?,
