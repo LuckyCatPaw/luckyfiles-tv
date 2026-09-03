@@ -50,6 +50,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.luckycatpaw.luckyfilestv.data.common.LocalThumbnailDecoder
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
+import com.luckycatpaw.luckyfilestv.data.source.SourcePath
 import com.luckycatpaw.luckyfilestv.data.source.VolumeKind
 import com.luckycatpaw.luckyfilestv.data.repository.ImageRepository
 import com.luckycatpaw.luckyfilestv.ui.picker.model.PickerBrowserItem
@@ -269,8 +270,12 @@ private fun LocalItemPreview(item: BrowserItem, selected: Boolean, useFolderJpgA
         key2 = if (item is BrowserItem.Folder) useFolderJpgAsIcon else null
     ) {
         val previewRequest = withContext(Dispatchers.IO) {
+            val location = SourcePath.parseOrNull(item.path)
+
             val source: Pair<String, String>? = when (item) {
-                is BrowserItem.Folder -> if (useFolderJpgAsIcon) {
+                // A folder cover means listing the directory. On a share that is a round
+                // trip per tile, so covers stay a local feature for now.
+                is BrowserItem.Folder -> if (useFolderJpgAsIcon && location?.isLocal == true) {
                     LocalThumbnailDecoder.findFolderCover(item.path)?.let { cover -> "folder" to cover }
                 } else {
                     null
@@ -278,13 +283,22 @@ private fun LocalItemPreview(item: BrowserItem, selected: Boolean, useFolderJpgA
 
                 is BrowserItem.File ->
                     LocalThumbnailDecoder
-                        .previewTypeForExtension(File(item.path).extension.lowercase(Locale.ROOT))
+                        .previewTypeForExtension(
+                            location?.extension ?: File(item.path).extension.lowercase(Locale.ROOT)
+                        )
                         ?.let { type -> type to item.path }
 
                 is BrowserItem.Storage -> null
             }
 
             source?.let { (type, path) ->
+                if (location?.isLocal == false) {
+                    // Size and date would each cost a request, and the browser item does not
+                    // carry them. The location alone identifies the preview; a file replaced
+                    // under the same name keeps its old thumbnail until the cache drops it.
+                    return@let Triple(type, path, "$type:$path")
+                }
+
                 val file = File(path)
                 val length = file.length()
                 val lastModified = file.lastModified()

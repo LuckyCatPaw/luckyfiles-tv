@@ -1,5 +1,8 @@
 package com.luckycatpaw.luckyfilestv.data.source.smb
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
 import com.hierynomus.protocol.transport.TransportException
 import com.hierynomus.smbj.SMBClient
 import com.hierynomus.smbj.SmbConfig
@@ -10,7 +13,10 @@ import com.hierynomus.smbj.share.DiskShare
 import com.luckycatpaw.luckyfilestv.data.source.SourceException
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -35,6 +41,7 @@ internal class SmbSessionPool(
     private val client: SMBClient by lazy { SMBClient(config) }
     private val mutex = Mutex()
     private val pooled = mutableMapOf<String, PooledShare>()
+    private val scope = CoroutineScope(SupervisorJob() + dispatcher)
 
     suspend fun <T> withShare(share: SmbShare, block: (DiskShare) -> T): T = withContext(dispatcher) {
         val connected = acquire(share)
@@ -45,6 +52,33 @@ internal class SmbSessionPool(
             evict(share)
             block(acquire(share).diskShare)
         }
+    }
+
+    /**
+     * Throws every session away when the device changes network.
+     *
+     * A session survives in the pool long after the connection under it is gone: standby,
+     * a switch between Wi-Fi and Ethernet or a VPN coming up all leave a socket that still
+     * reports being connected. Without this the next access waits for the socket timeout
+     * before it notices, which on a TV feels like the app has hung. Reconnecting costs one
+     * handshake instead.
+     */
+    private fun watchNetwork(context: Context) {
+        val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
+            ?: return
+
+        val callback = object : ConnectivityManager.NetworkCallback() {
+
+            override fun onAvailable(network: Network) {
+                scope.launch { closeAll() }
+            }
+
+            override fun onLost(network: Network) {
+                scope.launch { closeAll() }
+            }
+        }
+
+        runCatching { connectivityManager.registerDefaultNetworkCallback(callback) }
     }
 
     /** Drops every session, e.g. when the app stops or the shares were reconfigured. */
@@ -94,7 +128,26 @@ internal class SmbSessionPool(
         }
     }
 
-    private companion object {
+    companion object {
+
+        @Volatile
+        private var shared: SmbSessionPool? = null
+
+        /**
+         * One pool for the whole process.
+         *
+         * Browser, picker and the content provider all reach the same shares; separate pools
+         * would mean separate connections and separate logins to the same server. The
+         * connection test deliberately does not use this one — it has to try credentials
+         * that are not stored yet.
+         */
+        fun shared(context: Context): SmbSessionPool = shared ?: synchronized(this) {
+            shared ?: SmbSessionPool()
+                .also { pool ->
+                    pool.watchNetwork(context.applicationContext)
+                    shared = pool
+                }
+        }
 
         /**
          * A sleeping NAS must not freeze a screen, so the timeouts are short enough to fail

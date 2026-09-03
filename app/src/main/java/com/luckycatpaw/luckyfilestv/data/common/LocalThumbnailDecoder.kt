@@ -2,6 +2,7 @@ package com.luckycatpaw.luckyfilestv.data.common
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -18,6 +19,8 @@ import android.util.Log
 import android.util.Size
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
+import com.luckycatpaw.luckyfilestv.data.provider.FileContentProvider
+import com.luckycatpaw.luckyfilestv.data.source.SourcePath
 import com.luckycatpaw.luckyfilestv.util.MimeTypes
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -27,6 +30,8 @@ import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -67,11 +72,27 @@ internal object LocalThumbnailDecoder {
     }
 
     /**
+     * Previews of files on a share, limited to a few at a time.
+     *
+     * A grid full of videos would otherwise open dozens of connections at once and stall the
+     * share for everything else, including playback. Reading metadata is free on a local
+     * disk and a round trip on a server — the difference [
+     * com.luckycatpaw.luckyfilestv.data.source.SourceCapabilities.cheapMetadata] describes.
+     */
+    private val remotePermits = Semaphore(2)
+
+    /**
      * Decodes a preview without caching anything. Both the in-memory and the disk cache live
      * in [com.luckycatpaw.luckyfilestv.data.repository.ImageRepository] and
      * [GeneratedThumbnailCache]; this object is only ever called on a cache miss.
      */
     suspend fun decode(context: Context, type: String, path: String): Bitmap? {
+        val location = SourcePath.parseOrNull(path)
+
+        if (location != null && !location.isLocal) {
+            return remotePermits.withPermit { decodeRemote(context, type, location) }
+        }
+
         if (type == "video") return decodeVideoThumbnail(path)
 
         return withContext(imageDecodeDispatcher) {
@@ -82,6 +103,90 @@ internal object LocalThumbnailDecoder {
                 "apk" -> decodeApkIcon(context, path)
                 else -> null
             }
+        }
+    }
+
+    /**
+     * Preview of a file that only exists on a server.
+     *
+     * Everything goes through the app's own content provider, so the decoders read through
+     * the proxy descriptor and can seek: a video thumbnail costs a few requests instead of
+     * the whole file. An APK icon has no path to install from and is left out.
+     */
+    private suspend fun decodeRemote(context: Context, type: String, location: SourcePath): Bitmap? {
+        val uri = FileContentProvider.createUri(context, location.value)
+
+        return if (type == "video") {
+            decodeRemoteVideoThumbnail(context, uri)
+        } else {
+            withContext(imageDecodeDispatcher) {
+                when (type) {
+                    "folder", "image" -> decodeImageThumbnail(context, uri, 384)
+                    "pdf" -> decodePdfThumbnail(context, uri)
+                    "audio" -> decodeAudioArtwork(context, uri)
+                    else -> null
+                }
+            }
+        }
+    }
+
+    private suspend fun decodeRemoteVideoThumbnail(context: Context, uri: Uri): Bitmap? =
+        withTimeoutOrNull(20_000.milliseconds) {
+            runInterruptible(videoThumbnailDispatcher) {
+                val retriever = MediaMetadataRetriever()
+
+                try {
+                    retriever.setDataSource(context, uri)
+                    retriever.getFrameAtTime(0)?.let { scaleBitmapToFit(it, 384, 240) }
+                } catch (error: Exception) {
+                    Log.w(TAG, "Video thumbnail failed for a share", error)
+                    null
+                } finally {
+                    runCatching { retriever.release() }
+                }
+            }
+        }
+
+    private fun decodeImageThumbnail(context: Context, uri: Uri, requestedSize: Int): Bitmap? {
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+
+        // Two passes, two reads. Measuring only touches the header, so the seek in the
+        // proxy descriptor keeps this to a fraction of the file.
+        runCatching {
+            context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+        }
+
+        if (options.outWidth <= 0 || options.outHeight <= 0) return null
+
+        val decodeOptions = BitmapFactory.Options().apply {
+            inSampleSize = calculateInSampleSize(options, requestedSize, requestedSize)
+            inPreferredConfig = Bitmap.Config.RGB_565
+        }
+
+        return runCatching {
+            context.contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, decodeOptions)
+            }
+        }.getOrNull()?.let { scaleBitmapToFit(it, requestedSize, requestedSize) }
+    }
+
+    private fun decodePdfThumbnail(context: Context, uri: Uri, maxWidth: Int = 384, maxHeight: Int = 240): Bitmap? =
+        runCatching {
+            context.contentResolver.openFileDescriptor(uri, "r")?.use { fd ->
+                renderFirstPdfPage(fd, maxWidth, maxHeight)
+            }
+        }.getOrNull()
+
+    private fun decodeAudioArtwork(context: Context, uri: Uri, requestedSize: Int = 384): Bitmap? {
+        val retriever = MediaMetadataRetriever()
+
+        return try {
+            retriever.setDataSource(context, uri)
+            retriever.embeddedPicture?.let { decodeImageBytesThumbnail(it, requestedSize) }
+        } catch (_: Exception) {
+            null
+        } finally {
+            runCatching { retriever.release() }
         }
     }
 
@@ -136,21 +241,27 @@ internal object LocalThumbnailDecoder {
     }
 
     private fun decodePdfThumbnail(path: String, maxWidth: Int = 384, maxHeight: Int = 240): Bitmap? = runCatching {
-        ParcelFileDescriptor.open(File(path), ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
-            PdfRenderer(fd).use { renderer ->
-                if (renderer.pageCount <= 0) return@runCatching null
-                renderer.openPage(0).use { page ->
-                    val scale = minOf(maxWidth.toFloat() / page.width, maxHeight.toFloat() / page.height)
-                    val width = (page.width * scale).roundToInt().coerceAtLeast(1)
-                    val height = (page.height * scale).roundToInt().coerceAtLeast(1)
-                    createBitmap(width, height, Bitmap.Config.ARGB_8888).apply {
-                        eraseColor(android.graphics.Color.WHITE)
-                        page.render(this, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                    }
+        ParcelFileDescriptor.open(File(path), ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+            renderFirstPdfPage(descriptor, maxWidth, maxHeight)
+        }
+    }.getOrNull()
+
+    /** Shared by the local and the remote path: only where the descriptor comes from differs. */
+    private fun renderFirstPdfPage(descriptor: ParcelFileDescriptor, maxWidth: Int, maxHeight: Int): Bitmap? =
+        PdfRenderer(descriptor).use { renderer ->
+            if (renderer.pageCount <= 0) return null
+
+            renderer.openPage(0).use { page ->
+                val scale = minOf(maxWidth.toFloat() / page.width, maxHeight.toFloat() / page.height)
+                val width = (page.width * scale).roundToInt().coerceAtLeast(1)
+                val height = (page.height * scale).roundToInt().coerceAtLeast(1)
+
+                createBitmap(width, height, Bitmap.Config.ARGB_8888).apply {
+                    eraseColor(android.graphics.Color.WHITE)
+                    page.render(this, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                 }
             }
         }
-    }.getOrNull()
 
     private fun decodeAudioArtwork(path: String, requestedSize: Int = 384): Bitmap? {
         val retriever = MediaMetadataRetriever()
