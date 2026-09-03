@@ -56,7 +56,12 @@ internal class SmbFileSource(
 
     /** Configured shares, without asking any server: an offline NAS still gets its tile. */
     override suspend fun roots(): List<Volume> = shares.shares().map { share ->
-        Volume(path = share.path, name = share.displayName, kind = VolumeKind.NETWORK)
+        Volume(
+            path = share.path,
+            name = share.displayName,
+            kind = VolumeKind.NETWORK,
+            configId = share.id
+        )
     }
 
     override suspend fun list(path: SourcePath, options: ListOptions): DirectoryListing {

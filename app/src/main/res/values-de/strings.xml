@@ -244,4 +244,11 @@
     <string name="share_advanced_show">Erweitert</string>
     <string name="share_advanced_hide">Erweitert ausblenden</string>
     <string name="share_incomplete">Server und Freigabename sind erforderlich.</string>
+    <string name="volume_settings">Einstellungen</string>
+    <string name="volume_remove">Freigabe entfernen</string>
+    <string name="volume_remove_confirm">Freigabe entfernen?</string>
+    <string name="volume_remove_confirm_description">„%1$s“ wird aus der Übersicht entfernt. Dateien auf dem Server werden nicht gelöscht.</string>
+    <string name="share_test">Verbindung testen</string>
+    <string name="share_testing">Teste…</string>
+    <string name="share_test_success">Verbindung hergestellt.</string>
 </resources>

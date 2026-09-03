@@ -244,4 +244,11 @@
     <string name="share_advanced_show">Advanced</string>
     <string name="share_advanced_hide">Hide advanced</string>
     <string name="share_incomplete">Server and share name are required.</string>
+    <string name="volume_settings">Settings</string>
+    <string name="volume_remove">Remove share</string>
+    <string name="volume_remove_confirm">Remove share?</string>
+    <string name="volume_remove_confirm_description">“%1$s” is removed from the overview. Files on the server are not deleted.</string>
+    <string name="share_test">Test connection</string>
+    <string name="share_testing">Testing…</string>
+    <string name="share_test_success">Connection established.</string>
 </resources>

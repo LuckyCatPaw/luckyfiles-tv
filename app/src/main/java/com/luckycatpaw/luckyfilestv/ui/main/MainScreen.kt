@@ -25,6 +25,7 @@ import androidx.tv.material3.SurfaceDefaults
 import com.luckycatpaw.luckyfilestv.R
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import com.luckycatpaw.luckyfilestv.data.common.model.FileProperties
+import com.luckycatpaw.luckyfilestv.data.source.Volume
 import com.luckycatpaw.luckyfilestv.ui.browser.BrowserScreen
 import com.luckycatpaw.luckyfilestv.ui.browser.ItemActionMenuOverlay
 import com.luckycatpaw.luckyfilestv.ui.browser.NameInputOverlay
@@ -39,6 +40,7 @@ import com.luckycatpaw.luckyfilestv.ui.main.model.TransferMode
 import com.luckycatpaw.luckyfilestv.ui.settings.SettingsOverlay
 import com.luckycatpaw.luckyfilestv.ui.share.ShareEditorOverlay
 import com.luckycatpaw.luckyfilestv.ui.share.ShareEditorTarget
+import com.luckycatpaw.luckyfilestv.ui.share.VolumeActionMenuOverlay
 import com.luckycatpaw.luckyfilestv.ui.theme.LuckyFilesTheme
 import com.luckycatpaw.luckyfilestv.util.FileOpener
 import kotlinx.coroutines.Dispatchers
@@ -59,6 +61,8 @@ internal fun MainScreen(viewModel: MainViewModel) {
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var shareEditor by remember { mutableStateOf<ShareEditorTarget?>(null) }
+    var volumeMenu by remember { mutableStateOf<Volume?>(null) }
+    var volumeRemoveTarget by remember { mutableStateOf<Volume?>(null) }
     var focusRestoreKey by rememberSaveable { mutableIntStateOf(0) }
 
     var actionMenuItem by remember { mutableStateOf<BrowserItem?>(null) }
@@ -228,6 +232,8 @@ internal fun MainScreen(viewModel: MainViewModel) {
                 val overlayOpen = showSettings ||
                     showMenu ||
                     shareEditor != null ||
+                    volumeMenu != null ||
+                    volumeRemoveTarget != null ||
                     actionMenuItem != null ||
                     renameItem != null ||
                     deleteItem != null ||
@@ -298,9 +304,15 @@ internal fun MainScreen(viewModel: MainViewModel) {
                         }
                     },
                     onItemLongClick = onItemLongClick@{ item ->
-                        if (overlayOpen || uiState.transferMode != null || item is BrowserItem.Storage) {
+                        if (overlayOpen || uiState.transferMode != null) return@onItemLongClick
+
+                        // A volume is not a file: it offers its own menu, and only when the
+                        // user created it. Internal storage and USB media stay silent.
+                        if (item is BrowserItem.Storage) {
+                            if (item.volume.isUserManaged) volumeMenu = item.volume
                             return@onItemLongClick
                         }
+
                         if (selectionMode) toggleSelection(item) else actionMenuItem = item
                     },
                     onCreateFolderClick = {
@@ -523,9 +535,51 @@ internal fun MainScreen(viewModel: MainViewModel) {
                     )
                 }
 
+                volumeMenu?.let { volume ->
+                    VolumeActionMenuOverlay(
+                        volume = volume,
+                        onSettings = {
+                            val configId = volume.configId
+                            volumeMenu = null
+
+                            if (configId != null) {
+                                viewModel.loadShare(configId) { share ->
+                                    if (share != null) shareEditor = ShareEditorTarget.Existing(share)
+                                }
+                            }
+                        },
+                        onRemove = {
+                            volumeMenu = null
+                            volumeRemoveTarget = volume
+                        },
+                        onDismiss = {
+                            volumeMenu = null
+                            restoreBrowserFocus(volume.path.value)
+                        }
+                    )
+                }
+
+                volumeRemoveTarget?.let { volume ->
+                    ConfirmOverlay(
+                        title = stringResource(R.string.volume_remove_confirm),
+                        message = stringResource(R.string.volume_remove_confirm_description, volume.name),
+                        confirmLabel = stringResource(R.string.volume_remove),
+                        focusKey = volume.path.value,
+                        onConfirm = {
+                            volumeRemoveTarget = null
+                            viewModel.removeSmbShare(volume)
+                        },
+                        onDismiss = {
+                            volumeRemoveTarget = null
+                            restoreBrowserFocus(volume.path.value)
+                        }
+                    )
+                }
+
                 shareEditor?.let { target ->
                     ShareEditorOverlay(
                         target = target,
+                        onTest = viewModel::testSmbShare,
                         onSave = { share ->
                             shareEditor = null
                             viewModel.saveSmbShare(share)

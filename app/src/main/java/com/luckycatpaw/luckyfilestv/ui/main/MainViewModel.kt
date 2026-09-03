@@ -12,10 +12,17 @@ import com.luckycatpaw.luckyfilestv.data.common.model.FileSortMode
 import com.luckycatpaw.luckyfilestv.data.repository.FileRepository
 import com.luckycatpaw.luckyfilestv.data.repository.SettingsRepository
 import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
+import com.luckycatpaw.luckyfilestv.data.source.toListOptions
+import com.luckycatpaw.luckyfilestv.data.source.SourceMessages
+import com.luckycatpaw.luckyfilestv.data.source.SourceOperation
+import com.luckycatpaw.luckyfilestv.data.source.Volume
 import com.luckycatpaw.luckyfilestv.data.source.VolumeKind
 import com.luckycatpaw.luckyfilestv.data.source.local.LocalVolumeRepository
+import com.luckycatpaw.luckyfilestv.data.source.smb.SmbFileSource
+import com.luckycatpaw.luckyfilestv.data.source.smb.SmbSessionPool
 import com.luckycatpaw.luckyfilestv.data.source.smb.SmbShare
 import com.luckycatpaw.luckyfilestv.data.source.smb.SmbShareRepository
+import com.luckycatpaw.luckyfilestv.data.source.smb.SmbShareStore
 import com.luckycatpaw.luckyfilestv.ui.common.model.TvGridPosition
 import com.luckycatpaw.luckyfilestv.ui.main.model.MainUiEvent
 import com.luckycatpaw.luckyfilestv.ui.main.model.MainUiState
@@ -328,6 +335,49 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
             runCatching { smbShareRepository.save(share) }
                 .onSuccess { showStorages() }
                 .onFailure { reportFailure(it, R.string.error_generic) }
+        }
+    }
+
+    /** Looks up the configuration behind a volume tile so the editor can be filled with it. */
+    internal fun loadShare(configId: String, onLoaded: (SmbShare?) -> Unit) {
+        viewModelScope.launch {
+            onLoaded(smbShareRepository.shares().firstOrNull { it.id == configId })
+        }
+    }
+
+    internal fun removeSmbShare(volume: Volume) {
+        val configId = volume.configId ?: return
+
+        viewModelScope.launch {
+            runCatching { smbShareRepository.remove(configId) }
+                .onSuccess { showStorages() }
+                .onFailure { reportFailure(it, R.string.error_generic) }
+        }
+    }
+
+    /**
+     * Tries the entered share once, without storing it.
+     *
+     * Runs against a session of its own: the values are not saved yet, and a pooled session
+     * of the previous credentials would answer for them. Typing a password on a remote
+     * control is slow enough that finding out about a typo only after saving is a poor deal.
+     */
+    internal fun testSmbShare(share: SmbShare, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val sessions = SmbSessionPool()
+            val source = SmbFileSource(SmbShareStore { listOf(share) }, sessions)
+
+            val result = runCatching {
+                source.list(share.path, currentSettings.toListOptions())
+            }
+
+            sessions.closeAll()
+
+            result
+                .onSuccess { onResult(true, appContext.getString(R.string.share_test_success)) }
+                .onFailure { error ->
+                    onResult(false, SourceMessages(appContext).localize(error, SourceOperation.LIST))
+                }
         }
     }
 
