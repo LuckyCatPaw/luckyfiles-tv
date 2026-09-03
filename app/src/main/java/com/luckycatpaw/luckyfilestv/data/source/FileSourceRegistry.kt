@@ -3,6 +3,9 @@ package com.luckycatpaw.luckyfilestv.data.source
 import com.luckycatpaw.luckyfilestv.data.common.FileTreeWalker
 import com.luckycatpaw.luckyfilestv.data.source.local.LocalFileSource
 import com.luckycatpaw.luckyfilestv.data.source.local.LocalVolumeRepository
+import com.luckycatpaw.luckyfilestv.data.source.smb.ConfiguredSmbShares
+import com.luckycatpaw.luckyfilestv.data.source.smb.SmbFileSource
+import com.luckycatpaw.luckyfilestv.data.source.smb.SmbShareStore
 
 /**
  * Routes a location to the source that owns it.
@@ -32,7 +35,13 @@ internal class FileSourceRegistry(private val sources: List<FileSource>) {
         /** The one place that knows which sources exist. */
         fun create(
             volumes: LocalVolumeRepository,
-            fileTreeWalker: FileTreeWalker = FileTreeWalker()
-        ): FileSourceRegistry = FileSourceRegistry(listOf(LocalFileSource(volumes, fileTreeWalker)))
+            fileTreeWalker: FileTreeWalker = FileTreeWalker(),
+            smbShares: SmbShareStore = ConfiguredSmbShares
+        ): FileSourceRegistry = FileSourceRegistry(
+            listOf(
+                LocalFileSource(volumes, fileTreeWalker),
+                SmbFileSource(smbShares)
+            )
+        )
     }
 }

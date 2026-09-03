@@ -5,22 +5,26 @@ import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import com.luckycatpaw.luckyfilestv.data.provider.FileContentProvider
+import com.luckycatpaw.luckyfilestv.data.source.SourcePath
 import java.io.File
 import java.io.IOException
 
 object FileOpener {
 
     fun open(context: Context, path: String): Boolean {
-        val file = File(path)
+        val location = SourcePath.parseOrNull(path)
+            ?: return false
 
-        if (!file.exists() || !file.isFile) {
+        // Existence is only worth checking where it is free. On a share it would cost a
+        // round trip to tell the player something it finds out itself a moment later.
+        if (location.isLocal && !File(path).isFile) {
             return false
         }
 
         return try {
             val uri = FileContentProvider.createUri(
                 context,
-                file
+                canonicalPathOf(location)
             )
 
             val mimeType =
@@ -34,7 +38,7 @@ object FileOpener {
                 )
 
                 clipData = ClipData.newRawUri(
-                    file.name,
+                    location.name,
                     uri
                 )
 
@@ -56,4 +60,7 @@ object FileOpener {
             false
         }
     }
+
+    private fun canonicalPathOf(location: SourcePath): String =
+        if (location.isLocal) location.toFile().canonicalPath else location.value
 }

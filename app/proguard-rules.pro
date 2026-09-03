@@ -19,3 +19,14 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# SMB. smbj builds protocol messages and its transport layer reflectively, and both smbj and
+# bouncycastle reference optional classes that are not on Android. Minification is off today;
+# these rules are here so switching it on does not silently break the network sources.
+-keep class com.hierynomus.** { *; }
+-keep class org.bouncycastle.jcajce.provider.** { *; }
+-keep class org.bouncycastle.jce.provider.** { *; }
+-dontwarn com.hierynomus.**
+-dontwarn org.bouncycastle.**
+-dontwarn org.slf4j.**
+-dontwarn javax.naming.**

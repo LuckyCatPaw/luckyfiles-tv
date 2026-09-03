@@ -12,6 +12,7 @@ import com.luckycatpaw.luckyfilestv.data.common.model.FileSortMode
 import com.luckycatpaw.luckyfilestv.data.repository.FileRepository
 import com.luckycatpaw.luckyfilestv.data.repository.SettingsRepository
 import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
+import com.luckycatpaw.luckyfilestv.data.source.VolumeKind
 import com.luckycatpaw.luckyfilestv.data.source.local.LocalVolumeRepository
 import com.luckycatpaw.luckyfilestv.ui.common.model.TvGridPosition
 import com.luckycatpaw.luckyfilestv.ui.main.model.MainUiEvent
@@ -19,6 +20,7 @@ import com.luckycatpaw.luckyfilestv.ui.main.model.MainUiState
 import com.luckycatpaw.luckyfilestv.ui.main.model.TransferConflictAnswer
 import com.luckycatpaw.luckyfilestv.ui.main.model.TransferMode
 import com.luckycatpaw.luckyfilestv.util.hasAllFilesAccess
+import com.luckycatpaw.luckyfilestv.util.hasLocalNetworkAccess
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -55,6 +57,7 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
     )
 
     private var pendingPath: String? = null
+    private var pendingNetworkVolume: BrowserItem.Storage? = null
     private var currentSettings = FileManagerSettings()
 
     /**
@@ -232,6 +235,14 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
     internal fun openItem(item: BrowserItem) {
         when (item) {
             is BrowserItem.Storage -> {
+                // Asking once the user actually opens a share keeps the prompt in context,
+                // and a device with no share configured never sees it at all.
+                if (item.volume.kind == VolumeKind.NETWORK && !appContext.hasLocalNetworkAccess()) {
+                    pendingNetworkVolume = item
+                    eventChannel.trySend(MainUiEvent.RequestLocalNetworkAccess)
+                    return
+                }
+
                 setCurrentStorageRoot(item.path)
                 openDirectory(item.path)
             }
@@ -240,6 +251,14 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
 
             is BrowserItem.File -> Unit
         }
+    }
+
+    /** Opens the share the permission was asked for, once the user has decided. */
+    internal fun resumeAfterLocalNetworkPermission() {
+        val pending = pendingNetworkVolume ?: return
+        pendingNetworkVolume = null
+
+        if (appContext.hasLocalNetworkAccess()) openItem(pending)
     }
 
     internal fun startTransfer(mode: TransferMode, items: List<BrowserItem>, onStarted: () -> Unit) {

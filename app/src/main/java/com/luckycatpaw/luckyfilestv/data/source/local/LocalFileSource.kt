@@ -6,6 +6,7 @@ import com.luckycatpaw.luckyfilestv.data.source.DirectoryListing
 import com.luckycatpaw.luckyfilestv.data.source.FileEntry
 import com.luckycatpaw.luckyfilestv.data.source.FileSource
 import com.luckycatpaw.luckyfilestv.data.source.ListOptions
+import com.luckycatpaw.luckyfilestv.data.source.RandomAccessSource
 import com.luckycatpaw.luckyfilestv.data.source.SourceCapabilities
 import com.luckycatpaw.luckyfilestv.data.source.SourceException
 import com.luckycatpaw.luckyfilestv.data.source.SourceOperation
@@ -20,6 +21,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.io.RandomAccessFile
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -167,6 +169,17 @@ internal class LocalFileSource(
         }
     }
 
+    override suspend fun openRandomAccess(path: SourcePath): RandomAccessSource = withContext(dispatcher) {
+        val file = path.toFile()
+        if (!file.isFile) throw SourceException.NotFound(path, SourceOperation.READ)
+
+        try {
+            LocalRandomAccessSource(RandomAccessFile(file, "r"))
+        } catch (failed: IOException) {
+            throw SourceException.Failed(SourceOperation.READ, failed)
+        }
+    }
+
     override suspend fun openOutput(path: SourcePath, overwrite: Boolean): OutputStream = withContext(dispatcher) {
         val file = path.toFile()
         if (!overwrite && Files.exists(file.toPath(), LinkOption.NOFOLLOW_LINKS)) {
@@ -216,4 +229,16 @@ internal class LocalFileSource(
     } catch (failed: IOException) {
         throw SourceException.Failed(operation, failed)
     }
+}
+
+private class LocalRandomAccessSource(private val file: RandomAccessFile) : RandomAccessSource {
+
+    override val size: Long get() = file.length()
+
+    override fun read(fileOffset: Long, destination: ByteArray, destinationOffset: Int, length: Int): Int {
+        file.seek(fileOffset)
+        return file.read(destination, destinationOffset, length).coerceAtLeast(0)
+    }
+
+    override fun close() = file.close()
 }

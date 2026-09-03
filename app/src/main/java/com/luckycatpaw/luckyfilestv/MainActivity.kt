@@ -15,6 +15,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.luckycatpaw.luckyfilestv.ui.main.MainScreen
 import com.luckycatpaw.luckyfilestv.ui.main.MainViewModel
 import com.luckycatpaw.luckyfilestv.ui.main.model.MainUiEvent
+import com.luckycatpaw.luckyfilestv.util.ACCESS_LOCAL_NETWORK
 import com.luckycatpaw.luckyfilestv.util.requestAllFilesAccess
 import kotlinx.coroutines.launch
 
@@ -25,6 +26,12 @@ class MainActivity : AppCompatActivity() {
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) {}
+
+    private val localNetworkPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) {
+        viewModel.resumeAfterLocalNetworkPermission()
+    }
 
     private var notificationPermissionRequested = false
 
@@ -67,9 +74,21 @@ class MainActivity : AppCompatActivity() {
             MainUiEvent.RequestNotificationAccess ->
                 requestNotificationPermission()
 
+            MainUiEvent.RequestLocalNetworkAccess ->
+                requestLocalNetworkPermission()
+
             is MainUiEvent.ShowMessage ->
                 Toast.makeText(this, event.message, Toast.LENGTH_LONG).show()
         }
+    }
+
+    /**
+     * Android 17 gates the local network behind its own permission. Denying it leaves the
+     * share unreachable with an ordinary socket error, so the request happens before the
+     * first connection rather than after a failure nobody can interpret.
+     */
+    private fun requestLocalNetworkPermission() {
+        runCatching { localNetworkPermissionLauncher.launch(ACCESS_LOCAL_NETWORK) }
     }
 
     private fun requestNotificationPermission() {

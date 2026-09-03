@@ -50,6 +50,15 @@ internal interface FileSource {
     /** Caller closes the stream. [offset] is only honoured with [SourceCapabilities.randomAccessRead]. */
     suspend fun openInput(path: SourcePath, offset: Long = 0L): InputStream
 
+    /**
+     * Opens a handle for offset based reads, which is what an external player needs.
+     *
+     * Only meaningful with [SourceCapabilities.randomAccessRead]; a source without it can
+     * leave this alone and be read sequentially.
+     */
+    suspend fun openRandomAccess(path: SourcePath): RandomAccessSource =
+        throw SourceException.Unsupported("Random access")
+
     /** Caller closes the stream. */
     suspend fun openOutput(path: SourcePath, overwrite: Boolean): OutputStream
 }

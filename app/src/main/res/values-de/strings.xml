@@ -228,4 +228,5 @@
     <string name="not_enough_space">Nicht genug Speicher im Zielordner: %1$s benötigt, %2$s verfügbar.</string>
     <string name="transfer_stopped_time_limit">Übertragung gestoppt. Android begrenzt Übertragungen im Hintergrund auf sechs Stunden pro Tag. Öffne LuckyFiles TV, um die restlichen Dateien erneut zu starten.</string>
     <string name="transfer_stopped_no_foreground">Übertragung konnte nicht gestartet werden. Das Tageslimit für Übertragungen im Hintergrund ist aufgebraucht. Öffne LuckyFiles TV und versuche es später erneut.</string>
+    <string name="share_authentication_failed">Anmeldung an der Freigabe fehlgeschlagen. Bitte Benutzername und Passwort prüfen.</string>
 </resources>

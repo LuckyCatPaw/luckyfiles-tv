@@ -1,6 +1,7 @@
 package com.luckycatpaw.luckyfilestv.data.repository
 
 import android.content.Context
+import android.util.Log
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import com.luckycatpaw.luckyfilestv.data.common.model.FileManagerSettings
 import com.luckycatpaw.luckyfilestv.data.common.model.FileProperties
@@ -72,12 +73,24 @@ internal class FileRepository(context: Context, private val sources: FileSourceR
             sources.source(location).createDirectory(location, name).value
         }
 
+    /**
+     * Turns a failure into a localised result.
+     *
+     * The original exception is logged before it is replaced. What reaches the screen is a
+     * single sentence, which is right for the user and useless for finding out why a server
+     * refused something — and a network source has a lot more ways to fail than a local disk.
+     */
     private suspend fun <T> runOperation(operation: SourceOperation, block: suspend () -> T): Result<T> = try {
         Result.success(block())
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (failure: Exception) {
+        Log.w(LOG_TAG, "$operation failed", failure)
         Result.failure(FileOperationException(messages.localize(failure, operation), failure))
+    }
+
+    private companion object {
+        const val LOG_TAG = "FileRepository"
     }
 }
 

@@ -87,7 +87,7 @@ The optional system document picker is separate. It requires system level `MANAG
 
 ## Privacy
 
-LuckyFiles TV processes files on the device. The current app manifest does not request internet access, and the source does not include analytics, advertising, tracking or crash reporting services.
+LuckyFiles TV processes files on the device. Internet access is requested for network shares only: the app connects to the servers the user configured and to nothing else. The source does not include analytics, advertising, tracking or crash reporting services.
 
 | Data | Handling |
 | :--- | :--- |

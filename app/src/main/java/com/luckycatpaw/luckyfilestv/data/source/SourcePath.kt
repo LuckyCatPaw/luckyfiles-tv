@@ -37,6 +37,10 @@ value class SourcePath private constructor(val value: String) {
     val name: String
         get() = value.substring(prefixLength).substringAfterLast('/')
 
+    /** Path segments below the source root, empty at the root itself. */
+    val segments: List<String>
+        get() = value.substring(prefixLength).split('/').filter { it.isNotEmpty() }
+
     /** Lower case extension without the dot, empty when the name carries none. */
     val extension: String
         get() = name.substringAfterLast('.', "").lowercase(Locale.ROOT)

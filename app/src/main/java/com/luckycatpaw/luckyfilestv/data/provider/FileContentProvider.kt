@@ -5,17 +5,40 @@ import android.content.ContentValues
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
+import android.os.Handler
+import android.os.HandlerThread
 import android.os.ParcelFileDescriptor
 import android.os.storage.StorageManager
 import android.provider.OpenableColumns
 import android.util.Base64
 import com.luckycatpaw.luckyfilestv.R
+import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
+import com.luckycatpaw.luckyfilestv.data.source.SourcePath
+import com.luckycatpaw.luckyfilestv.data.source.local.LocalVolumeRepository
 import com.luckycatpaw.luckyfilestv.util.MimeTypes
 import java.io.File
 import java.io.FileNotFoundException
 import java.nio.charset.StandardCharsets
+import kotlinx.coroutines.runBlocking
 
+/**
+ * Hands a single file to another app.
+ *
+ * Local files are passed on as a plain descriptor. A file on a share has no path the system
+ * could open, so it is served through a proxy descriptor instead: the reading app sees an
+ * ordinary file and every read it performs is answered from the share. That is what lets an
+ * external player seek in a video that only exists on the network.
+ */
 class FileContentProvider : ContentProvider() {
+
+    private val sources: FileSourceRegistry by lazy {
+        FileSourceRegistry.create(LocalVolumeRepository(requireNotNull(context).applicationContext))
+    }
+
+    /** Proxy reads must not run on the caller's binder thread. */
+    private val proxyHandler: Handler by lazy {
+        Handler(HandlerThread("file-content-proxy").apply { start() }.looper)
+    }
 
     override fun onCreate(): Boolean = true
 
@@ -24,23 +47,31 @@ class FileContentProvider : ContentProvider() {
             throw FileNotFoundException(requireNotNull(context).getString(R.string.read_only_access))
         }
 
-        val file = resolveFile(uri)
+        val location = resolveLocation(uri)
 
-        if (!file.exists() || !file.isFile) {
-            throw FileNotFoundException(file.absolutePath)
+        if (location.isLocal) {
+            val file = location.toFile().canonicalFile
+            if (!file.exists() || !file.isFile) throw FileNotFoundException(file.absolutePath)
+
+            return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
         }
 
-        return ParcelFileDescriptor.open(
-            file,
-            ParcelFileDescriptor.MODE_READ_ONLY
+        val storageManager = requireNotNull(context).getSystemService(StorageManager::class.java)
+
+        val handle = try {
+            runBlocking { sources.source(location).openRandomAccess(location) }
+        } catch (failure: Exception) {
+            throw FileNotFoundException(failure.message ?: location.value)
+        }
+
+        return storageManager.openProxyFileDescriptor(
+            ParcelFileDescriptor.MODE_READ_ONLY,
+            SourceProxyFileDescriptor(handle),
+            proxyHandler
         )
     }
 
-    override fun getType(uri: Uri): String {
-        val file = resolveFile(uri)
-
-        return MimeTypes.forFileName(file.name)
-    }
+    override fun getType(uri: Uri): String = MimeTypes.forFileName(resolveLocation(uri).name)
 
     override fun query(
         uri: Uri,
@@ -49,7 +80,7 @@ class FileContentProvider : ContentProvider() {
         selectionArgs: Array<out String>?,
         sortOrder: String?
     ): Cursor {
-        val file = resolveFile(uri)
+        val location = resolveLocation(uri)
 
         val requestedColumns = projection ?: arrayOf(
             OpenableColumns.DISPLAY_NAME,
@@ -62,10 +93,10 @@ class FileContentProvider : ContentProvider() {
 
             when (column) {
                 OpenableColumns.DISPLAY_NAME ->
-                    file.name
+                    location.name
 
                 OpenableColumns.SIZE ->
-                    file.length()
+                    sizeOf(location)
 
                 else ->
                     null
@@ -85,7 +116,13 @@ class FileContentProvider : ContentProvider() {
     override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int =
         throw UnsupportedOperationException()
 
-    private fun resolveFile(uri: Uri): File {
+    private fun sizeOf(location: SourcePath): Long? = if (location.isLocal) {
+        location.toFile().length()
+    } else {
+        runCatching { runBlocking { sources.source(location).stat(location)?.size } }.getOrNull()
+    }
+
+    private fun resolveLocation(uri: Uri): SourcePath {
         val encoded = uri.lastPathSegment
             ?: throw FileNotFoundException()
 
@@ -101,16 +138,32 @@ class FileContentProvider : ContentProvider() {
             throw FileNotFoundException(error.message)
         }
 
-        val file = File(decodedPath).canonicalFile
+        val location = try {
+            SourcePath.parse(decodedPath)
+        } catch (error: IllegalArgumentException) {
+            throw FileNotFoundException(error.message)
+        }
 
-        if (!isAllowedFile(file)) {
+        if (!isAllowed(location)) {
             throw SecurityException(
                 requireNotNull(context).getString(R.string.path_outside_storage)
             )
         }
 
-        return file
+        return location
     }
+
+    /**
+     * A granted URI must not become a way to read arbitrary paths, so a location only passes
+     * when it lies below something this app actually offers: a mounted volume, or one of the
+     * configured shares.
+     */
+    private fun isAllowed(location: SourcePath): Boolean =
+        if (location.isLocal) isAllowedFile(location.toFile()) else isBelowConfiguredRoot(location)
+
+    private fun isBelowConfiguredRoot(location: SourcePath): Boolean = runCatching {
+        runBlocking { sources.roots() }.any { volume -> location.isSameOrChildOf(volume.path) }
+    }.getOrDefault(false)
 
     private fun isAllowedFile(file: File): Boolean {
         val context = context ?: return false
@@ -137,9 +190,9 @@ class FileContentProvider : ContentProvider() {
 
     companion object {
 
-        fun createUri(context: android.content.Context, file: File): Uri {
+        fun createUri(context: android.content.Context, path: String): Uri {
             val encoded = Base64.encodeToString(
-                file.canonicalPath.toByteArray(StandardCharsets.UTF_8),
+                path.toByteArray(StandardCharsets.UTF_8),
                 Base64.URL_SAFE or
                     Base64.NO_WRAP or
                     Base64.NO_PADDING

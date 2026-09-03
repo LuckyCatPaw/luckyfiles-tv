@@ -228,4 +228,5 @@
     <string name="not_enough_space">Not enough space in the target folder: %1$s required, %2$s available.</string>
     <string name="transfer_stopped_time_limit">Transfer stopped. Android limits background transfers to six hours per day. Open LuckyFiles TV to start the remaining files again.</string>
     <string name="transfer_stopped_no_foreground">Transfer could not be started. The daily limit for background transfers is used up. Open LuckyFiles TV and try again later.</string>
+    <string name="share_authentication_failed">Sign-in to the share failed. Please check the username and password.</string>
 </resources>

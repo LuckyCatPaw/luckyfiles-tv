@@ -93,7 +93,7 @@ internal class SourceMessages(context: Context) {
 
         is SourceException.Unsupported -> appContext.getString(R.string.error_generic)
 
-        is SourceException.AuthenticationRequired -> appContext.getString(R.string.error_generic)
+        is SourceException.AuthenticationRequired -> appContext.getString(R.string.share_authentication_failed)
 
         is SourceException.Unreachable -> appContext.getString(R.string.storage_source_unavailable)
     }

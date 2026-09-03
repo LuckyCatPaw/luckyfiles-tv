@@ -63,6 +63,15 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.material.icons.extended)
+
+    // SMB. bouncycastle is what makes SMB3 encryption and signing work; without it smbj
+    // falls back and some servers refuse the session. slf4j-android routes the library's
+    // logging into logcat instead of leaving it unbound.
+    implementation(libs.smbj)
+    implementation(libs.bouncycastle.prov)
+    implementation(libs.slf4j.api)
+    implementation(libs.slf4j.android)
+
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
