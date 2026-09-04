@@ -23,6 +23,7 @@ import com.luckycatpaw.luckyfilestv.data.source.VolumeKind
 import com.luckycatpaw.luckyfilestv.data.source.entryComparator
 import com.luckycatpaw.luckyfilestv.util.FileUtil
 import com.luckycatpaw.luckyfilestv.util.MimeTypes
+import java.io.FilterOutputStream
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.EnumSet
@@ -31,12 +32,12 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
 /**
- * Windows shares, read only for now.
+ * Windows shares.
  *
- * Writing is deliberately still missing: a copy onto a share needs the transfer layer to
- * stop assuming local file semantics — atomic rename, replacement transactions, fsync on the
- * parent directory — and that is a step of its own. Until then [capabilities] says so, the
- * browser hides what it cannot do, and every write method fails loudly instead of half way.
+ * Single operations — create a folder, rename, delete — go straight to the server. What is
+ * still missing is the transfer layer writing here: it assumes local semantics for that,
+ * with replacement transactions and an fsync on the parent directory, and neither exists
+ * over SMB in that form.
  */
 internal class SmbFileSource(
     private val shares: SmbShareStore,
@@ -46,9 +47,11 @@ internal class SmbFileSource(
     override val id: String = SmbShare.SCHEME
 
     override val capabilities: SourceCapabilities = SourceCapabilities(
-        writable = false,
+        writable = true,
         randomAccessRead = true,
-        atomicMove = false,
+        // A rename on the server never silently replaces and moves no data, as long as it
+        // stays inside one share.
+        atomicMove = true,
         // Every attribute costs a round trip, so previews must stay throttled here.
         cheapMetadata = false,
         requiresNetwork = true
@@ -79,7 +82,10 @@ internal class SmbFileSource(
         return DirectoryListing(
             path = path,
             displayName = if (path == target.share.path) target.share.displayName else path.name,
-            writable = false,
+            // Whether the user may actually write is the server's decision, and it answers
+            // with STATUS_ACCESS_DENIED when it says no. Guessing here would only hide
+            // actions that work.
+            writable = true,
             entries = entries.sortedWith(entryComparator(options.sort))
         )
     }
@@ -134,16 +140,92 @@ internal class SmbFileSource(
         }
     }
 
-    override suspend fun createDirectory(parent: SourcePath, name: String): SourcePath =
-        throw SourceException.Unsupported(WRITING)
+    override suspend fun createDirectory(parent: SourcePath, name: String): SourcePath {
+        val cleanName = validName(name, forDirectory = true)
+        val created = parent.child(cleanName)
+        val target = resolve(created, SourceOperation.CREATE_DIRECTORY)
 
-    override suspend fun rename(path: SourcePath, newName: String): SourcePath =
-        throw SourceException.Unsupported(WRITING)
+        execute(SourceOperation.CREATE_DIRECTORY, created, target) { diskShare ->
+            if (diskShare.folderExists(target.relativePath) || diskShare.fileExists(target.relativePath)) {
+                throw SourceException.AlreadyExists(cleanName)
+            }
 
-    override suspend fun delete(path: SourcePath): Unit = throw SourceException.Unsupported(WRITING)
+            diskShare.mkdir(target.relativePath)
+        }
 
-    override suspend fun openOutput(path: SourcePath, overwrite: Boolean): OutputStream =
-        throw SourceException.Unsupported(WRITING)
+        return created
+    }
+
+    override suspend fun rename(path: SourcePath, newName: String): SourcePath {
+        val cleanName = validName(newName, forDirectory = false)
+        val renamed = path.sibling(cleanName) ?: throw SourceException.ParentMissing(path)
+
+        if (cleanName == path.name) return path
+
+        val source = resolve(path, SourceOperation.RENAME)
+        val destination = resolve(renamed, SourceOperation.RENAME)
+
+        execute(SourceOperation.RENAME, path, source) { diskShare ->
+            diskShare.open(
+                source.relativePath,
+                EnumSet.of(AccessMask.DELETE, AccessMask.GENERIC_READ),
+                null,
+                SMB2ShareAccess.ALL,
+                SMB2CreateDisposition.FILE_OPEN,
+                null
+            ).use { entry ->
+                // Never replace: an occupied name has to surface as a conflict, exactly as
+                // it does locally.
+                entry.rename(destination.relativePath, false)
+            }
+        }
+
+        return renamed
+    }
+
+    override suspend fun delete(path: SourcePath) {
+        val target = resolve(path, SourceOperation.DELETE)
+
+        execute(SourceOperation.DELETE, path, target) { diskShare ->
+            if (diskShare.folderExists(target.relativePath)) {
+                diskShare.rmdir(target.relativePath, true)
+            } else {
+                diskShare.rm(target.relativePath)
+            }
+        }
+    }
+
+    override suspend fun openOutput(path: SourcePath, overwrite: Boolean): OutputStream {
+        val target = resolve(path, SourceOperation.WRITE)
+
+        return execute(SourceOperation.WRITE, path, target) { diskShare ->
+            val remoteFile = diskShare.openFile(
+                target.relativePath,
+                EnumSet.of(AccessMask.GENERIC_WRITE),
+                null,
+                SMB2ShareAccess.ALL,
+                if (overwrite) SMB2CreateDisposition.FILE_OVERWRITE_IF else SMB2CreateDisposition.FILE_CREATE,
+                null
+            )
+
+            object : FilterOutputStream(remoteFile.outputStream) {
+
+                override fun write(buffer: ByteArray, offset: Int, length: Int) {
+                    // FilterOutputStream would otherwise write byte by byte, which over the
+                    // network means one request per byte.
+                    out.write(buffer, offset, length)
+                }
+
+                override fun close() {
+                    try {
+                        super.close()
+                    } finally {
+                        remoteFile.close()
+                    }
+                }
+            }
+        }
+    }
 
     /**
      * Recursive size and counts.
@@ -222,6 +304,10 @@ internal class SmbFileSource(
         return SmbTarget(share = share, relativePath = segments.drop(1).joinToString(SEPARATOR))
     }
 
+    private fun validName(name: String, forDirectory: Boolean): String =
+        runCatching { FileUtil.validateFileName(name) }
+            .getOrElse { throw SourceException.InvalidName(name, forDirectory) }
+
     private fun DiskShare.entryAt(path: SourcePath, relativePath: String): FileEntry {
         val information = getFileInformation(relativePath)
         val standard = information.standardInformation
@@ -256,7 +342,6 @@ internal class SmbFileSource(
         const val SEPARATOR = "\\"
         const val CURRENT_DIRECTORY = "."
         const val PARENT_DIRECTORY = ".."
-        const val WRITING = "Writing to a share"
 
         fun joinRelative(parent: String, name: String): String =
             if (parent.isEmpty()) name else parent + SEPARATOR + name

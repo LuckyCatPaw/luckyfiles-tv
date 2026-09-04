@@ -59,25 +59,9 @@ class TransferCoordinator(
         var sourceDeleteWarningCount = 0
 
         try {
-            // Writing to a share is not implemented yet, so a transfer always ends on a
-            // local volume. Reading may come from anywhere.
-            if (SourcePath.parseOrNull(targetDirectoryPath)?.isLocal != true) {
-                return@withContext TransferResult(
-                    completedPaths = completedPaths,
-                    skippedCount = skippedCount,
-                    issues = listOf(
-                        TransferIssue(
-                            sourcePath = targetDirectoryPath,
-                            message = appContext.getString(R.string.transfer_to_share_unsupported)
-                        )
-                    ),
-                    cleanupWarningCount = cleanupWarningCount,
-                    sourceDeleteWarningCount = sourceDeleteWarningCount,
-                    cancelled = false
-                )
-            }
-
-            val targetDirectory = requireDirectory(targetDirectoryPath)
+            val targetLocation = SourcePath.parse(targetDirectoryPath)
+            val targetIsLocal = targetLocation.isLocal
+            val targetDirectory = if (targetIsLocal) requireDirectory(targetDirectoryPath) else null
             val uniqueSources = sourcePaths
                 .map(::transferSourceFor)
                 .distinctBy { source ->
@@ -142,6 +126,7 @@ class TransferCoordinator(
                     !sourceIsSymbolicLink &&
                     sourceIsDirectory &&
                     localSource != null &&
+                    targetDirectory != null &&
                     FileUtil.isSameOrChild(localSource, targetDirectory)
                 ) {
                     issues += TransferIssue(
@@ -157,11 +142,10 @@ class TransferCoordinator(
                     continue
                 }
 
-                val directTarget = File(targetDirectory, source.name).absoluteFile
-                val sameTarget = directTarget == localSource
+                val directTarget = targetLocation.child(source.name)
+                val sameTarget = directTarget.value == localSource?.absolutePath
                 val conflict = (
-                    Files.exists(directTarget.toPath(), LinkOption.NOFOLLOW_LINKS) ||
-                        directTarget.absolutePath in reservedTargets
+                    targetExists(directTarget) || directTarget.value in reservedTargets
                     ) &&
                     (operation == TransferOperation.COPY || !sameTarget)
                 var policy = if (conflict) {
@@ -174,7 +158,7 @@ class TransferCoordinator(
                     val decision = onConflict(
                         TransferConflict(
                             sourceName = source.name,
-                            targetDirectory = targetDirectory.absolutePath,
+                            targetDirectory = targetLocation.value,
                             multipleItems = uniqueSources.size > 1
                         )
                     )
@@ -210,15 +194,15 @@ class TransferCoordinator(
 
                     policy == FileConflictPolicy.REPLACE -> directTarget
 
-                    else -> FileUtil.createUniqueDestination(
-                        parent = targetDirectory,
+                    else -> uniqueDestination(
+                        parent = targetLocation,
                         requestedName = source.name,
                         isDirectory = sourceIsDirectory,
                         reservedTargets = reservedTargets
                     )
                 }
 
-                reservedTargets += target.absolutePath
+                reservedTargets += target.value
 
                 plannedItems += PlannedTransfer(
                     source = source,
@@ -276,10 +260,9 @@ class TransferCoordinator(
                 totalBytes = safeAdd(totalBytes, statsResult.size)
             }
 
-            val spaceIssue = insufficientSpaceIssue(
-                targetDirectory = targetDirectory,
-                requiredBytes = totalBytes
-            )
+            val spaceIssue = targetDirectory?.let {
+                insufficientSpaceIssue(targetDirectory = it, requiredBytes = totalBytes)
+            }
 
             if (spaceIssue != null) {
                 issues += spaceIssue
@@ -323,7 +306,7 @@ class TransferCoordinator(
                         TransferOperation.COPY -> {
                             transferEngine.copy(
                                 source = item.source,
-                                target = item.target,
+                                target = transferTargetFor(item.target),
                                 replace = item.replace,
                                 totalBytes = itemSize,
                                 onBytesCopied = { copied ->
@@ -348,7 +331,7 @@ class TransferCoordinator(
 
                             val fastMove = transferEngine.tryFastMove(
                                 source = movableSource,
-                                target = item.target,
+                                target = File(item.target.value),
                                 replace = item.replace
                             )
 
@@ -368,13 +351,13 @@ class TransferCoordinator(
                                 itemSize = stats.size
                                 totalBytes = safeAdd(totalBytes, itemSize)
 
-                                insufficientSpaceIssue(targetDirectory, itemSize)?.let {
-                                    error(it.message)
+                                targetDirectory?.let { directory ->
+                                    insufficientSpaceIssue(directory, itemSize)?.let { error(it.message) }
                                 }
 
                                 val copyResult = transferEngine.copy(
                                     source = item.source,
-                                    target = item.target,
+                                    target = transferTargetFor(item.target),
                                     replace = item.replace,
                                     totalBytes = itemSize,
                                     onBytesCopied = { copied ->
@@ -397,7 +380,7 @@ class TransferCoordinator(
                                 // before deleting the source so cancellation or a cleanup
                                 // failure cannot turn a successful copy into an apparent
                                 // total failure.
-                                completedPaths += item.target.absolutePath
+                                completedPaths += item.target.value
                                 completionRecorded = true
 
                                 val sourceDeleteFailure = try {
@@ -420,7 +403,7 @@ class TransferCoordinator(
                     }
 
                     if (!completionRecorded) {
-                        completedPaths += item.target.absolutePath
+                        completedPaths += item.target.value
                     }
 
                     result.unreadableDirectories.forEach { path ->
@@ -478,6 +461,52 @@ class TransferCoordinator(
                 cause = e
             )
         }
+    }
+
+    private fun transferTargetFor(path: SourcePath): TransferTarget = if (path.isLocal) {
+        TransferTarget.Local(File(path.value))
+    } else {
+        TransferTarget.Remote(path = path, sources = sources)
+    }
+
+    private suspend fun targetExists(path: SourcePath): Boolean = if (path.isLocal) {
+        Files.exists(File(path.value).toPath(), LinkOption.NOFOLLOW_LINKS)
+    } else {
+        runCatching { sources.source(path).stat(path) != null }.getOrDefault(false)
+    }
+
+    /**
+     * Finds a free name next to an occupied one, e.g. `Film (1).mkv`.
+     *
+     * Same rule as locally, only the existence check differs — on a share it is a request
+     * rather than a stat.
+     */
+    private suspend fun uniqueDestination(
+        parent: SourcePath,
+        requestedName: String,
+        isDirectory: Boolean,
+        reservedTargets: Set<String>
+    ): SourcePath {
+        suspend fun taken(candidate: SourcePath): Boolean =
+            targetExists(candidate) || candidate.value in reservedTargets
+
+        var candidate = parent.child(requestedName)
+        if (!taken(candidate)) return candidate
+
+        val extensionIndex = requestedName.lastIndexOf('.')
+        val hasExtension = !isDirectory && extensionIndex > 0 && extensionIndex < requestedName.lastIndex
+
+        val baseName = if (hasExtension) requestedName.substring(0, extensionIndex) else requestedName
+        val extension = if (hasExtension) requestedName.substring(extensionIndex) else ""
+
+        var number = 1
+
+        while (taken(candidate)) {
+            candidate = parent.child("$baseName ($number)$extension")
+            number++
+        }
+
+        return candidate
     }
 
     private fun transferSourceFor(path: String): TransferSource {
@@ -604,7 +633,7 @@ class TransferCoordinator(
 
     private data class PlannedTransfer(
         val source: TransferSource,
-        val target: File,
+        val target: SourcePath,
         val replace: Boolean,
         val size: Long?,
         val invalid: Boolean = false

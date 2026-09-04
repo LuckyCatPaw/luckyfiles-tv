@@ -9,11 +9,8 @@ import com.luckycatpaw.luckyfilestv.util.FileUtil
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.IOException
-import java.nio.channels.Channels
-import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.nio.file.LinkOption
-import java.nio.file.StandardOpenOption
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -38,7 +35,7 @@ internal class FileTransferEngine(context: Context, private val fileTreeWalker: 
 
     suspend fun copy(
         source: TransferSource,
-        target: File,
+        target: TransferTarget,
         replace: Boolean,
         totalBytes: Long,
         onBytesCopied: suspend (Long) -> Unit
@@ -98,24 +95,41 @@ internal class FileTransferEngine(context: Context, private val fileTreeWalker: 
 
     private suspend fun copyReplacing(
         source: TransferSource,
-        target: File,
+        target: TransferTarget,
         totalBytes: Long,
         onBytesCopied: suspend (Long) -> Unit,
         unreadableDirectories: MutableList<String>
     ): Boolean {
-        val parent = target.parentFile
+        if (target !is TransferTarget.Local) {
+            // No journal and no atomic swap on a share: the old entry has to go before the
+            // new one can be written. A transfer interrupted in between leaves the target
+            // missing, which is why this path is only taken when the user chose to replace.
+            target.deleteTree()
+
+            copyTo(
+                source = source,
+                target = target,
+                totalBytes = totalBytes,
+                onBytesCopied = onBytesCopied,
+                unreadableDirectories = unreadableDirectories
+            )
+
+            return false
+        }
+
+        val parent = target.file.parentFile
             ?: error(appContext.getString(R.string.target_folder_parent_missing))
 
         val temporary = createTemporaryDestination(parent)
         val preparation = replacementTransactionStore.prepareReplacement(
-            target = target,
+            target = target.file,
             preparedReplacement = temporary
         )
 
         try {
             copyTo(
                 source = source,
-                target = temporary,
+                target = TransferTarget.Local(temporary),
                 totalBytes = totalBytes,
                 onBytesCopied = onBytesCopied,
                 unreadableDirectories = unreadableDirectories
@@ -137,7 +151,7 @@ internal class FileTransferEngine(context: Context, private val fileTreeWalker: 
 
     private suspend fun copyTo(
         source: TransferSource,
-        target: File,
+        target: TransferTarget,
         totalBytes: Long,
         onBytesCopied: suspend (Long) -> Unit,
         unreadableDirectories: MutableList<String>
@@ -148,7 +162,7 @@ internal class FileTransferEngine(context: Context, private val fileTreeWalker: 
         val copyBuffer = ByteArray(COPY_BUFFER_SIZE)
 
         try {
-            check(!Files.exists(target.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            check(!target.exists()) {
                 appContext.getString(R.string.already_exists, target.name)
             }
 
@@ -156,21 +170,21 @@ internal class FileTransferEngine(context: Context, private val fileTreeWalker: 
 
             source.walk(
                 onEntry = { entry ->
-                    val destination = destinationFor(target, entry.relativePath)
+                    val destinationName = entry.relativePath.substringAfterLast('/').ifEmpty { target.name }
 
                     when (entry.type) {
                         FileTreeEntryType.DIRECTORY -> {
-                            check(!Files.exists(destination.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-                                appContext.getString(R.string.already_exists, destination.name)
+                            check(!target.exists(entry.relativePath)) {
+                                appContext.getString(R.string.already_exists, destinationName)
                             }
 
                             runCatching {
-                                Files.createDirectory(destination.toPath())
+                                target.createDirectory(entry.relativePath)
                             }.getOrElse {
                                 throw IllegalStateException(
                                     appContext.getString(
                                         R.string.folder_named_create_failed,
-                                        destination.name
+                                        destinationName
                                     ),
                                     it
                                 )
@@ -186,32 +200,18 @@ internal class FileTransferEngine(context: Context, private val fileTreeWalker: 
                         }
 
                         FileTreeEntryType.FILE -> {
-                            check(!Files.exists(destination.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-                                appContext.getString(R.string.already_exists, destination.name)
-                            }
-
-                            val parent = destination.parentFile
-
-                            if (parent == null || !parent.isDirectory) {
-                                error(appContext.getString(R.string.target_folder_create_failed))
+                            check(!target.exists(entry.relativePath)) {
+                                appContext.getString(R.string.already_exists, destinationName)
                             }
 
                             entry.openInput().use { input ->
-                                val channel = FileChannel.open(
-                                    destination.toPath(),
-                                    StandardOpenOption.CREATE_NEW,
-                                    StandardOpenOption.WRITE
-                                )
+                                val output = BufferedOutputStream(target.openOutput(entry.relativePath))
 
                                 if (entry.relativePath.isEmpty()) {
                                     targetOwned = true
                                 }
 
-                                channel.use { openChannel ->
-                                    val output = BufferedOutputStream(
-                                        Channels.newOutputStream(openChannel)
-                                    )
-
+                                output.use { openOutput ->
                                     while (true) {
                                         currentCoroutineContext().ensureActive()
 
@@ -219,7 +219,7 @@ internal class FileTransferEngine(context: Context, private val fileTreeWalker: 
 
                                         if (read < 0) break
 
-                                        output.write(copyBuffer, 0, read)
+                                        openOutput.write(copyBuffer, 0, read)
                                         copiedBytes = safeProgressAdd(
                                             current = copiedBytes,
                                             addition = read.toLong(),
@@ -237,18 +237,16 @@ internal class FileTransferEngine(context: Context, private val fileTreeWalker: 
                                         }
                                     }
 
-                                    output.flush()
-                                    openChannel.force(true)
+                                    openOutput.flush()
                                 }
                             }
 
-                            destination.setLastModified(entry.lastModified)
+                            target.setLastModified(entry.relativePath, entry.lastModified)
                         }
                     }
                 },
                 onDirectoryComplete = { entry ->
-                    destinationFor(target, entry.relativePath)
-                        .setLastModified(entry.lastModified)
+                    target.setLastModified(entry.relativePath, entry.lastModified)
                 },
                 onUnreadableDirectory = { directory ->
                     unreadableDirectories += directory
@@ -256,7 +254,7 @@ internal class FileTransferEngine(context: Context, private val fileTreeWalker: 
             )
 
             onBytesCopied(totalBytes)
-            syncDirectory(target.parentFile)
+            target.flush()
         } catch (e: CancellationException) {
             if (targetOwned) {
                 deleteForCleanup(target)
@@ -274,20 +272,10 @@ internal class FileTransferEngine(context: Context, private val fileTreeWalker: 
         DirectorySync.sync(directory)
     }
 
-    private suspend fun deleteForCleanup(file: File): Boolean = withContext(NonCancellable) {
-        if (!Files.exists(file.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-            true
-        } else {
-            runCatching {
-                fileTreeWalker.delete(file)
-            }.isSuccess
-        }
-    }
-
-    private fun destinationFor(targetRoot: File, relativePath: String): File = if (relativePath.isEmpty()) {
-        targetRoot
-    } else {
-        File(targetRoot, relativePath)
+    private suspend fun deleteForCleanup(target: TransferTarget): Boolean = withContext(NonCancellable) {
+        runCatching {
+            if (target.exists()) target.deleteTree()
+        }.isSuccess
     }
 
     private fun createTemporaryDestination(parent: File): File {
