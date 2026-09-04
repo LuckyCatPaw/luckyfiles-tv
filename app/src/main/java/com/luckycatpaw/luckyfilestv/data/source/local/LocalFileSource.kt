@@ -143,6 +143,18 @@ internal class LocalFileSource(
         SourcePath.of(target)
     }
 
+    override suspend fun move(from: SourcePath, to: SourcePath) {
+        withContext(dispatcher) {
+            try {
+                FileUtil.moveWithoutReplacing(from.toFile(), to.toFile())
+            } catch (exists: FileAlreadyExistsException) {
+                throw SourceException.AlreadyExists(to.name, exists)
+            } catch (failed: IOException) {
+                throw SourceException.Failed(SourceOperation.RENAME, failed)
+            }
+        }
+    }
+
     override suspend fun delete(path: SourcePath) {
         withContext(dispatcher) {
             val file = path.toFile().absoluteFile

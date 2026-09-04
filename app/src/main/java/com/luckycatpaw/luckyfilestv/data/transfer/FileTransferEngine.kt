@@ -4,8 +4,9 @@ import android.content.Context
 import com.luckycatpaw.luckyfilestv.R
 import com.luckycatpaw.luckyfilestv.data.common.FileTreeWalker
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeEntryType
+import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
+import com.luckycatpaw.luckyfilestv.data.source.SourcePath
 import com.luckycatpaw.luckyfilestv.util.DirectorySync
-import com.luckycatpaw.luckyfilestv.util.FileUtil
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.IOException
@@ -25,7 +26,11 @@ internal data class TransferItemResult(
     val unreadableDirectories: List<String> = emptyList()
 )
 
-internal class FileTransferEngine(context: Context, private val fileTreeWalker: FileTreeWalker) {
+internal class FileTransferEngine(
+    context: Context,
+    private val fileTreeWalker: FileTreeWalker,
+    private val sources: FileSourceRegistry
+) {
 
     private val appContext = context.applicationContext
     private val replacementTransactionStore = ReplacementTransactionStore(
@@ -68,16 +73,23 @@ internal class FileTransferEngine(context: Context, private val fileTreeWalker: 
         )
     }
 
-    suspend fun tryFastMove(source: File, target: File, replace: Boolean): TransferItemResult? {
+    /**
+     * Moves without copying, where the source can do it itself.
+     *
+     * Locally that is `rename(2)`, on a share a server-side rename — a file changing folders
+     * then costs no traffic at all. Everything the source refuses (another volume, another
+     * share, an occupied target) falls through to the copy path, which reports a conflict
+     * with a proper message.
+     */
+    suspend fun tryFastMove(source: TransferSource, target: SourcePath, replace: Boolean): TransferItemResult? {
         currentCoroutineContext().ensureActive()
 
         if (replace) return null
+        if (source.location.scheme != target.scheme) return null
 
         try {
-            FileUtil.moveWithoutReplacing(source, target)
+            sources.source(target).move(source.location, target)
         } catch (ignored: IOException) {
-            // Occupied target, different volume or any other rename(2) failure: fall back to the
-            // copy path, which reports an occupied target with a proper message.
             return null
         }
 
@@ -87,9 +99,9 @@ internal class FileTransferEngine(context: Context, private val fileTreeWalker: 
         )
     }
 
-    suspend fun delete(file: File) {
+    suspend fun delete(source: TransferSource) {
         withContext(NonCancellable) {
-            fileTreeWalker.delete(file)
+            source.delete()
         }
     }
 

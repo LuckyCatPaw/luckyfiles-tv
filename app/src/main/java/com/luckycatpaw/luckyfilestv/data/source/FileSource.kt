@@ -44,6 +44,16 @@ internal interface FileSource {
     /** @return the new location. Never replaces an existing entry. */
     suspend fun rename(path: SourcePath, newName: String): SourcePath
 
+    /**
+     * Moves inside one source without copying the data.
+     *
+     * Unlike [rename] this crosses directories, which is what a move within a volume or a
+     * share is. Never replaces an existing entry: an occupied target has to surface as a
+     * conflict. Sources that cannot do it leave this alone and are copied instead.
+     */
+    suspend fun move(from: SourcePath, to: SourcePath): Unit =
+        throw SourceException.Unsupported("Moving inside the source")
+
     /** Removes a file, or a directory including its contents. */
     suspend fun delete(path: SourcePath)
 

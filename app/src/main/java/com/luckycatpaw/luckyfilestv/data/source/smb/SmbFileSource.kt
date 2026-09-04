@@ -183,6 +183,32 @@ internal class SmbFileSource(
         return renamed
     }
 
+    /**
+     * Server-side move, which is why a file changing folders on a share costs no traffic.
+     *
+     * Only within one share: SMB renames inside a tree, not across them. Anything else
+     * falls back to copy and delete in the transfer layer.
+     */
+    override suspend fun move(from: SourcePath, to: SourcePath) {
+        val source = resolve(from, SourceOperation.RENAME)
+        val destination = resolve(to, SourceOperation.RENAME)
+
+        if (source.share.sessionKey != destination.share.sessionKey) {
+            throw SourceException.Unsupported("Moving between shares")
+        }
+
+        execute(SourceOperation.RENAME, from, source) { diskShare ->
+            diskShare.open(
+                source.relativePath,
+                EnumSet.of(AccessMask.DELETE, AccessMask.GENERIC_READ),
+                null,
+                SMB2ShareAccess.ALL,
+                SMB2CreateDisposition.FILE_OPEN,
+                null
+            ).use { entry -> entry.rename(destination.relativePath, false) }
+        }
+    }
+
     override suspend fun delete(path: SourcePath) {
         val target = resolve(path, SourceOperation.DELETE)
 

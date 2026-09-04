@@ -40,10 +40,13 @@ class TransferCoordinator(
     }
 
     private val appContext = context.applicationContext
-    private val transferEngine = FileTransferEngine(
-        context = appContext,
-        fileTreeWalker = fileTreeWalker
-    )
+    private val transferEngine by lazy {
+        FileTransferEngine(
+            context = appContext,
+            fileTreeWalker = fileTreeWalker,
+            sources = sources
+        )
+    }
 
     suspend fun execute(
         sourcePaths: List<String>,
@@ -60,8 +63,8 @@ class TransferCoordinator(
 
         try {
             val targetLocation = SourcePath.parse(targetDirectoryPath)
-            val targetIsLocal = targetLocation.isLocal
-            val targetDirectory = if (targetIsLocal) requireDirectory(targetDirectoryPath) else null
+            val targetDirectory = if (targetLocation.isLocal) requireDirectory(targetDirectoryPath) else null
+            val canonicalTargetLocation = targetDirectory?.let { SourcePath.of(it) } ?: targetLocation
             val uniqueSources = sourcePaths
                 .map(::transferSourceFor)
                 .distinctBy { source ->
@@ -80,16 +83,6 @@ class TransferCoordinator(
             for (source in uniqueSources) {
                 currentCoroutineContext().ensureActive()
 
-                // Moving off a share would have to delete on the server, which the SMB
-                // source cannot do yet. Copying works, so say which of the two it is.
-                if (operation == TransferOperation.MOVE && source !is TransferSource.Local) {
-                    issues += TransferIssue(
-                        sourcePath = source.pathValue,
-                        message = appContext.getString(R.string.transfer_move_from_share_unsupported)
-                    )
-                    continue
-                }
-
                 if (!source.exists()) {
                     issues += TransferIssue(
                         sourcePath = source.pathValue,
@@ -99,8 +92,7 @@ class TransferCoordinator(
                 }
 
                 val localSource = (source as? TransferSource.Local)?.file
-                val sourceIsSymbolicLink = localSource != null &&
-                    Files.isSymbolicLink(localSource.toPath())
+                val sourceIsSymbolicLink = source.isSymbolicLink()
 
                 if (sourceIsSymbolicLink && operation == TransferOperation.COPY) {
                     issues += TransferIssue(
@@ -110,11 +102,17 @@ class TransferCoordinator(
                     continue
                 }
 
-                val sourceParent = localSource?.parentFile?.canonicalFile
+                // Moving something into the folder it already sits in is a no-op. Compared
+                // by canonical location, so a symlinked path does not slip past it.
+                val sourceParent = if (localSource != null) {
+                    localSource.parentFile?.canonicalFile?.let { SourcePath.of(it) }
+                } else {
+                    source.location.parent
+                }
 
                 if (
                     operation == TransferOperation.MOVE &&
-                    sourceParent == targetDirectory
+                    sourceParent == canonicalTargetLocation
                 ) {
                     completedPaths += source.pathValue
                     continue
@@ -327,18 +325,16 @@ class TransferCoordinator(
                         }
 
                         TransferOperation.MOVE -> {
-                            val movableSource = (item.source as TransferSource.Local).file
-
                             val fastMove = transferEngine.tryFastMove(
-                                source = movableSource,
-                                target = File(item.target.value),
+                                source = item.source,
+                                target = item.target,
                                 replace = item.replace
                             )
 
                             if (fastMove != null) {
                                 fastMove
                             } else {
-                                if (Files.isSymbolicLink(movableSource.toPath())) {
+                                if (item.source.isSymbolicLink()) {
                                     error(appContext.getString(R.string.symbolic_links_not_supported))
                                 }
 
@@ -384,7 +380,7 @@ class TransferCoordinator(
                                 completionRecorded = true
 
                                 val sourceDeleteFailure = try {
-                                    transferEngine.delete(movableSource)
+                                    transferEngine.delete(item.source)
                                     null
                                 } catch (e: CancellationException) {
                                     throw e

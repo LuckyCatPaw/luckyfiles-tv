@@ -251,5 +251,4 @@
     <string name="share_test">Test connection</string>
     <string name="share_testing">Testing…</string>
     <string name="share_test_success">Connection established.</string>
-    <string name="transfer_move_from_share_unsupported">Moving from a share is not possible yet. Copy the files and delete them on the server.</string>
 </resources>

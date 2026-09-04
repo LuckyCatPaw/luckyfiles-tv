@@ -9,6 +9,7 @@ import com.luckycatpaw.luckyfilestv.data.source.SortOptions
 import com.luckycatpaw.luckyfilestv.data.source.SourcePath
 import java.io.File
 import java.io.InputStream
+import java.nio.file.Files
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
@@ -38,12 +39,19 @@ internal sealed interface TransferSource {
 
     val name: String
 
+    val location: SourcePath
+
     /** The location as it travels through the app, e.g. for issue messages. */
-    val pathValue: String
+    val pathValue: String get() = location.value
 
     val isLocal: Boolean
 
     suspend fun exists(): Boolean
+
+    suspend fun isSymbolicLink(): Boolean
+
+    /** Removes the tree after a move has copied it. */
+    suspend fun delete()
 
     suspend fun isDirectory(): Boolean
 
@@ -59,11 +67,16 @@ internal sealed interface TransferSource {
 
         override val name: String get() = file.name
 
-        override val pathValue: String get() = file.absolutePath
+        override val location: SourcePath get() = SourcePath.of(file)
 
         override val isLocal: Boolean get() = true
 
         override suspend fun exists(): Boolean = file.exists()
+
+        override suspend fun isSymbolicLink(): Boolean =
+            Files.isSymbolicLink(file.toPath())
+
+        override suspend fun delete() = fileTreeWalker.delete(file)
 
         override suspend fun isDirectory(): Boolean = file.isDirectory
 
@@ -110,11 +123,16 @@ internal sealed interface TransferSource {
 
         override val name: String get() = path.name
 
-        override val pathValue: String get() = path.value
+        override val location: SourcePath get() = path
 
         override val isLocal: Boolean get() = false
 
         override suspend fun exists(): Boolean = sources.source(path).stat(path) != null
+
+        /** A share reports plain files and directories, nothing that points elsewhere. */
+        override suspend fun isSymbolicLink(): Boolean = false
+
+        override suspend fun delete() = sources.source(path).delete(path)
 
         override suspend fun isDirectory(): Boolean = sources.source(path).stat(path)?.isDirectory == true
 
