@@ -16,7 +16,10 @@ import java.io.IOException
  *
  * Called on the handler thread the descriptor was opened with, never on the main thread.
  */
-internal class SourceProxyFileDescriptor(private val source: RandomAccessSource) : ProxyFileDescriptorCallback() {
+internal class SourceProxyFileDescriptor(
+    private val source: RandomAccessSource,
+    private val onReleased: () -> Unit
+) : ProxyFileDescriptorCallback() {
 
     override fun onGetSize(): Long = try {
         source.size
@@ -32,11 +35,13 @@ internal class SourceProxyFileDescriptor(private val source: RandomAccessSource)
 
     override fun onRelease() {
         runCatching { source.close() }
+        runCatching { onReleased() }
     }
 
     /**
      * A single read on a share can come back short. Filling the buffer here keeps players
-     * happy that treat a short read as the end of the file.
+     * happy that treat a short read as the end of the file. Fewer bytes than asked for are
+     * still returned at the end of the file, which is what the caller expects there.
      */
     private fun readFully(offset: Long, size: Int, data: ByteArray): Int {
         var total = 0

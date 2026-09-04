@@ -176,7 +176,8 @@ internal fun ShareEditorOverlay(
                     onValueChange = { password = it },
                     focusRequester = passwordFocus,
                     upFocusRequester = previousOf(passwordFocus),
-                    downFocusRequester = nextOf(passwordFocus)
+                    downFocusRequester = nextOf(passwordFocus),
+                    masked = true
                 )
             }
 
@@ -308,7 +309,8 @@ private fun Field(
     onValueChange: (String) -> Unit,
     focusRequester: FocusRequester,
     upFocusRequester: FocusRequester?,
-    downFocusRequester: FocusRequester?
+    downFocusRequester: FocusRequester?,
+    masked: Boolean = false
 ) {
     Text(
         text = label,
@@ -323,7 +325,8 @@ private fun Field(
         onValueChange = onValueChange,
         focusRequester = focusRequester,
         downFocusRequester = downFocusRequester,
-        upFocusRequester = upFocusRequester
+        upFocusRequester = upFocusRequester,
+        masked = masked
     )
 
     Spacer(Modifier.height(10.dp))

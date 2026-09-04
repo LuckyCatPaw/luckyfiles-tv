@@ -5,6 +5,7 @@ import com.hierynomus.msfscc.FileAttributes
 import com.hierynomus.msfscc.fileinformation.FileIdBothDirectoryInformation
 import com.hierynomus.mssmb2.SMB2CreateDisposition
 import com.hierynomus.mssmb2.SMB2ShareAccess
+import com.hierynomus.smbj.common.SMBRuntimeException
 import com.hierynomus.smbj.share.DiskShare
 import com.hierynomus.smbj.share.File
 import com.luckycatpaw.luckyfilestv.data.common.model.FileProperties
@@ -24,12 +25,14 @@ import com.luckycatpaw.luckyfilestv.data.source.entryComparator
 import com.luckycatpaw.luckyfilestv.util.FileUtil
 import com.luckycatpaw.luckyfilestv.util.MimeTypes
 import java.io.FilterOutputStream
+import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.EnumSet
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.runBlocking
 
 /**
  * Windows shares.
@@ -125,19 +128,21 @@ internal class SmbFileSource(
 
     override suspend fun openRandomAccess(path: SourcePath): RandomAccessSource {
         val target = resolve(path, SourceOperation.READ)
+        val handle = SmbRandomAccessSource(target.share, target.relativePath, sessions)
 
-        return execute(SourceOperation.READ, path, target) { diskShare ->
-            val remoteFile = diskShare.openFile(
-                target.relativePath,
-                EnumSet.of(AccessMask.GENERIC_READ),
-                null,
-                SMB2ShareAccess.ALL,
-                SMB2CreateDisposition.FILE_OPEN,
-                null
-            )
-
-            SmbRandomAccessSource(remoteFile)
+        // Open once here so a missing file or a refused login surfaces as a proper error
+        // rather than on the first read, deep inside another app. Not through execute: that
+        // would take a share from the pool only for the handle to ask for a second one, and
+        // the blocking open would occupy an IO thread while waiting for another.
+        try {
+            handle.openSuspending()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            throw error.toSourceException(SourceOperation.READ, path, target.share.host)
         }
+
+        return handle
     }
 
     override suspend fun createDirectory(parent: SourcePath, name: String): SourcePath {
@@ -380,17 +385,66 @@ private val FileIdBothDirectoryInformation.isDirectory: Boolean
 /**
  * Open handle on a share.
  *
- * The size is read once: it cannot change while the handle is open, and asking again would
- * cost a round trip on every seek a player performs.
+ * Reopens itself when the session underneath disappears. A file played by another app is
+ * read for as long as the film lasts, and in that time a server drops an idle client, the
+ * device changes network or the pool is invalidated — after which smbj answers every further
+ * read with "DiskShare has already been closed". Without recovery here, playback ends there
+ * and never resumes: the handle bypasses the pool, so its retry cannot help.
  */
-private class SmbRandomAccessSource(private val remoteFile: File) : RandomAccessSource {
+private class SmbRandomAccessSource(
+    private val share: SmbShare,
+    private val relativePath: String,
+    private val sessions: SmbSessionPool
+) : RandomAccessSource {
+
+    private var handle: File? = null
 
     override val size: Long by lazy {
-        remoteFile.fileInformation.standardInformation.endOfFile
+        withHandle { it.fileInformation.standardInformation.endOfFile }
     }
 
     override fun read(fileOffset: Long, destination: ByteArray, destinationOffset: Int, length: Int): Int =
-        remoteFile.read(destination, fileOffset, destinationOffset, length).coerceAtLeast(0)
+        withHandle { it.read(destination, fileOffset, destinationOffset, length) }.coerceAtLeast(0)
 
-    override fun close() = remoteFile.close()
+    suspend fun openSuspending(): File = handle ?: sessions
+        .withShare(share) { diskShare ->
+            diskShare.openFile(
+                relativePath,
+                EnumSet.of(AccessMask.GENERIC_READ),
+                null,
+                SMB2ShareAccess.ALL,
+                SMB2CreateDisposition.FILE_OPEN,
+                null
+            )
+        }
+        .also { handle = it }
+
+    /**
+     * Blocking variant for the reopen during a read.
+     *
+     * Reads arrive on the descriptor's own thread, which is not a coroutine and exists to be
+     * blocked. Only that path uses this.
+     */
+    private fun open(): File = handle ?: runBlocking { openSuspending() }
+
+    override fun close() {
+        runCatching { handle?.close() }
+        handle = null
+    }
+
+    /** One retry on a fresh handle; a second failure is a real one and reaches the caller. */
+    private fun <T> withHandle(block: (File) -> T): T = try {
+        block(open())
+    } catch (dropped: SMBRuntimeException) {
+        discard()
+        block(open())
+    } catch (dropped: IOException) {
+        discard()
+        block(open())
+    }
+
+    private fun discard() {
+        runCatching { handle?.close() }
+        handle = null
+    }
 }

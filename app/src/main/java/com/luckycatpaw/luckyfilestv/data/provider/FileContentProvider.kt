@@ -18,6 +18,7 @@ import com.luckycatpaw.luckyfilestv.util.MimeTypes
 import java.io.File
 import java.io.FileNotFoundException
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -34,10 +35,8 @@ class FileContentProvider : ContentProvider() {
         FileSourceRegistry.create(requireNotNull(context).applicationContext)
     }
 
-    /** Proxy reads must not run on the caller's binder thread. */
-    private val proxyHandler: Handler by lazy {
-        Handler(HandlerThread("file-content-proxy").apply { start() }.looper)
-    }
+
+    private val readerThreads = AtomicInteger(0)
 
     override fun onCreate(): Boolean = true
 
@@ -63,10 +62,21 @@ class FileContentProvider : ContentProvider() {
             throw FileNotFoundException(failure.message ?: location.value)
         }
 
+        RemoteAccessService.descriptorOpened()
+
+        // A thread per descriptor, not one for all of them. Every read on it is a blocking
+        // request to the server, so a shared thread would put a player and the thumbnails of
+        // the grid into the same queue: one preview waiting on its timeout would stall
+        // playback for as long as it takes.
+        val readerThread = HandlerThread("share-reader-${readerThreads.incrementAndGet()}").apply { start() }
+
         return storageManager.openProxyFileDescriptor(
             ParcelFileDescriptor.MODE_READ_ONLY,
-            SourceProxyFileDescriptor(handle),
-            proxyHandler
+            SourceProxyFileDescriptor(handle) {
+                readerThread.quitSafely()
+                RemoteAccessService.descriptorClosed(requireNotNull(context).applicationContext)
+            },
+            Handler(readerThread.looper)
         )
     }
 

@@ -6,6 +6,7 @@ import java.util.Locale
 internal object MimeTypes {
     const val ANY = "*/*"
     const val BINARY = "application/octet-stream"
+    const val APK = "application/vnd.android.package-archive"
 
     val VIDEO_EXTENSIONS =
         setOf("avi", "mkv", "mp4", "m4v", "mov", "webm", "mpeg", "mpg", "ts", "m2ts", "wmv", "flv", "vob")
@@ -28,6 +29,9 @@ internal object MimeTypes {
             .lowercase(Locale.ROOT)
 
         val knownType = when (extension) {
+            // Android's own table does not carry this one, and the package installer reacts
+            // to nothing else.
+            "apk" -> APK
             "mkv" -> "video/x-matroska"
             "mp4" -> "video/mp4"
             "avi" -> "video/x-msvideo"

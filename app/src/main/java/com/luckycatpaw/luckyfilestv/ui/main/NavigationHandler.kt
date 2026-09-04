@@ -5,7 +5,7 @@ import com.luckycatpaw.luckyfilestv.R
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import com.luckycatpaw.luckyfilestv.data.common.model.FileManagerSettings
 import com.luckycatpaw.luckyfilestv.data.repository.FileRepository
-import com.luckycatpaw.luckyfilestv.ui.common.LocalBrowserCoordinator
+import com.luckycatpaw.luckyfilestv.ui.common.BrowserCoordinator
 import com.luckycatpaw.luckyfilestv.ui.common.model.TvGridPosition
 import com.luckycatpaw.luckyfilestv.ui.main.model.MainUiEvent
 import com.luckycatpaw.luckyfilestv.ui.main.model.MainUiState
@@ -27,7 +27,7 @@ internal class NavigationHandler(
 ) {
     private var navigationGeneration = 0
 
-    private val coordinator = LocalBrowserCoordinator<BrowserItem>(
+    private val coordinator = BrowserCoordinator<BrowserItem>(
         appContext = appContext,
         modelScope = modelScope,
         fileRepository = fileRepository,

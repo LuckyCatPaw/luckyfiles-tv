@@ -164,9 +164,15 @@ internal class BrowserFocusState<K> internal constructor(
         focusRestoreJob = null
     }
 
+    /**
+     * @param explicitRequest `true` when the screen asked for this focus itself, e.g. after
+     *   creating a folder. Such a request outranks keeping focus in the header: the action
+     *   was started there, but its result lives in the grid.
+     */
     internal suspend fun applyInitialFocus(
         targetIndex: Int,
         enabled: Boolean,
+        explicitRequest: Boolean,
         onItemFocused: (Int) -> Unit,
         headerRequester: () -> FocusRequester?
     ) {
@@ -188,8 +194,9 @@ internal class BrowserFocusState<K> internal constructor(
             return
         }
 
-        // Return to the header only when the user put focus there on purpose.
-        if (activeFocusArea == BrowserFocusArea.HEADER && headerFocusIsExplicit) {
+        // Return to the header only when the user put focus there on purpose and nothing
+        // else was asked for.
+        if (activeFocusArea == BrowserFocusArea.HEADER && headerFocusIsExplicit && !explicitRequest) {
             val requester = headerRequester()
             if (requester != null) {
                 gridSelectionVisible = false

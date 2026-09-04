@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,6 +22,9 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
@@ -33,7 +37,9 @@ fun TvTextInput(
     modifier: Modifier = Modifier,
     downFocusRequester: FocusRequester? = null,
     upFocusRequester: FocusRequester? = null,
-    singleLine: Boolean = true
+    singleLine: Boolean = true,
+    /** Replaces every character with a dot, for passwords and other secrets. */
+    masked: Boolean = false
 ) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(10.dp)
@@ -47,6 +53,13 @@ fun TvTextInput(
             fontSize = 18.sp
         ),
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+        visualTransformation = if (masked) PasswordVisualTransformation() else VisualTransformation.None,
+        keyboardOptions = if (masked) {
+            // Tells the on-screen keyboard not to offer suggestions or store the input.
+            KeyboardOptions(keyboardType = KeyboardType.Password)
+        } else {
+            KeyboardOptions.Default
+        },
         modifier = modifier
             .fillMaxWidth()
             .focusRequester(focusRequester)

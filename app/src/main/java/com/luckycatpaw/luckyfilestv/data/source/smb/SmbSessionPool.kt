@@ -96,12 +96,26 @@ internal class SmbSessionPool(
 
         pooled.remove(share.sessionKey)?.closeQuietly()
 
+        // Anything that fails after the connection is open has to take it down with it:
+        // authentication, a share that does not exist, a printer queue instead of a disk.
+        // Otherwise a socket and a session stay behind on every failed attempt, and a wrong
+        // password retried a few times leaves the server holding them.
         val connection = connect(share.host)
-        val session = connection.authenticate(share.credentials.toAuthenticationContext())
-        val diskShare = session.connectShare(share.name) as? DiskShare
-            ?: throw SourceException.Unsupported("Not a file share: ${share.name}")
+        var session: Session? = null
 
-        PooledShare(connection, session, diskShare).also { pooled[share.sessionKey] = it }
+        try {
+            val authenticated = connection.authenticate(share.credentials.toAuthenticationContext())
+            session = authenticated
+
+            val diskShare = authenticated.connectShare(share.name) as? DiskShare
+                ?: throw SourceException.Unsupported("Not a file share: ${share.name}")
+
+            PooledShare(connection, authenticated, diskShare).also { pooled[share.sessionKey] = it }
+        } catch (failure: Throwable) {
+            runCatching { session?.close() }
+            runCatching { connection.close() }
+            throw failure
+        }
     }
 
     private suspend fun evict(share: SmbShare) {

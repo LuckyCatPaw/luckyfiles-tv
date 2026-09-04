@@ -251,4 +251,6 @@
     <string name="share_test">Verbindung testen</string>
     <string name="share_testing">Teste…</string>
     <string name="share_test_success">Verbindung hergestellt.</string>
+    <string name="remote_access_channel_name">Zugriff auf Netzwerkfreigabe</string>
+    <string name="remote_access_notification">Eine Datei auf einer Netzwerkfreigabe ist in einer anderen App geöffnet.</string>
 </resources>

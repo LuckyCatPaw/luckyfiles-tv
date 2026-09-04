@@ -17,7 +17,7 @@ import com.luckycatpaw.luckyfilestv.data.repository.LocalFileSearchRepository
 import com.luckycatpaw.luckyfilestv.data.repository.SettingsRepository
 import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
 import com.luckycatpaw.luckyfilestv.data.source.local.LocalVolumeRepository
-import com.luckycatpaw.luckyfilestv.ui.common.LocalBrowserCoordinator
+import com.luckycatpaw.luckyfilestv.ui.common.BrowserCoordinator
 import com.luckycatpaw.luckyfilestv.ui.common.model.TvGridPosition
 import com.luckycatpaw.luckyfilestv.ui.picker.model.BrowseSnapshot
 import com.luckycatpaw.luckyfilestv.ui.picker.model.DisplayMode
@@ -118,7 +118,7 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
     internal var focusedKey: String? = null
         private set
 
-    private val localCoordinator = LocalBrowserCoordinator<PickerBrowserItem>(
+    private val localCoordinator = BrowserCoordinator<PickerBrowserItem>(
         appContext = appContext,
         modelScope = viewModelScope,
         fileRepository = fileRepository

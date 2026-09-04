@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import com.luckycatpaw.luckyfilestv.data.provider.FileContentProvider
+import com.luckycatpaw.luckyfilestv.data.provider.RemoteAccessService
 import com.luckycatpaw.luckyfilestv.data.source.SourcePath
 import java.io.File
 import java.io.IOException
@@ -21,7 +22,13 @@ object FileOpener {
             return false
         }
 
-        return try {
+        if (!location.isLocal) {
+            // Has to happen here, not when the descriptor is opened: by then the player is
+            // in front and a background app may no longer start a foreground service.
+            RemoteAccessService.start(context)
+        }
+
+        val started = try {
             val uri = FileContentProvider.createUri(
                 context,
                 canonicalPathOf(location)
@@ -45,6 +52,12 @@ object FileOpener {
                 addFlags(
                     Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
+
+                // The package installer runs in its own task and refuses to be started as
+                // part of ours.
+                if (mimeType == MimeTypes.APK) {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
             }
 
             context.startActivity(intent)
@@ -59,6 +72,14 @@ object FileOpener {
         } catch (_: IOException) {
             false
         }
+
+        if (!started && !location.isLocal) {
+            // Nothing will open a descriptor now, so the service would sit there until its
+            // own timeout expires.
+            RemoteAccessService.stopIfIdle(context)
+        }
+
+        return started
     }
 
     private fun canonicalPathOf(location: SourcePath): String =

@@ -14,7 +14,13 @@ import kotlinx.coroutines.launch
 /** What a caller needs to know about the directory itself, beyond its contents. */
 internal data class DirectoryInfo(val writable: Boolean)
 
-internal class LocalBrowserCoordinator<T>(
+/**
+ * Loads and caches the contents of a directory for a browsing screen.
+ *
+ * Source-agnostic: it hands a location to [FileRepository] and never learns whether the
+ * bytes come from a disk or a server.
+ */
+internal class BrowserCoordinator<T>(
     private val appContext: Context,
     private val modelScope: CoroutineScope,
     private val fileRepository: FileRepository,

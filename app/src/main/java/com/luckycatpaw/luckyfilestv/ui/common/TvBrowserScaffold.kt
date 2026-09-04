@@ -14,11 +14,14 @@ import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -258,10 +261,18 @@ internal fun <T : Any> TvBrowserScaffold(
         )
     }
 
+    // Only a fresh key means the screen asked for focus. A reload that merely changes the
+    // item list must not count, or every refresh would pull focus out of the header.
+    var servedFocusRequestKey by remember { mutableIntStateOf(focusRequestKey) }
+
     LaunchedEffect(itemKeys, focusKey, focusRequestKey, columnCount, focusEnabled) {
+        val explicitRequest = focusRequestKey != servedFocusRequestKey
+        servedFocusRequestKey = focusRequestKey
+
         focusState.applyInitialFocus(
             targetIndex = requestedFocusIndex(),
             enabled = focusEnabled,
+            explicitRequest = explicitRequest,
             onItemFocused = { index -> onItemFocused(items[index]) },
             headerRequester = ::headerRequester
         )

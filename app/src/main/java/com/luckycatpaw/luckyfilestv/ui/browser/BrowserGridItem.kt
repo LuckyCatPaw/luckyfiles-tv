@@ -271,11 +271,12 @@ private fun LocalItemPreview(item: BrowserItem, selected: Boolean, useFolderJpgA
     ) {
         val previewRequest = withContext(Dispatchers.IO) {
             val location = SourcePath.parseOrNull(item.path)
+            val cheapMetadata = LocalThumbnailDecoder.hasCheapMetadata(context, item.path)
 
             val source: Pair<String, String>? = when (item) {
-                // A folder cover means listing the directory. On a share that is a round
-                // trip per tile, so covers stay a local feature for now.
-                is BrowserItem.Folder -> if (useFolderJpgAsIcon && location?.isLocal == true) {
+                // A folder cover means listing the directory, which is one round trip per
+                // tile where that is not free.
+                is BrowserItem.Folder -> if (useFolderJpgAsIcon && cheapMetadata) {
                     LocalThumbnailDecoder.findFolderCover(item.path)?.let { cover -> "folder" to cover }
                 } else {
                     null
@@ -292,7 +293,7 @@ private fun LocalItemPreview(item: BrowserItem, selected: Boolean, useFolderJpgA
             }
 
             source?.let { (type, path) ->
-                if (location?.isLocal == false) {
+                if (!cheapMetadata) {
                     // Size and date would each cost a request, and the browser item does not
                     // carry them. The location alone identifies the preview; a file replaced
                     // under the same name keeps its old thumbnail until the cache drops it.

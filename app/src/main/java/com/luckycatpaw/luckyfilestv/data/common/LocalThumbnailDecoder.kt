@@ -10,16 +10,14 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.pdf.PdfRenderer
 import android.media.MediaMetadataRetriever
-import android.media.ThumbnailUtils
 import android.os.Build
-import android.os.CancellationSignal
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.util.Log
-import android.util.Size
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
 import com.luckycatpaw.luckyfilestv.data.provider.FileContentProvider
+import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
 import com.luckycatpaw.luckyfilestv.data.source.SourcePath
 import com.luckycatpaw.luckyfilestv.util.MimeTypes
 import java.io.File
@@ -30,9 +28,9 @@ import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -72,52 +70,67 @@ internal object LocalThumbnailDecoder {
     }
 
     /**
-     * Previews of files on a share, limited to a few at a time.
+     * Previews from a source whose metadata is expensive, limited to a few at a time.
      *
      * A grid full of videos would otherwise open dozens of connections at once and stall the
-     * share for everything else, including playback. Reading metadata is free on a local
-     * disk and a round trip on a server — the difference [
-     * com.luckycatpaw.luckyfilestv.data.source.SourceCapabilities.cheapMetadata] describes.
+     * share for everything else, including playback.
      */
-    private val remotePermits = Semaphore(2)
+    private val expensivePermits = Semaphore(2)
+
+    @Volatile
+    private var sources: FileSourceRegistry? = null
+
+    /**
+     * `true` when sizes, dates and previews cost nothing worth counting.
+     *
+     * Asks the source rather than the scheme: whether a preview is cheap is a property of
+     * where the file lives, and a future source may well be remote and cheap, or local and
+     * slow. Unknown locations count as cheap so a lookup failure never blocks a preview.
+     */
+    fun hasCheapMetadata(context: Context, path: String): Boolean {
+        val location = SourcePath.parseOrNull(path) ?: return true
+
+        return runCatching {
+            sources(context).source(location).capabilities.cheapMetadata
+        }.getOrDefault(true)
+    }
+
+    private fun sources(context: Context): FileSourceRegistry = sources ?: synchronized(this) {
+        sources ?: FileSourceRegistry.create(context.applicationContext).also { sources = it }
+    }
 
     /**
      * Decodes a preview without caching anything. Both the in-memory and the disk cache live
      * in [com.luckycatpaw.luckyfilestv.data.repository.ImageRepository] and
      * [GeneratedThumbnailCache]; this object is only ever called on a cache miss.
      */
+    /**
+     * Decodes a preview, wherever the file lives.
+     *
+     * One path for every source. The decoders read through the app's own content provider,
+     * which hands out a plain descriptor for a local file and a proxy for a remote one — so
+     * a video on a share is seeked into rather than downloaded, and both end up choosing
+     * their frame the same way. An APK is the exception: its icon needs an installable path.
+     */
     suspend fun decode(context: Context, type: String, path: String): Bitmap? {
-        val location = SourcePath.parseOrNull(path)
-
-        if (location != null && !location.isLocal) {
-            return remotePermits.withPermit { decodeRemote(context, type, location) }
+        if (type == "apk") {
+            return withContext(imageDecodeDispatcher) { decodeApkIcon(context, path) }
         }
 
-        if (type == "video") return decodeVideoThumbnail(path)
-
-        return withContext(imageDecodeDispatcher) {
-            when (type) {
-                "folder", "image" -> decodeImageThumbnail(path, 384)
-                "pdf" -> decodePdfThumbnail(path)
-                "audio" -> decodeAudioArtwork(path)
-                "apk" -> decodeApkIcon(context, path)
-                else -> null
-            }
+        // How to read is a question of the scheme, how many at once one of the source: a
+        // cheap source needs no queue in front of it.
+        return if (hasCheapMetadata(context, path)) {
+            decodeFrom(context, type, path)
+        } else {
+            expensivePermits.withPermit { decodeFrom(context, type, path) }
         }
     }
 
-    /**
-     * Preview of a file that only exists on a server.
-     *
-     * Everything goes through the app's own content provider, so the decoders read through
-     * the proxy descriptor and can seek: a video thumbnail costs a few requests instead of
-     * the whole file. An APK icon has no path to install from and is left out.
-     */
-    private suspend fun decodeRemote(context: Context, type: String, location: SourcePath): Bitmap? {
-        val uri = FileContentProvider.createUri(context, location.value)
+    private suspend fun decodeFrom(context: Context, type: String, path: String): Bitmap? {
+        val uri = FileContentProvider.createUri(context, path)
 
         return if (type == "video") {
-            decodeRemoteVideoThumbnail(context, uri)
+            decodeVideoThumbnail(context, uri)
         } else {
             withContext(imageDecodeDispatcher) {
                 when (type) {
@@ -130,14 +143,14 @@ internal object LocalThumbnailDecoder {
         }
     }
 
-    private suspend fun decodeRemoteVideoThumbnail(context: Context, uri: Uri): Bitmap? =
+    private suspend fun decodeVideoThumbnail(context: Context, uri: Uri): Bitmap? =
         withTimeoutOrNull(20_000.milliseconds) {
             runInterruptible(videoThumbnailDispatcher) {
                 val retriever = MediaMetadataRetriever()
 
                 try {
                     retriever.setDataSource(context, uri)
-                    retriever.getFrameAtTime(0)?.let { scaleBitmapToFit(it, 384, 240) }
+                    representativeFrame(retriever)?.let { scaleBitmapToFit(it, 384, 240) }
                 } catch (error: Exception) {
                     Log.w(TAG, "Video thumbnail failed for a share", error)
                     null
@@ -146,6 +159,67 @@ internal object LocalThumbnailDecoder {
                 }
             }
         }
+
+    /**
+     * Picks a frame that actually shows something.
+     *
+     * The first frame of a film is usually black — a fade in, a title card, a leader — so
+     * the search starts a tenth of the way in and moves further if what comes back is dark.
+     * `ThumbnailUtils` used to do this for local files and nothing did it for shares, which
+     * is exactly why previews there came out black.
+     */
+    private fun representativeFrame(retriever: MediaMetadataRetriever): Bitmap? {
+        val durationMs = retriever
+            .extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+            ?.toLongOrNull()
+            ?: 0L
+
+        val offsetsUs = if (durationMs > 0L) {
+            listOf(durationMs / 10, durationMs / 3, durationMs / 2).map { it * 1000L }
+        } else {
+            // No duration in the metadata, which happens with damaged or streamed files.
+            listOf(10_000_000L, 60_000_000L)
+        }
+
+        offsetsUs.forEach { timeUs ->
+            val frame = frameAt(retriever, timeUs)
+            if (frame != null && !frame.isMostlyBlack()) return frame
+        }
+
+        // Everything dark, or seeking failed: better the first frame than no preview.
+        return frameAt(retriever, 0L)
+    }
+
+    private fun frameAt(retriever: MediaMetadataRetriever, timeUs: Long): Bitmap? = runCatching {
+        // Scales while decoding, which saves a full size bitmap per preview.
+        retriever.getScaledFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 384, 240)
+    }.getOrNull() ?: runCatching {
+        retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+    }.getOrNull()
+
+    /** Average brightness below this counts as an unusable frame. */
+    private const val BLACK_THRESHOLD = 12
+
+    /** Samples a grid instead of every pixel: enough to tell a black frame from an image. */
+    private fun Bitmap.isMostlyBlack(): Boolean {
+        val steps = 8
+        var total = 0L
+
+        for (x in 0 until steps) {
+            for (y in 0 until steps) {
+                val pixel = getPixel(
+                    (width - 1) * x / (steps - 1),
+                    (height - 1) * y / (steps - 1)
+                )
+
+                total += android.graphics.Color.red(pixel) +
+                    android.graphics.Color.green(pixel) +
+                    android.graphics.Color.blue(pixel)
+            }
+        }
+
+        return total / (steps * steps * 3) < BLACK_THRESHOLD
+    }
 
     private fun decodeImageThumbnail(context: Context, uri: Uri, requestedSize: Int): Bitmap? {
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -199,54 +273,6 @@ internal object LocalThumbnailDecoder {
         else -> null
     }
 
-    private fun decodeImageThumbnail(path: String, requestedSize: Int): Bitmap? {
-        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(path, options)
-        if (options.outWidth <= 0 || options.outHeight <= 0) return null
-
-        val decodeOptions = BitmapFactory.Options().apply {
-            inSampleSize = calculateInSampleSize(options, requestedSize, requestedSize)
-            inPreferredConfig = Bitmap.Config.RGB_565
-        }
-
-        return BitmapFactory.decodeFile(path, decodeOptions)?.let {
-            scaleBitmapToFit(it, requestedSize, requestedSize)
-        }
-    }
-
-    private fun decodeVideoThumbnailBlocking(path: String, cancellationSignal: CancellationSignal): Bitmap? {
-        val file = File(path)
-        if (!file.exists() || !file.canRead()) return null
-        return decodeVideoWithAndroid(file, cancellationSignal)
-    }
-
-    private suspend fun decodeVideoThumbnail(path: String): Bitmap? {
-        val signal = CancellationSignal()
-        return try {
-            withTimeoutOrNull(15_000.milliseconds) {
-                runInterruptible(videoThumbnailDispatcher) {
-                    decodeVideoThumbnailBlocking(path, signal)
-                }
-            }
-        } finally {
-            signal.cancel()
-        }
-    }
-
-    private fun decodeVideoWithAndroid(file: File, signal: CancellationSignal?): Bitmap? = try {
-        ThumbnailUtils.createVideoThumbnail(file, Size(384, 240), signal)
-    } catch (e: Exception) {
-        Log.e(TAG, "Android ThumbnailUtils failed for ${file.name}", e)
-        null
-    }
-
-    private fun decodePdfThumbnail(path: String, maxWidth: Int = 384, maxHeight: Int = 240): Bitmap? = runCatching {
-        ParcelFileDescriptor.open(File(path), ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
-            renderFirstPdfPage(descriptor, maxWidth, maxHeight)
-        }
-    }.getOrNull()
-
-    /** Shared by the local and the remote path: only where the descriptor comes from differs. */
     private fun renderFirstPdfPage(descriptor: ParcelFileDescriptor, maxWidth: Int, maxHeight: Int): Bitmap? =
         PdfRenderer(descriptor).use { renderer ->
             if (renderer.pageCount <= 0) return null
@@ -262,18 +288,6 @@ internal object LocalThumbnailDecoder {
                 }
             }
         }
-
-    private fun decodeAudioArtwork(path: String, requestedSize: Int = 384): Bitmap? {
-        val retriever = MediaMetadataRetriever()
-        return try {
-            retriever.setDataSource(path)
-            retriever.embeddedPicture?.let { decodeImageBytesThumbnail(it, requestedSize) }
-        } catch (_: Exception) {
-            null
-        } finally {
-            runCatching { retriever.release() }
-        }
-    }
 
     private fun decodeImageBytesThumbnail(bytes: ByteArray, requestedSize: Int): Bitmap? {
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }

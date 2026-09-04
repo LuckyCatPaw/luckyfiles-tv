@@ -251,4 +251,6 @@
     <string name="share_test">Test connection</string>
     <string name="share_testing">Testing…</string>
     <string name="share_test_success">Connection established.</string>
+    <string name="remote_access_channel_name">Network share access</string>
+    <string name="remote_access_notification">A file on a network share is open in another app.</string>
 </resources>

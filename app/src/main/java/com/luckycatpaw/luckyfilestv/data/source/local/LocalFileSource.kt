@@ -146,7 +146,7 @@ internal class LocalFileSource(
     override suspend fun move(from: SourcePath, to: SourcePath) {
         withContext(dispatcher) {
             try {
-                FileUtil.moveWithoutReplacing(from.toFile(), to.toFile())
+                FileUtil.moveWithoutReplacing(from.normalized(), to.normalized())
             } catch (exists: FileAlreadyExistsException) {
                 throw SourceException.AlreadyExists(to.name, exists)
             } catch (failed: IOException) {
@@ -157,7 +157,7 @@ internal class LocalFileSource(
 
     override suspend fun delete(path: SourcePath) {
         withContext(dispatcher) {
-            val file = path.toFile().absoluteFile
+            val file = path.normalized()
             if (!Files.exists(file.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                 throw SourceException.NotFound(path, SourceOperation.DELETE)
             }
@@ -235,6 +235,15 @@ internal class LocalFileSource(
     private fun validName(name: String, forDirectory: Boolean): String =
         runCatching { FileUtil.validateFileName(name) }
             .getOrElse { throw SourceException.InvalidName(name, forDirectory) }
+
+    /**
+     * Resolves `.` and `..` without touching symbolic links.
+     *
+     * Deliberately not [File.getCanonicalFile]: that would follow a link, and a move would
+     * then relocate the target instead of the link itself. The caller also planned conflicts
+     * against exactly this path, so silently pointing somewhere else would be unchecked.
+     */
+    private fun SourcePath.normalized(): File = toFile().toPath().toAbsolutePath().normalize().toFile()
 
     private fun SourcePath.canonical(operation: SourceOperation): File = try {
         toFile().canonicalFile
