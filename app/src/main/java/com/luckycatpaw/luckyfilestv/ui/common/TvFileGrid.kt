@@ -11,7 +11,8 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -29,11 +30,10 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Text
+import com.luckycatpaw.luckyfilestv.ui.theme.AppShapes
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -343,7 +343,11 @@ internal fun <T> TvFileGrid(
                 { if (enabled) onItemFocused(index, item) }
             }
 
-            Box {
+            Box(
+                modifier = Modifier
+                    .padding(TvFileGridDefaults.TileInset)
+                    .tvFocusScale(isSelected)
+            ) {
                 itemContent(
                     item,
                     isSelected,
@@ -379,18 +383,17 @@ private fun SelectionBadge(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .padding(8.dp)
-            .size(28.dp)
-            .background(
-                MaterialTheme.colorScheme.primary,
-                RoundedCornerShape(14.dp)
-            ),
+            .size(26.dp)
+            .background(MaterialTheme.colorScheme.primary, AppShapes.Badge),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = "✓",
-            color = MaterialTheme.colorScheme.onPrimary,
-            fontSize = 17.sp,
-            fontWeight = FontWeight.Bold
+        // Was a literal check glyph. Whether that renders as a tick, a box or
+        // nothing at all depends on the font the TV manufacturer shipped.
+        Icon(
+            imageVector = Icons.Filled.Check,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onPrimary,
+            modifier = Modifier.size(17.dp)
         )
     }
 }

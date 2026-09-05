@@ -10,7 +10,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.luckycatpaw.luckyfilestv.R
@@ -56,7 +55,6 @@ private fun ProviderInfoOverlay(message: String, loading: Boolean, onDismiss: ()
         DialogCard(
             width = 560.dp,
             padding = 26.dp,
-            borderAlpha = 0.45f,
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
@@ -67,7 +65,7 @@ private fun ProviderInfoOverlay(message: String, loading: Boolean, onDismiss: ()
             Text(
                 text = message,
                 color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 16.sp
+                style = MaterialTheme.typography.bodyLarge
             )
 
             if (!loading) {
@@ -75,7 +73,7 @@ private fun ProviderInfoOverlay(message: String, loading: Boolean, onDismiss: ()
                     text = stringResource(R.string.close),
                     focusRequester = closeRequester,
                     trapVerticalKeys = true,
-                    fontSize = 14,
+                    textStyle = MaterialTheme.typography.labelMedium,
                     onClick = onDismiss
                 )
             }
@@ -94,20 +92,20 @@ private fun ProviderErrorOverlay(message: String, onRetry: () -> Unit, onDismiss
     TvModalDialog(onDismiss = onDismiss, dimAlpha = 0.68f) {
         DialogCard(
             width = 640.dp,
-            borderAlpha = 1f,
+            borderColor = MaterialTheme.colorScheme.error,
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             Text(
                 text = stringResource(R.string.storage_source_unavailable),
                 color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 21.sp,
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Medium
             )
 
             Text(
                 text = message,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 15.sp
+                style = MaterialTheme.typography.bodyMedium
             )
 
             Row(
@@ -117,7 +115,7 @@ private fun ProviderErrorOverlay(message: String, onRetry: () -> Unit, onDismiss
                 TvDialogButton(
                     text = stringResource(R.string.back),
                     trapVerticalKeys = true,
-                    fontSize = 14,
+                    textStyle = MaterialTheme.typography.labelMedium,
                     onClick = onDismiss
                 )
 
@@ -125,7 +123,7 @@ private fun ProviderErrorOverlay(message: String, onRetry: () -> Unit, onDismiss
                     text = stringResource(R.string.retry),
                     focusRequester = retryRequester,
                     trapVerticalKeys = true,
-                    fontSize = 14,
+                    textStyle = MaterialTheme.typography.labelMedium,
                     onClick = onRetry
                 )
             }

@@ -73,7 +73,7 @@ internal fun <T : Any> TvBrowserScaffold(
     focusEnabled: Boolean = true,
     markedKeys: Set<String> = emptySet(),
     contentPadding: PaddingValues = PaddingValues(0.dp),
-    gridSpacing: Dp = 14.dp,
+    gridSpacing: Dp = 7.dp,
     onItemLongClick: (T) -> Unit = {},
     onItemFocused: (T) -> Unit = {},
     itemContent: @Composable (

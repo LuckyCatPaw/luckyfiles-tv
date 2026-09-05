@@ -2,9 +2,10 @@ package com.luckycatpaw.luckyfilestv.ui.common
 
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -15,10 +16,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.luckycatpaw.luckyfilestv.ui.theme.AppShapes
+
+/** Shared height for every button in the header row, icon or label. */
+internal val HeaderButtonHeight = 36.dp
 
 @Composable
 internal fun BrowserHeaderButton(
@@ -33,12 +37,17 @@ internal fun BrowserHeaderButton(
     focusEnabled: Boolean = true
 ) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(9.dp)
+    val shape = AppShapes.Control
     val iconOnly = icon != null && text == null
 
     Box(
         modifier = modifier
-            .then(if (iconOnly) Modifier.size(40.dp) else Modifier)
+            // Both kinds of button are pinned to the same height rather than each
+            // taking the size of what it holds. An icon button was a fixed 40 dp
+            // box while a labelled one came out to its line height plus padding,
+            // so the two never matched and the row looked ragged.
+            .height(HeaderButtonHeight)
+            .then(if (iconOnly) Modifier.width(HeaderButtonHeight) else Modifier)
             .tvFocusable(
                 onClick = onClick,
                 focusRequester = focusRequester,
@@ -61,19 +70,15 @@ internal fun BrowserHeaderButton(
                     }
                 }
             )
-            .tvFocusHighlight(
-                focused = focused,
-                shape = shape,
-                unfocusedContainer = MaterialTheme.colorScheme.surface
-            )
-            .then(if (text != null) Modifier.padding(horizontal = 15.dp, vertical = 8.dp) else Modifier),
+            .tvFocusHighlight(focused = focused, shape = shape)
+            .then(if (text != null) Modifier.padding(horizontal = 14.dp) else Modifier),
         contentAlignment = Alignment.Center
     ) {
         if (text != null) {
             Text(
                 text = text,
                 color = tvContentColor(focused),
-                fontSize = 14.sp,
+                style = MaterialTheme.typography.labelMedium,
                 maxLines = 1
             )
         } else if (icon != null) {

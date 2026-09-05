@@ -4,7 +4,6 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Audiotrack
@@ -33,6 +31,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.graphics.ImageBitmap
@@ -40,11 +39,11 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -53,7 +52,9 @@ import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import com.luckycatpaw.luckyfilestv.data.source.SourcePath
 import com.luckycatpaw.luckyfilestv.data.source.VolumeKind
 import com.luckycatpaw.luckyfilestv.data.repository.ImageRepository
+import com.luckycatpaw.luckyfilestv.ui.common.TvFileGridDefaults
 import com.luckycatpaw.luckyfilestv.ui.picker.model.PickerBrowserItem
+import com.luckycatpaw.luckyfilestv.ui.theme.AppShapes
 import com.luckycatpaw.luckyfilestv.util.FileNameOptimizer
 import com.luckycatpaw.luckyfilestv.util.MimeTypes
 import java.io.File
@@ -174,16 +175,15 @@ private fun CommonBrowserGridItem(
     modifier: Modifier,
     preview: @Composable () -> Unit
 ) {
-    val shape = remember { RoundedCornerShape(12.dp) }
-    val backgroundColor = if (selected) {
-        MaterialTheme.colorScheme.primaryContainer
-    } else {
-        MaterialTheme.colorScheme.surface
-    }
-    val contentColor = if (selected) {
-        MaterialTheme.colorScheme.onPrimaryContainer
-    } else {
+    // The name sits below the card rather than inside it. Inside, a long file name
+    // eats into the space the thumbnail needs and every tile ends up a different
+    // shape; outside, the cards form an even row and the text can run as wide as
+    // it likes. Start alignment for the same reason a file list has one: names are
+    // scanned by their first characters, and centring puts those on a ragged edge.
+    val nameColor = if (selected) {
         MaterialTheme.colorScheme.onSurface
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
     }
 
     val lineBreakIndex = remember(displayName) { displayName.indexOf('\n') }
@@ -198,41 +198,61 @@ private fun CommonBrowserGridItem(
         }
     }
 
-    val itemModifier = modifier
-        .fillMaxWidth()
-        .height(198.dp)
-        .background(backgroundColor, shape)
-        .then(if (selected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape) else Modifier)
-        .onFocusChanged { if (it.isFocused) onFocused() }
-        .clickable { onClick() }
-        .padding(10.dp)
-
-    Box(modifier = itemModifier) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(TvFileGridDefaults.TileHeight)
+            .onFocusChanged { if (it.isFocused) onFocused() }
+            // See tvFocusable: the default indication paints a grey wash on focus.
+            .clickable(
+                interactionSource = null,
+                indication = null
+            ) { onClick() }
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(TvFileGridDefaults.ItemPreviewHeight)
+                // No fill in either state: the preview area is a frame over the
+                // page background, so a thumbnail is not sitting on a second grey.
+                .border(
+                    width = if (selected) 2.dp else 1.dp,
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.borderVariant
+                    },
+                    shape = AppShapes.Tile
+                )
+                // Without the clip a wide thumbnail draws over the rounded corners.
+                .clip(AppShapes.Tile)
+                .padding(10.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(116.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                preview()
-            }
-            Spacer(modifier = Modifier.height(6.dp))
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                MarqueeNameLine(text = primaryText, selected = selected, color = contentColor, fontSize = 15)
-                if (!secondLine.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(2.dp))
-                    MarqueeNameLine(text = secondLine, selected = selected, color = contentColor, fontSize = 14)
-                }
+            preview()
+        }
+
+        Spacer(modifier = Modifier.height(TvFileGridDefaults.ItemLabelSpacing))
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(TvFileGridDefaults.ItemLabelHeight),
+            verticalArrangement = Arrangement.Top
+        ) {
+            MarqueeNameLine(
+                text = primaryText,
+                selected = selected,
+                color = nameColor,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            if (!secondLine.isNullOrBlank()) {
+                MarqueeNameLine(
+                    text = secondLine,
+                    selected = selected,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
         }
     }
@@ -240,14 +260,18 @@ private fun CommonBrowserGridItem(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MarqueeNameLine(text: String, selected: Boolean, color: ComposeColor, fontSize: Int) {
+private fun MarqueeNameLine(
+    text: String,
+    selected: Boolean,
+    color: ComposeColor,
+    style: TextStyle
+) {
     Text(
         text = text,
         color = color,
-        fontSize = fontSize.sp,
-        lineHeight = 18.sp,
+        style = style,
         fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
-        textAlign = TextAlign.Center,
+        textAlign = TextAlign.Start,
         maxLines = 1,
         softWrap = false,
         overflow = if (selected) TextOverflow.Clip else TextOverflow.Ellipsis,

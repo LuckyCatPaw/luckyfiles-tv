@@ -14,8 +14,11 @@ private val FileManagerColorScheme = darkColorScheme(
     primary = AppPrimary,
     onPrimary = AppOnPrimary,
 
-    primaryContainer = AppPrimaryContainer,
-    onPrimaryContainer = AppOnPrimaryContainer,
+    // The "container" pair is the focused/elevated state. It is a neutral step
+    // up from the surface rather than a tinted one, so the accent border stays
+    // the thing that reads as focus.
+    primaryContainer = AppElevated,
+    onPrimaryContainer = AppOnElevated,
 
     secondary = AppSecondary,
     onSecondary = AppOnSecondary,
@@ -29,6 +32,9 @@ private val FileManagerColorScheme = darkColorScheme(
     tertiaryContainer = AppTertiaryContainer,
     onTertiaryContainer = AppOnTertiaryContainer,
 
+    error = AppError,
+    onError = AppOnError,
+
     background = AppBackground,
     onBackground = AppText,
 
@@ -41,13 +47,14 @@ private val FileManagerColorScheme = darkColorScheme(
     border = AppBorder,
     borderVariant = AppBorderMuted,
 
-    scrim = AppBackground
+    scrim = AppScrim
 )
 
 @Composable
 fun LuckyFilesTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = FileManagerColorScheme,
+        typography = AppTypography,
         content = content
     )
 }

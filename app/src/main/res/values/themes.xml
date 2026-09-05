@@ -1,4 +1,10 @@
 <resources>
 
-    <style name="Theme.LuckyFilesTV" parent="Theme.AppCompat.DayNight.NoActionBar" />
+    <style name="Theme.LuckyFilesTV" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <!-- Compose paints the real UI, but the window is visible before the first
+             frame. Without this the platform default shows through, which on a TV
+             is a full-screen flash on every cold start. -->
+        <item name="android:windowBackground">@color/app_background</item>
+        <item name="android:colorBackground">@color/app_background</item>
+    </style>
 </resources>

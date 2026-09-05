@@ -19,7 +19,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.luckycatpaw.luckyfilestv.R
@@ -126,7 +125,7 @@ internal fun ShareEditorOverlay(
                     if (existing == null) R.string.share_add_title else R.string.share_edit_title
                 ),
                 color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 21.sp,
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Medium
             )
 
@@ -203,7 +202,7 @@ internal fun ShareEditorOverlay(
                 Text(
                     text = stringResource(R.string.share_incomplete),
                     color = MaterialTheme.colorScheme.error,
-                    fontSize = 15.sp
+                    style = MaterialTheme.typography.bodyMedium
                 )
 
                 Spacer(Modifier.height(10.dp))
@@ -217,7 +216,7 @@ internal fun ShareEditorOverlay(
                     } else {
                         MaterialTheme.colorScheme.onSurface
                     },
-                    fontSize = 15.sp
+                    style = MaterialTheme.typography.bodyMedium
                 )
 
                 Spacer(Modifier.height(10.dp))
@@ -311,7 +310,7 @@ private fun Field(
     Text(
         text = label,
         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-        fontSize = 13.sp
+        style = MaterialTheme.typography.bodySmall
     )
 
     Spacer(Modifier.height(3.dp))

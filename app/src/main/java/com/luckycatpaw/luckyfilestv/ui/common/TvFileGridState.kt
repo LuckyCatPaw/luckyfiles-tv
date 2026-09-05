@@ -24,10 +24,52 @@ private const val PLACEMENT_FRAMES = 3
 
 internal object TvFileGridDefaults {
     val SafeHorizontalSpace = 56.dp
-    val ItemMinWidth = 170.dp
-    val ItemHeight = 198.dp
-    val HorizontalSpacing = 18.dp
-    val VerticalSpacing = 18.dp
+
+    /**
+     * Margin between a cell and the tile drawn inside it.
+     *
+     * This is the room a focused tile grows into. Putting it inside the cell rather
+     * than around the grid means the tile never exceeds the bounds the lazy grid
+     * clips to, so no scroll offset or content padding has to compensate for the
+     * animation. Sized for the vertical case, which needs the most: half of
+     * [TileHeight] * (FOCUS_SCALE - 1).
+     */
+    val TileInset = 7.dp
+
+    /**
+     * Cell width. The visible tile is this minus [TileInset] on either side.
+     *
+     * Raising this drops a column, so the useful range is narrow: at 200 dp a
+     * 1080p panel keeps the four columns it had at the old 170 dp tile while the
+     * tile itself gets wider, and 220 dp costs a column on every density.
+     */
+    val ItemMinWidth = 200.dp
+
+    /** Card area holding the thumbnail or type icon. */
+    val ItemPreviewHeight = 138.dp
+
+    /** Name and secondary line, sitting outside the card. */
+    val ItemLabelHeight = 50.dp
+
+    /** Gap between card and label. */
+    val ItemLabelSpacing = 10.dp
+
+    /** The tile itself, without the cell margin. */
+    val TileHeight: Dp = ItemPreviewHeight + ItemLabelSpacing + ItemLabelHeight
+
+    /**
+     * Full cell height.
+     *
+     * Derived rather than written down: the scroll maths in `TvFileGrid` measures
+     * rows with this value, so a layout change that did not reach it would send the
+     * grid to the wrong offset.
+     */
+    val ItemHeight: Dp = TileHeight + TileInset * 2
+
+    // Cell-to-cell spacing. The visible gap between two tiles is this plus twice
+    // [TileInset].
+    val HorizontalSpacing = 4.dp
+    val VerticalSpacing = 4.dp
     val VerticalScrollPadding = 32.dp
 
     fun columnCount(availableWidth: Dp): Int = (

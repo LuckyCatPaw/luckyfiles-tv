@@ -1,0 +1,5 @@
+<resources>
+    <!-- Must stay in sync with AppBackground in ui/theme/Color.kt. Used as the
+         window background so the launcher-to-Compose handover has no bright flash. -->
+    <color name="app_background">#0A0A0C</color>
+</resources>

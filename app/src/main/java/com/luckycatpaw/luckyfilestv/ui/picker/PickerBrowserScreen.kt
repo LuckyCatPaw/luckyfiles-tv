@@ -99,7 +99,7 @@ internal fun PickerBrowserScreen(
         markedKeys = selectedKeys,
         // The picker draws edge to edge; the browser applies TV safe space instead.
         contentPadding = PaddingValues(0.dp),
-        gridSpacing = 10.dp,
+        gridSpacing = 3.dp,
         onItemLongClick = onItemLongClick,
         onItemFocused = onItemFocused
     ) { item, selected, onClick, onFocused, modifier ->

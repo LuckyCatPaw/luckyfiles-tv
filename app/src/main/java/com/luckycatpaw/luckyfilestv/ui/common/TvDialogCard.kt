@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -22,24 +21,25 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.luckycatpaw.luckyfilestv.R
+import com.luckycatpaw.luckyfilestv.ui.theme.AppShapes
 
-private val CardShape = RoundedCornerShape(16.dp)
+private val CardShape = AppShapes.Card
 
 @Composable
 internal fun DialogCard(
     width: Dp,
     modifier: Modifier = Modifier,
     padding: Dp = 28.dp,
-    borderAlpha: Float = 0.4f,
+    borderColor: Color = MaterialTheme.colorScheme.border,
     horizontalAlignment: Alignment.Horizontal = Alignment.Start,
     verticalArrangement: Arrangement.Vertical = Arrangement.Top,
     content: @Composable ColumnScope.() -> Unit
@@ -47,8 +47,12 @@ internal fun DialogCard(
     Column(
         modifier = modifier
             .width(width)
-            .background(MaterialTheme.colorScheme.surface, CardShape)
-            .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = borderAlpha), CardShape)
+            // An accent-tinted outline used to sit here. A dialog is already
+            // separated from the screen by the scrim, so the outline only added
+            // colour; the card now lifts itself with a lighter surface and a
+            // neutral edge, and the accent is left to mean "focused".
+            .background(MaterialTheme.colorScheme.surfaceVariant, CardShape)
+            .border(1.dp, borderColor, CardShape)
             .padding(padding),
         horizontalAlignment = horizontalAlignment,
         verticalArrangement = verticalArrangement,
@@ -81,14 +85,13 @@ internal fun ConfirmOverlay(
             Text(
                 text = title,
                 color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 21.sp,
-                fontWeight = FontWeight.Medium
+                style = MaterialTheme.typography.titleLarge
             )
             Spacer(Modifier.height(12.dp))
             Text(
                 text = message,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 16.sp,
+                style = MaterialTheme.typography.bodyLarge,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )
@@ -137,8 +140,7 @@ internal fun ActionMenuOverlay(
             Text(
                 text = title,
                 color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Medium,
+                style = MaterialTheme.typography.titleMedium,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -168,10 +170,10 @@ internal fun TvDialogButton(
     focusRequester: FocusRequester? = null,
     upFocusRequester: FocusRequester? = null,
     trapVerticalKeys: Boolean = false,
-    fontSize: Int = 16
+    textStyle: TextStyle? = null
 ) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(10.dp)
+    val shape = AppShapes.Control
 
     Row(
         modifier = modifier
@@ -201,7 +203,7 @@ internal fun TvDialogButton(
         Text(
             text = text,
             color = tvContentColor(focused),
-            fontSize = fontSize.sp,
+            style = textStyle ?: MaterialTheme.typography.labelLarge,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )

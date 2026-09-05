@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,10 +30,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.luckycatpaw.luckyfilestv.R
+import com.luckycatpaw.luckyfilestv.ui.theme.AppShapes
 import com.luckycatpaw.luckyfilestv.data.common.model.FileManagerSettings
 import com.luckycatpaw.luckyfilestv.data.common.model.FileSortMode
 import com.luckycatpaw.luckyfilestv.ui.common.DialogCard
@@ -148,20 +147,19 @@ fun SettingsOverlay(
                 modifier = Modifier
                     .align(Alignment.Center)
                     .fillMaxHeight(0.88f),
-                padding = 24.dp,
-                borderAlpha = 0.45f
+                padding = 24.dp
             ) {
                 Text(
                     text = stringResource(R.string.settings),
                     color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 26.sp,
+                    style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.SemiBold
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
                     text = stringResource(R.string.settings_subtitle),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 14.sp
+                    style = MaterialTheme.typography.labelMedium
                 )
                 Spacer(Modifier.height(22.dp))
 
@@ -420,7 +418,7 @@ private fun SettingsSectionTitle(title: String) {
         Text(
             text = title,
             color = MaterialTheme.colorScheme.primary,
-            fontSize = 19.sp,
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold
         )
         Spacer(Modifier.height(5.dp))
@@ -443,15 +441,14 @@ private fun SettingsDescription(title: String, description: String) {
         Text(
             text = title,
             color = MaterialTheme.colorScheme.onSurface,
-            fontSize = 16.sp,
+            style = MaterialTheme.typography.bodyLarge,
             fontWeight = FontWeight.Medium
         )
         Spacer(Modifier.height(4.dp))
         Text(
             text = description,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 13.sp,
-            lineHeight = 17.sp
+            style = MaterialTheme.typography.bodySmall
         )
     }
 }
@@ -468,7 +465,7 @@ private fun SettingsToggleRow(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(12.dp)
+    val shape = AppShapes.Control
 
     Row(
         modifier = Modifier
@@ -489,7 +486,7 @@ private fun SettingsToggleRow(
             Text(
                 text = title,
                 color = tvContentColor(focused),
-                fontSize = 16.sp,
+                style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium
             )
             Spacer(Modifier.height(4.dp))
@@ -500,8 +497,7 @@ private fun SettingsToggleRow(
                 } else {
                     MaterialTheme.colorScheme.onSurfaceVariant
                 },
-                fontSize = 13.sp,
-                lineHeight = 17.sp
+                style = MaterialTheme.typography.bodySmall
             )
         }
 
@@ -524,7 +520,7 @@ private fun SettingsChoiceRow(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(10.dp)
+    val shape = AppShapes.Control
 
     Row(
         modifier = Modifier
@@ -537,15 +533,8 @@ private fun SettingsChoiceRow(
                     if (isFocused) onFocused()
                 }
             )
-            .tvFocusHighlight(
-                focused = focused,
-                shape = shape,
-                unfocusedContainer = if (selected) {
-                    MaterialTheme.colorScheme.surfaceVariant
-                } else {
-                    MaterialTheme.colorScheme.surface
-                }
-            )
+            // The chosen value is marked by its weight below, not by a panel.
+            .tvFocusHighlight(focused = focused, shape = shape)
             .padding(horizontal = 18.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -553,7 +542,7 @@ private fun SettingsChoiceRow(
             text = title,
             modifier = Modifier.weight(1f),
             color = tvContentColor(focused),
-            fontSize = 15.sp,
+            style = MaterialTheme.typography.bodyMedium,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
         )
 
@@ -583,7 +572,7 @@ private fun SettingsValueBadge(text: String, active: Boolean, focused: Boolean) 
 
     Row(
         modifier = Modifier
-            .background(backgroundColor, RoundedCornerShape(8.dp))
+            .background(backgroundColor, AppShapes.Badge)
             .padding(horizontal = 12.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
@@ -591,7 +580,7 @@ private fun SettingsValueBadge(text: String, active: Boolean, focused: Boolean) 
         Text(
             text = text,
             color = contentColor,
-            fontSize = 13.sp,
+            style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.Medium
         )
     }
@@ -600,7 +589,7 @@ private fun SettingsValueBadge(text: String, active: Boolean, focused: Boolean) 
 @Composable
 private fun SettingsCloseButton(focusRequester: FocusRequester, onFocused: () -> Unit, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(10.dp)
+    val shape = AppShapes.Control
 
     Row(
         modifier = Modifier
@@ -620,7 +609,7 @@ private fun SettingsCloseButton(focusRequester: FocusRequester, onFocused: () ->
         Text(
             text = stringResource(R.string.close),
             color = tvContentColor(focused),
-            fontSize = 14.sp
+            style = MaterialTheme.typography.labelMedium
         )
     }
 }

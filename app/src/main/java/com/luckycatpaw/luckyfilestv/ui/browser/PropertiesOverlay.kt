@@ -17,7 +17,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.luckycatpaw.luckyfilestv.R
@@ -42,7 +41,7 @@ fun PropertiesOverlay(itemName: String, properties: FileProperties?, error: Stri
             Text(
                 text = stringResource(R.string.properties),
                 color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 23.sp,
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Medium
             )
 
@@ -54,7 +53,7 @@ fun PropertiesOverlay(itemName: String, properties: FileProperties?, error: Stri
                 error != null -> Text(
                     text = error,
                     color = MaterialTheme.colorScheme.error,
-                    fontSize = 16.sp
+                    style = MaterialTheme.typography.bodyLarge
                 )
 
                 properties != null -> PropertyList(properties)
@@ -130,7 +129,7 @@ private fun LoadingProperties(itemName: String) {
             text = stringResource(R.string.properties_calculating, itemName),
             modifier = Modifier.padding(start = 18.dp),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 16.sp,
+            style = MaterialTheme.typography.bodyLarge,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
@@ -149,13 +148,13 @@ private fun PropertyRow(label: String, value: String) {
             text = label,
             modifier = Modifier.width(130.dp),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 15.sp
+            style = MaterialTheme.typography.bodyMedium
         )
         Text(
             text = value,
             modifier = Modifier.weight(1f),
             color = MaterialTheme.colorScheme.onSurface,
-            fontSize = 16.sp
+            style = MaterialTheme.typography.bodyLarge
         )
     }
 }

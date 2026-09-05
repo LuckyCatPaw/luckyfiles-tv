@@ -7,9 +7,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.tv.material3.MaterialTheme
 
 @Composable
 fun TvModalDialog(
@@ -29,7 +29,7 @@ fun TvModalDialog(
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = dimAlpha)),
+                .background(MaterialTheme.colorScheme.scrim.copy(alpha = dimAlpha)),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {

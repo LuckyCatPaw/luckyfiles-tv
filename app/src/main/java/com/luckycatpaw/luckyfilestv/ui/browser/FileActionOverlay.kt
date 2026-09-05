@@ -1,5 +1,8 @@
 package com.luckycatpaw.luckyfilestv.ui.browser
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -8,7 +11,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,10 +23,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.luckycatpaw.luckyfilestv.R
+import com.luckycatpaw.luckyfilestv.ui.theme.AppShapes
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import com.luckycatpaw.luckyfilestv.data.transfer.model.FileConflictPolicy
 import com.luckycatpaw.luckyfilestv.ui.common.ActionMenuOverlay
@@ -90,7 +92,7 @@ fun NameInputOverlay(
             Text(
                 text = title,
                 color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 21.sp,
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Medium
             )
 
@@ -146,14 +148,14 @@ fun TransferConflictOverlay(
             Text(
                 text = stringResource(R.string.file_already_exists),
                 color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 21.sp,
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Medium
             )
             Spacer(Modifier.height(12.dp))
             Text(
                 text = sourceName,
                 color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 16.sp,
+                style = MaterialTheme.typography.bodyLarge,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -161,7 +163,7 @@ fun TransferConflictOverlay(
             Text(
                 text = stringResource(R.string.target_path, targetDirectory),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 14.sp,
+                style = MaterialTheme.typography.labelMedium,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -230,7 +232,7 @@ fun TransferProgressOverlay(
             Text(
                 text = title,
                 color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 21.sp,
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Medium
             )
             Spacer(Modifier.height(10.dp))
@@ -241,14 +243,14 @@ fun TransferProgressOverlay(
                     currentName
                 },
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 15.sp
+                style = MaterialTheme.typography.bodyMedium
             )
             if (totalItems > 1) {
                 Spacer(Modifier.height(5.dp))
                 Text(
                     text = currentName,
                     color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 16.sp,
+                    style = MaterialTheme.typography.bodyLarge,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -265,7 +267,7 @@ fun TransferProgressOverlay(
                 Text(
                     text = "${(progress * 100f).toInt()} %",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 14.sp
+                    style = MaterialTheme.typography.labelMedium
                 )
                 Text(
                     text = buildString {
@@ -281,7 +283,7 @@ fun TransferProgressOverlay(
                         }
                     },
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 14.sp
+                    style = MaterialTheme.typography.labelMedium
                 )
             }
 
@@ -310,7 +312,7 @@ fun OperationProgressOverlay(message: String) {
             Text(
                 text = message,
                 color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 17.sp,
+                style = MaterialTheme.typography.bodyLarge,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )
@@ -320,17 +322,27 @@ fun OperationProgressOverlay(message: String) {
 
 @Composable
 private fun ProgressBar(progress: Float) {
+    // Transfer progress arrives in bursts — a large file reports nothing for a
+    // while, then jumps. Driving the width straight from the value makes the bar
+    // twitch; interpolating between reports reads as steady movement, which is
+    // what the viewer is watching the dialog for in the first place.
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress.coerceIn(0f, 1f),
+        animationSpec = tween(durationMillis = 220, easing = LinearEasing),
+        label = "transferProgress"
+    )
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(10.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(5.dp))
+            .height(8.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant, AppShapes.Bar)
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth(progress.coerceIn(0f, 1f))
-                .height(10.dp)
-                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(5.dp))
+                .fillMaxWidth(animatedProgress)
+                .height(8.dp)
+                .background(MaterialTheme.colorScheme.primary, AppShapes.Bar)
         )
     }
 }
