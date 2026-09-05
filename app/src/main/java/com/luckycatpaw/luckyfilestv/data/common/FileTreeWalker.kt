@@ -7,6 +7,7 @@ import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeOutsideRootExcepti
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeReadException
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeStats
 import com.luckycatpaw.luckyfilestv.util.FileUtil
+import com.luckycatpaw.luckyfilestv.util.safeAdd
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
@@ -242,12 +243,6 @@ class FileTreeWalker {
         type = type,
         size = if (type == FileTreeEntryType.FILE) size.coerceAtLeast(0L) else 0L
     )
-
-    private fun safeAdd(first: Long, second: Long): Long = if (Long.MAX_VALUE - first < second) {
-        Long.MAX_VALUE
-    } else {
-        first + second
-    }
 
     private data class WalkFrame(val file: File, val relativePath: String, val directoryComplete: Boolean)
 }

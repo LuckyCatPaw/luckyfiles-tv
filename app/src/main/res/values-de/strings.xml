@@ -191,6 +191,7 @@
     <string name="target_read_only">Zielordner ist schreibgeschützt.</string>
     <string name="read_only_access">Nur Lesezugriff erlaubt.</string>
     <string name="path_outside_storage">Pfad außerhalb erlaubter Speichergeräte.</string>
+    <string name="too_many_open_streams">Es werden bereits zu viele Dateien gleichzeitig von Netzwerkfreigaben gelesen.</string>
     <string name="search_title_query">Suche: %1$s</string>
     <string name="target_folder_missing">Zielordner existiert nicht.</string>
     <string name="document_create_failed">Dokument konnte nicht erstellt werden.</string>

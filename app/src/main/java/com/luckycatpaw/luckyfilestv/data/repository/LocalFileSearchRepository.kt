@@ -23,54 +23,20 @@ internal class LocalFileSearchRepository(private val volumes: LocalVolumeReposit
         acceptedMimeTypes: List<String>
     ): List<BrowserItem> = withContext(Dispatchers.IO) {
         val results = mutableListOf<BrowserItem>()
-        val pendingDirectories = ArrayDeque<File>()
-        val visitedDirectories = HashSet<String>()
-        val storageRoots = storageRoots()
         val mimeMatcher = MimeTypes.matcher(acceptedMimeTypes)
-        var scannedEntries = 0
-        val deadlineNanos = System.nanoTime() + SCAN_TIME_BUDGET_MS * 1_000_000
 
-        storageRoots.forEach { pendingDirectories.add(it) }
+        walk(storageRoots(), settings) { file ->
+            val matches = file.name.contains(query, ignoreCase = true)
 
-        while (
-            pendingDirectories.isNotEmpty() &&
-            results.size < MAX_SEARCH_RESULTS &&
-            scannedEntries < MAX_SCAN_ENTRIES &&
-            System.nanoTime() < deadlineNanos
-        ) {
-            currentCoroutineContext().ensureActive()
-            val directory = pendingDirectories.removeFirst().canonicalOrNull() ?: continue
-
-            if (!directory.isDirectory) continue
-            if (!visitedDirectories.add(directory.absolutePath)) continue
-            if (FileUtil.isSafRestrictedPath(directory.path)) continue
-
-            for (child in directory.listFilesSafely()) {
-                currentCoroutineContext().ensureActive()
-                if (++scannedEntries >= MAX_SCAN_ENTRIES) break
-
-                val file = child.canonicalOrNull() ?: continue
-                if (FileUtil.isHiddenFile(file.name, settings.hideFolderJpg) ||
-                    FileUtil.isSafRestrictedPath(file.path)
-                ) {
-                    continue
-                }
-
-                if (file.isDirectory) {
-                    pendingDirectories.add(file)
-                    if (file.name.contains(query, ignoreCase = true)) {
-                        results += BrowserItem.Folder(file.name, file.absolutePath)
-                    }
-                } else if (!directoriesOnly &&
-                    shouldInclude(file, settings, mimeMatcher) &&
-                    file.name.contains(query, ignoreCase = true)
-                ) {
-                    results += file.toBrowserItem()
-                }
-
-                if (results.size >= MAX_SEARCH_RESULTS) break
+            if (file.isDirectory) {
+                if (matches) results += BrowserItem.Folder(file.name, file.absolutePath)
+            } else if (!directoriesOnly && matches && shouldInclude(file, settings, mimeMatcher)) {
+                results += file.toBrowserItem()
             }
+
+            results.size < MAX_SEARCH_RESULTS
         }
+
         results
     }
 
@@ -93,12 +59,66 @@ internal class LocalFileSearchRepository(private val volumes: LocalVolumeReposit
         mimeMatcher: (String) -> Boolean
     ): List<RecentBrowserItem> {
         val newestFiles = PriorityQueue<RecentCandidate>(compareBy { it.modified })
-        val pendingDirectories = ArrayDeque<File>().apply { add(storageRoot) }
+
+        walk(listOf(storageRoot), settings) { file ->
+            if (!file.isDirectory && shouldInclude(file, settings, mimeMatcher)) {
+                val candidate = RecentCandidate(file, file.lastModified())
+
+                if (newestFiles.size < MAX_RECENTS_PER_STORAGE) {
+                    newestFiles.add(candidate)
+                } else {
+                    val oldest = newestFiles.peek()
+
+                    if (oldest != null && candidate.modified > oldest.modified) {
+                        newestFiles.poll()
+                        newestFiles.add(candidate)
+                    }
+                }
+            }
+
+            // Never done early: the newest file may be the last one the walk reaches, so
+            // this one runs until the entry or time budget is spent.
+            true
+        }
+
+        return buildList(newestFiles.size) {
+            while (newestFiles.isNotEmpty()) {
+                newestFiles.poll()?.let { add(RecentBrowserItem(it.file.toBrowserItem(), it.modified)) }
+            }
+        }.asReversed()
+    }
+
+    /**
+     * Walks [roots] breadth first and offers every entry to [onEntry].
+     *
+     * Search and recents used to carry one of these each, identical down to the order of the
+     * three skip conditions and differing only in what they did per file. Which is the part
+     * worth keeping separate: the traversal itself is where the subtle rules live — a
+     * canonical path so a symbolic link cannot send the walk into a loop, the visited set on
+     * that canonical path, the SAF-restricted directories, and three budgets that all have to
+     * be checked in both loops rather than only the outer one.
+     *
+     * Directories are always descended into; whether they are also reported is up to
+     * [onEntry], which receives them like any other entry. Returning `false` from it stops
+     * the walk, which is how a caller expresses "I have enough now" without a second budget
+     * of its own.
+     *
+     * Hidden entries and anything under a restricted root never reach [onEntry] at all, so a
+     * caller cannot forget to filter them.
+     */
+    private suspend fun walk(
+        roots: List<File>,
+        settings: FileManagerSettings,
+        onEntry: (File) -> Boolean
+    ) {
+        val pendingDirectories = ArrayDeque<File>().apply { addAll(roots) }
         val visitedDirectories = HashSet<String>()
         var scannedEntries = 0
+        var wantsMore = true
         val deadlineNanos = System.nanoTime() + SCAN_TIME_BUDGET_MS * 1_000_000
 
         while (
+            wantsMore &&
             pendingDirectories.isNotEmpty() &&
             scannedEntries < MAX_SCAN_ENTRIES &&
             System.nanoTime() < deadlineNanos
@@ -121,31 +141,12 @@ internal class LocalFileSearchRepository(private val volumes: LocalVolumeReposit
                     continue
                 }
 
-                if (file.isDirectory) {
-                    pendingDirectories.add(file)
-                    continue
-                }
+                if (file.isDirectory) pendingDirectories.add(file)
 
-                if (!shouldInclude(file, settings, mimeMatcher)) continue
-
-                val candidate = RecentCandidate(file, file.lastModified())
-                if (newestFiles.size < MAX_RECENTS_PER_STORAGE) {
-                    newestFiles.add(candidate)
-                } else {
-                    val oldest = newestFiles.peek()
-                    if (oldest != null && candidate.modified > oldest.modified) {
-                        newestFiles.poll()
-                        newestFiles.add(candidate)
-                    }
-                }
+                wantsMore = onEntry(file)
+                if (!wantsMore) break
             }
         }
-
-        return buildList(newestFiles.size) {
-            while (newestFiles.isNotEmpty()) {
-                newestFiles.poll()?.let { add(RecentBrowserItem(it.file.toBrowserItem(), it.modified)) }
-            }
-        }.asReversed()
     }
 
     private fun shouldInclude(file: File, settings: FileManagerSettings, mimeMatcher: (String) -> Boolean): Boolean {

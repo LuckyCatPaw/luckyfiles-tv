@@ -64,6 +64,18 @@ class ImageRepository private constructor(context: Context) {
      * after [NEGATIVE_TTL_MILLIS] it would be thrown away on the next read anyway.
      */
     private val negativeCache = LruCache<String, Long>(NEGATIVE_CACHE_ENTRIES)
+
+    /**
+     * Bounds how many previews are *produced* at once — decoding a video frame, rendering a
+     * PDF page, a Binder round trip into another provider.
+     *
+     * Deliberately not held across a whole load. It used to be, and that put the disk cache
+     * behind it: four tiles waiting on a share that had gone to sleep held every permit for
+     * the length of the socket timeout, and a local file whose JPEG was already on disk
+     * waited there too. The grid stopped rendering over files that needed no work at all.
+     * The permit now sits around the generator alone, so a cache hit is answered while the
+     * slow ones are still queued.
+     */
     private val globalLoadSemaphore = Semaphore(4)
 
     /**
@@ -87,21 +99,24 @@ class ImageRepository private constructor(context: Context) {
     }
 
     suspend fun getLocalThumbnail(key: String, generator: suspend () -> Bitmap?): Bitmap? = getOrCreate(key) {
-        generatedThumbnailCache.getOrCreate(key, generator)
+        // The disk cache is asked outside the permit and only what it cannot answer is
+        // throttled, which is the whole reason the gate is passed down here instead of
+        // wrapping this call.
+        generatedThumbnailCache.getOrCreate(key) { throttled(generator) }
     }
 
     suspend fun getProviderThumbnail(document: ProviderDocumentInfo, width: Int = 384, height: Int = 240): Bitmap? {
         val key = "provider-thumb:${document.authority}:${document.documentId}:" +
             "${document.lastModified ?: 0L}:${width}x$height"
         return getOrCreate(key) {
-            providerVisualRepository.loadThumbnail(document, width, height)
+            throttled { providerVisualRepository.loadThumbnail(document, width, height) }
         }
     }
 
     suspend fun getProviderIcon(document: ProviderDocumentInfo, size: Int = 128): Bitmap? {
         val key = "provider-icon:${document.authority}:${document.iconResId}:$size"
         return getOrCreate(key) {
-            providerVisualRepository.loadDocumentIcon(document, size)
+            throttled { providerVisualRepository.loadDocumentIcon(document, size) }
         }
     }
 
@@ -109,9 +124,12 @@ class ImageRepository private constructor(context: Context) {
         val key = "root-icon:${root.packageName}:${root.authority}:" +
             "${root.rootId}:${root.iconResId}:$size"
         return getOrCreate(key) {
-            providerVisualRepository.loadRootIcon(root, size)
+            throttled { providerVisualRepository.loadRootIcon(root, size) }
         }
     }
+
+    /** Runs [block] under one of the production permits. See [globalLoadSemaphore]. */
+    private suspend fun <T> throttled(block: suspend () -> T): T = globalLoadSemaphore.withPermit { block() }
 
     private suspend fun getOrCreate(key: String, loader: suspend () -> Bitmap?): Bitmap? {
         memoryCache[key]?.let { return it }
@@ -127,9 +145,7 @@ class ImageRepository private constructor(context: Context) {
 
                 currentCoroutineContext().ensureActive()
 
-                val result = globalLoadSemaphore.withPermit {
-                    loader()
-                }
+                val result = loader()
 
                 if (result != null) {
                     memoryCache.put(key, result)

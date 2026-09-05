@@ -32,6 +32,17 @@ internal data class SmbShare(
     /** Identity of a pooled session. Credentials are part of it: two users are two sessions. */
     val sessionKey: String = "$host/$name/${credentials.identity}"
 
+    /**
+     * Written out without the credentials.
+     *
+     * A `data class` generates a [toString] that prints every property, and this one carries
+     * a password. It only takes one log line, one exception message built from a share or one
+     * debugger breakpoint for the plaintext to leave the process — which would undo the whole
+     * point of encrypting it at rest. [SmbCredentials.identity] says which account is meant
+     * without saying what its secret is, and that is all any diagnostic here needs.
+     */
+    override fun toString(): String = "SmbShare(id=$id, host=$host, name=$name, as=${credentials.identity})"
+
     companion object {
         const val SCHEME = "smb"
     }
@@ -57,6 +68,9 @@ internal sealed interface SmbCredentials {
      */
     data class Password(val user: String, val password: String, val domain: String? = null) : SmbCredentials {
         override val identity: String get() = if (domain.isNullOrBlank()) user else "$domain\\$user"
+
+        /** See [SmbShare.toString]. Equality and copying keep the password, printing does not. */
+        override fun toString(): String = "Password(as=$identity)"
     }
 
     /**
@@ -76,6 +90,9 @@ internal sealed interface SmbCredentials {
         val storedSecret: String
     ) : SmbCredentials {
         override val identity: String get() = "unreadable"
+
+        /** The stored value is ciphertext rather than a secret, but nothing needs it in a log. */
+        override fun toString(): String = "Unreadable(user=$user)"
     }
 }
 

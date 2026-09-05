@@ -22,6 +22,7 @@ import com.luckycatpaw.luckyfilestv.data.transfer.model.TransferProgress
 import com.luckycatpaw.luckyfilestv.data.transfer.model.TransferResult
 import com.luckycatpaw.luckyfilestv.util.FileUtil
 import com.luckycatpaw.luckyfilestv.util.formatBytes
+import com.luckycatpaw.luckyfilestv.util.safeAdd
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -298,18 +299,27 @@ class TransferCoordinator(
                 var itemSize = item.size ?: 0L
                 var completionRecorded = false
 
-                onProgress(
-                    progress(
-                        item = item,
-                        itemIndex = index,
-                        totalItems = executableItems.size,
-                        bytesProcessed = processedBytes,
-                        totalBytes = totalBytes,
-                        transferredBytes = transferredBytes,
-                        startedNanos = transferStartedNanos,
-                        operation = operation
+                // Reads the surrounding vars every time it runs rather than capturing them,
+                // which is what lets the same lambda serve the announcement before an item
+                // and the byte-by-byte updates during it. `totalBytes` in particular grows
+                // while the loop runs, when a move falls back to a copy and the size of that
+                // item joins the total late.
+                val reportProgress: suspend (Long) -> Unit = { copied ->
+                    onProgress(
+                        progress(
+                            item = item,
+                            itemIndex = index,
+                            totalItems = executableItems.size,
+                            bytesProcessed = safeAdd(processedBytes, copied),
+                            totalBytes = totalBytes,
+                            transferredBytes = safeAdd(transferredBytes, copied),
+                            startedNanos = transferStartedNanos,
+                            operation = operation
+                        )
                     )
-                )
+                }
+
+                reportProgress(0L)
 
                 try {
                     val result = when (operation) {
@@ -319,20 +329,7 @@ class TransferCoordinator(
                                 target = transferTargetFor(item.target),
                                 replace = item.replace,
                                 totalBytes = itemSize,
-                                onBytesCopied = { copied ->
-                                    onProgress(
-                                        progress(
-                                            item = item,
-                                            itemIndex = index,
-                                            totalItems = executableItems.size,
-                                            bytesProcessed = safeAdd(processedBytes, copied),
-                                            totalBytes = totalBytes,
-                                            transferredBytes = safeAdd(transferredBytes, copied),
-                                            startedNanos = transferStartedNanos,
-                                            operation = operation
-                                        )
-                                    )
-                                }
+                                onBytesCopied = reportProgress
                             )
                         }
 
@@ -378,20 +375,7 @@ class TransferCoordinator(
                                     target = transferTargetFor(item.target),
                                     replace = item.replace,
                                     totalBytes = itemSize,
-                                    onBytesCopied = { copied ->
-                                        onProgress(
-                                            progress(
-                                                item = item,
-                                                itemIndex = index,
-                                                totalItems = executableItems.size,
-                                                bytesProcessed = safeAdd(processedBytes, copied),
-                                                totalBytes = totalBytes,
-                                                transferredBytes = safeAdd(transferredBytes, copied),
-                                                startedNanos = transferStartedNanos,
-                                                operation = operation
-                                            )
-                                        )
-                                    }
+                                    onBytesCopied = reportProgress
                                 )
 
                                 // The target is already complete at this point. Record it
@@ -552,26 +536,15 @@ class TransferCoordinator(
         isDirectory: Boolean,
         reservedTargets: Set<String>
     ): SourcePath {
-        suspend fun taken(candidate: SourcePath): Boolean =
-            targetExists(candidate) || candidate.value in reservedTargets
+        // Not `first { }`: the check is a suspending request to the server, and a sequence
+        // predicate cannot suspend.
+        for (name in FileUtil.uniqueNameCandidates(requestedName, isDirectory)) {
+            val candidate = parent.child(name)
 
-        var candidate = parent.child(requestedName)
-        if (!taken(candidate)) return candidate
-
-        val extensionIndex = requestedName.lastIndexOf('.')
-        val hasExtension = !isDirectory && extensionIndex > 0 && extensionIndex < requestedName.lastIndex
-
-        val baseName = if (hasExtension) requestedName.substring(0, extensionIndex) else requestedName
-        val extension = if (hasExtension) requestedName.substring(extensionIndex) else ""
-
-        var number = 1
-
-        while (taken(candidate)) {
-            candidate = parent.child("$baseName ($number)$extension")
-            number++
+            if (!targetExists(candidate) && candidate.value !in reservedTargets) return candidate
         }
 
-        return candidate
+        error("uniqueNameCandidates is infinite")
     }
 
     private fun transferSourceFor(path: String): TransferSource {
@@ -693,12 +666,6 @@ class TransferCoordinator(
             error.message
                 ?.takeIf { it.isNotBlank() }
                 ?: appContext.getString(R.string.error_generic)
-    }
-
-    private fun safeAdd(first: Long, second: Long): Long = if (Long.MAX_VALUE - first < second) {
-        Long.MAX_VALUE
-    } else {
-        first + second
     }
 
     private companion object {

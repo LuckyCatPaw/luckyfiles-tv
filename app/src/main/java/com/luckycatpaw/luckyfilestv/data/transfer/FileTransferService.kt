@@ -1,19 +1,19 @@
 package com.luckycatpaw.luckyfilestv.data.transfer
 
 import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.annotation.RequiresApi
 import com.luckycatpaw.luckyfilestv.MainActivity
 import com.luckycatpaw.luckyfilestv.R
+import com.luckycatpaw.luckyfilestv.data.common.ensureNotificationChannel
+import com.luckycatpaw.luckyfilestv.data.common.notificationManager
+import com.luckycatpaw.luckyfilestv.data.common.startForegroundOrFalse
 import com.luckycatpaw.luckyfilestv.data.transfer.model.TransferOperation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,7 +44,7 @@ internal class FileTransferService : Service() {
         // up its six hour dataSync budget. Stopping ourselves here is deliberate: the copy
         // cannot be kept alive reliably, and not calling startForeground() at all would
         // end in a ForegroundServiceDidNotStartInTimeException a few seconds later.
-        if (!startForegroundCompat(buildNotification())) {
+        if (!startForegroundOrFalse(NOTIFICATION_ID, buildNotification())) {
             abort(R.string.transfer_stopped_no_foreground)
             return START_NOT_STICKY
         }
@@ -98,25 +98,6 @@ internal class FileTransferService : Service() {
         stopForeground(STOP_FOREGROUND_REMOVE)
         notifyStopped(getString(messageRes))
         stopSelf()
-    }
-
-    private fun startForegroundCompat(notification: Notification): Boolean = try {
-        startForeground(
-            NOTIFICATION_ID,
-            notification,
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-        )
-        true
-    } catch (e: IllegalStateException) {
-        // From Android 12 on this is a ForegroundServiceStartNotAllowedException, e.g.
-        // "Time limit already exhausted for foreground service type dataSync". We catch
-        // the superclass on purpose: the subclass does not exist on API 30 devices.
-        Log.w(TAG, "Not allowed to start dataSync foreground service", e)
-        false
-    } catch (e: SecurityException) {
-        // Foreground service permission missing or revoked.
-        Log.w(TAG, "Missing permission for dataSync foreground service", e)
-        false
     }
 
     /**
@@ -186,8 +167,6 @@ internal class FileTransferService : Service() {
         return builder.build()
     }
 
-    private fun notificationManager(): NotificationManager = getSystemService(NotificationManager::class.java)
-
     companion object {
         private const val TAG = "FileTransferService"
         private const val CHANNEL_ID = "file_transfers"
@@ -197,25 +176,9 @@ internal class FileTransferService : Service() {
 
         fun start(context: Context) {
             val appContext = context.applicationContext
-            ensureChannel(appContext)
+            ensureNotificationChannel(appContext, CHANNEL_ID, R.string.transfer_channel_name)
             appContext.startForegroundService(
                 Intent(appContext, FileTransferService::class.java)
-            )
-        }
-
-        private fun ensureChannel(context: Context) {
-            val manager = context.getSystemService(NotificationManager::class.java)
-
-            if (manager.getNotificationChannel(CHANNEL_ID) != null) return
-
-            manager.createNotificationChannel(
-                NotificationChannel(
-                    CHANNEL_ID,
-                    context.getString(R.string.transfer_channel_name),
-                    NotificationManager.IMPORTANCE_LOW
-                ).apply {
-                    setShowBadge(false)
-                }
             )
         }
     }

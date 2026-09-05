@@ -264,9 +264,12 @@ private fun LocalItemPreview(item: BrowserItem, selected: Boolean, useFolderJpgA
     val context = LocalContext.current
     val imageRepository = ImageRepository.get(context)
 
+    // Keyed on the item rather than on its path: the path is what a replaced file keeps and
+    // its size and write time are what change, so keying on the path would compute a fresh
+    // cache key and then never ask for it while the tile stays composed.
     val bitmap by produceState<ImageBitmap?>(
         initialValue = null,
-        key1 = item.path,
+        key1 = item,
         key2 = if (item is BrowserItem.Folder) useFolderJpgAsIcon else null
     ) {
         val previewRequest = withContext(Dispatchers.IO) {
@@ -294,10 +297,21 @@ private fun LocalItemPreview(item: BrowserItem, selected: Boolean, useFolderJpgA
 
             source?.let { (type, path) ->
                 if (!cheapMetadata) {
-                    // Size and date would each cost a request, and the browser item does not
-                    // carry them. The location alone identifies the preview; a file replaced
-                    // under the same name keeps its old thumbnail until the cache drops it.
-                    return@let Triple(type, path, "$type:$path")
+                    // Stat-ing the file here would be a request per tile, so the two values
+                    // that identify its content come from the listing that drew the grid
+                    // instead: on a share they arrive in the same directory response as the
+                    // name, at no extra cost. Without them the key was the location alone,
+                    // and a file replaced under its old name kept the previous thumbnail —
+                    // not until the cache dropped it, but effectively for good, because
+                    // every hit refreshes its timestamp and the eviction order is exactly
+                    // that timestamp. A listing that supplies neither value falls back to
+                    // the old behaviour rather than to a key that changes on every pass.
+                    val fingerprint = (item as? BrowserItem.File)
+                        ?.takeIf { it.size > 0L || it.lastModified > 0L }
+                        ?.let { ":${it.size}:${it.lastModified}" }
+                        .orEmpty()
+
+                    return@let Triple(type, path, "$type:$path$fingerprint")
                 }
 
                 val file = File(path)
@@ -322,31 +336,7 @@ private fun LocalItemPreview(item: BrowserItem, selected: Boolean, useFolderJpgA
         }
     }
 
-    Crossfade(
-        targetState = bitmap,
-        animationSpec = tween(durationMillis = 300),
-        label = "LocalItemPreviewFade"
-    ) { currentBitmap ->
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            if (currentBitmap != null) {
-                Image(
-                    bitmap = currentBitmap,
-                    contentDescription = null,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(3.dp)
-                )
-            } else {
-                Icon(
-                    imageVector = localFallbackIcon(item),
-                    contentDescription = null,
-                    tint = previewIconColor(selected),
-                    modifier = Modifier.size(54.dp)
-                )
-            }
-        }
-    }
+    PreviewCrossfade(bitmap, localFallbackIcon(item), selected, "LocalItemPreviewFade")
 }
 
 @Composable
@@ -367,10 +357,27 @@ private fun ProviderItemPreview(item: PickerBrowserItem, selected: Boolean) {
         }
     }
 
+    PreviewCrossfade(bitmap, providerFallbackIcon(item), selected, "ProviderItemPreviewFade")
+}
+
+/**
+ * Fades a generated preview in over the fallback icon.
+ *
+ * Both grids show the same thing while a preview is being produced and after it failed, and
+ * the two of them are far enough apart in the file that the copies had already started to
+ * differ in padding. What actually varies is the icon and the animation label.
+ */
+@Composable
+private fun PreviewCrossfade(
+    bitmap: ImageBitmap?,
+    fallbackIcon: ImageVector,
+    selected: Boolean,
+    label: String
+) {
     Crossfade(
         targetState = bitmap,
         animationSpec = tween(durationMillis = 300),
-        label = "ProviderItemPreviewFade"
+        label = label
     ) { currentBitmap ->
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             if (currentBitmap != null) {
@@ -384,7 +391,7 @@ private fun ProviderItemPreview(item: PickerBrowserItem, selected: Boolean) {
                 )
             } else {
                 Icon(
-                    imageVector = providerFallbackIcon(item),
+                    imageVector = fallbackIcon,
                     contentDescription = null,
                     tint = previewIconColor(selected),
                     modifier = Modifier.size(54.dp)

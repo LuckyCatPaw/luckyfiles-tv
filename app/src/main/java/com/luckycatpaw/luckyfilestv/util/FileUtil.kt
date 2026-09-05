@@ -87,6 +87,39 @@ object FileUtil {
     }
 
     /**
+     * Names to try for a new entry called [requestedName], in order: the name itself, then
+     * `Name (1)`, `Name (2)` and so on without end.
+     *
+     * Only the naming rule lives here, not the question of what is occupied — that differs
+     * per storage. Locally it is a stat that must not follow symbolic links; on a share it
+     * is a request to the server. Both used to carry their own copy of the extension
+     * handling, which is the part with the edge cases: a name that is all extension
+     * (`.gitignore`), one that ends in a dot, a directory whose name happens to contain one.
+     *
+     * Infinite on purpose. A caller stops at the first free name, and expressing that as
+     * `first { }` or a `for` with a `return` reads better than a `while` that has to test
+     * the same candidate twice to get its counter started.
+     */
+    fun uniqueNameCandidates(requestedName: String, isDirectory: Boolean): Sequence<String> = sequence {
+        yield(requestedName)
+
+        val extensionIndex = requestedName.lastIndexOf('.')
+        val hasExtension = !isDirectory &&
+            extensionIndex > 0 &&
+            extensionIndex < requestedName.lastIndex
+
+        val baseName = if (hasExtension) requestedName.substring(0, extensionIndex) else requestedName
+        val extension = if (hasExtension) requestedName.substring(extensionIndex) else ""
+
+        var number = 1
+
+        while (true) {
+            yield("$baseName ($number)$extension")
+            number++
+        }
+    }
+
+    /**
      * Generates a unique destination in [parent] by appending " (n)" to the requested name.
      *
      * Existence is checked without following symbolic links, so a dangling link is treated
@@ -98,28 +131,12 @@ object FileUtil {
         requestedName: String,
         isDirectory: Boolean,
         reservedTargets: Set<String> = emptySet()
-    ): File {
-        fun taken(candidate: File): Boolean = Files.exists(candidate.toPath(), LinkOption.NOFOLLOW_LINKS) ||
-            candidate.absolutePath in reservedTargets
-
-        var candidate = File(parent, requestedName)
-        if (!taken(candidate)) return candidate
-
-        val extensionIndex = requestedName.lastIndexOf('.')
-        val hasExtension = !isDirectory &&
-            extensionIndex > 0 &&
-            extensionIndex < requestedName.lastIndex
-
-        val baseName = if (hasExtension) requestedName.substring(0, extensionIndex) else requestedName
-        val extension = if (hasExtension) requestedName.substring(extensionIndex) else ""
-
-        var number = 1
-        while (taken(candidate)) {
-            candidate = File(parent, "$baseName ($number)$extension")
-            number++
+    ): File = uniqueNameCandidates(requestedName, isDirectory)
+        .map { name -> File(parent, name) }
+        .first { candidate ->
+            !Files.exists(candidate.toPath(), LinkOption.NOFOLLOW_LINKS) &&
+                candidate.absolutePath !in reservedTargets
         }
-        return candidate
-    }
 
     /**
      * Moves [source] to [target] without ever replacing existing data.

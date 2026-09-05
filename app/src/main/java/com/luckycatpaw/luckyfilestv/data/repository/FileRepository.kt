@@ -97,5 +97,5 @@ internal class FileRepository(context: Context, private val sources: FileSourceR
 private fun FileEntry.toBrowserItem(): BrowserItem = if (isDirectory) {
     BrowserItem.Folder(name = name, path = path.value)
 } else {
-    BrowserItem.File(name = name, path = path.value)
+    BrowserItem.File(name = name, path = path.value, size = size, lastModified = lastModified)
 }

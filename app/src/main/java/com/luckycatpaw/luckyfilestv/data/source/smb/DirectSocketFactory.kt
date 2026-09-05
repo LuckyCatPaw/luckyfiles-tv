@@ -17,8 +17,19 @@ import javax.net.SocketFactory
  * A share lives on the local network. Routing it through a proxy is never right, and when
  * the configured proxy is not listening the connection is refused before a single SMB byte
  * is written.
+ *
+ * Because this factory hands smbj an already connected socket, smbj never gets to apply its
+ * own timeout to the connect — the timeout configured on `SmbConfig` covers the requests
+ * that follow, not the handshake below them. Without [connectTimeoutMillis] the connect falls
+ * back to the platform default, which is the kernel giving up on its SYN retries after
+ * roughly two minutes. A sleeping NAS then blocks whoever asked for the socket for that
+ * long, and the caller is not always a coroutine that can be cancelled: reading a file on a
+ * share goes through a content provider on a Binder thread, so the wait lands in the app
+ * that asked us for the file and shows up there as an ANR.
  */
-internal class DirectSocketFactory : SocketFactory() {
+internal class DirectSocketFactory(
+    private val connectTimeoutMillis: Int = CONNECT_TIMEOUT_MILLIS
+) : SocketFactory() {
 
     override fun createSocket(): Socket = Socket(Proxy.NO_PROXY)
 
@@ -43,12 +54,25 @@ internal class DirectSocketFactory : SocketFactory() {
 
         try {
             if (local != null) socket.bind(local)
-            socket.connect(remote)
+
+            // Zero is the platform's "wait forever", so a timeout configured away is not
+            // silently turned back into the default this exists to avoid.
+            socket.connect(remote, connectTimeoutMillis.coerceAtLeast(1))
         } catch (failure: Throwable) {
             runCatching { socket.close() }
             throw failure
         }
 
         return socket
+    }
+
+    companion object {
+
+        /**
+         * Matches the transaction timeout the session pool configures. A server that cannot
+         * complete a TCP handshake in this long is not one the next request would reach
+         * either, and failing here at least fails with a message instead of a frozen screen.
+         */
+        const val CONNECT_TIMEOUT_MILLIS: Int = 15_000
     }
 }

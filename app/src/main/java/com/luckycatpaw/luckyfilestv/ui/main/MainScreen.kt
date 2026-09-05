@@ -3,8 +3,6 @@ package com.luckycatpaw.luckyfilestv.ui.main
 import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -15,13 +13,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Surface
-import androidx.tv.material3.SurfaceDefaults
 import com.luckycatpaw.luckyfilestv.R
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import com.luckycatpaw.luckyfilestv.data.common.model.FileProperties
@@ -41,7 +35,7 @@ import com.luckycatpaw.luckyfilestv.ui.settings.SettingsOverlay
 import com.luckycatpaw.luckyfilestv.ui.share.ShareEditorOverlay
 import com.luckycatpaw.luckyfilestv.ui.share.ShareEditorTarget
 import com.luckycatpaw.luckyfilestv.ui.share.VolumeActionMenuOverlay
-import com.luckycatpaw.luckyfilestv.ui.theme.LuckyFilesTheme
+import com.luckycatpaw.luckyfilestv.ui.theme.AppScreenScaffold
 import com.luckycatpaw.luckyfilestv.util.FileOpener
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -220,448 +214,438 @@ internal fun MainScreen(viewModel: MainViewModel) {
         viewModel.consumeTransferCompletion()
     }
 
-    LuckyFilesTheme {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            colors = SurfaceDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.background,
-                contentColor = MaterialTheme.colorScheme.onBackground
-            )
-        ) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                val overlayOpen = showSettings ||
-                    showMenu ||
-                    shareEditor != null ||
-                    volumeMenu != null ||
-                    volumeRemoveTarget != null ||
-                    actionMenuItem != null ||
-                    renameItem != null ||
-                    deleteItem != null ||
-                    multiDeleteItems != null ||
-                    showNewFolderDialog ||
-                    propertiesItem != null ||
-                    operationMessage != null ||
-                    uiState.transferProgress != null ||
-                    uiState.conflictRequest != null
+    AppScreenScaffold {
+        val overlayOpen = showSettings ||
+            showMenu ||
+            shareEditor != null ||
+            volumeMenu != null ||
+            volumeRemoveTarget != null ||
+            actionMenuItem != null ||
+            renameItem != null ||
+            deleteItem != null ||
+            multiDeleteItems != null ||
+            showNewFolderDialog ||
+            propertiesItem != null ||
+            operationMessage != null ||
+            uiState.transferProgress != null ||
+            uiState.conflictRequest != null
 
-                val transferCount = uiState.transferSources.size
-                val transferActionLabel = when (uiState.transferMode) {
-                    TransferMode.COPY -> if (transferCount > 1) {
-                        stringResource(R.string.copy_here_count, transferCount)
-                    } else {
-                        stringResource(R.string.copy_here)
+        val transferCount = uiState.transferSources.size
+        val transferActionLabel = when (uiState.transferMode) {
+            TransferMode.COPY -> if (transferCount > 1) {
+                stringResource(R.string.copy_here_count, transferCount)
+            } else {
+                stringResource(R.string.copy_here)
+            }
+
+            TransferMode.MOVE -> if (transferCount > 1) {
+                stringResource(R.string.move_here_count, transferCount)
+            } else {
+                stringResource(R.string.move_here)
+            }
+
+            null -> null
+        }
+
+        val displayedPath = uiState.currentPath
+
+        BrowserScreen(
+            items = uiState.browserItems,
+            title = uiState.title,
+            optimizeFileNames = uiState.settings.optimizeFileNames,
+            useFolderJpgAsIcon = uiState.settings.useFolderJpgAsIcon,
+            focusPath = uiState.focusTargetPath,
+            focusRequestKey = focusRestoreKey,
+            gridStateKey = displayedPath,
+            initialGridPosition = viewModel.directoryGridPosition(displayedPath),
+            onGridPositionChanged = { viewModel.saveDirectoryGridPosition(displayedPath, it) },
+            focusEnabled = !overlayOpen,
+            canCreateFolder = displayedPath != null && uiState.transferMode == null && !selectionMode,
+            transferActionLabel = if (displayedPath != null) transferActionLabel else null,
+            selectionMode = selectionMode,
+            selectedPaths = selectedPaths,
+            onItemFocused = { viewModel.setFocusedPath(it.path) },
+            onItemClick = onItemClick@{ item ->
+                if (overlayOpen) return@onItemClick
+
+                if (uiState.transferMode != null) {
+                    if (item is BrowserItem.Folder || item is BrowserItem.Storage) {
+                        viewModel.openItem(item)
                     }
+                    return@onItemClick
+                }
 
-                    TransferMode.MOVE -> if (transferCount > 1) {
-                        stringResource(R.string.move_here_count, transferCount)
-                    } else {
-                        stringResource(R.string.move_here)
+                if (selectionMode) toggleSelection(item) else viewModel.openItem(item)
+
+                if (!selectionMode && item is BrowserItem.File) {
+                    if (!FileOpener.open(context, item.path)) {
+                        Toast
+                            .makeText(
+                                context,
+                                noAppToOpenText,
+                                Toast.LENGTH_SHORT
+                            )
+                            .show()
                     }
+                }
+            },
+            onItemLongClick = onItemLongClick@{ item ->
+                if (overlayOpen || uiState.transferMode != null) return@onItemLongClick
 
-                    null -> null
+                // A volume is not a file: it offers its own menu, and only when the
+                // user created it. Internal storage and USB media stay silent.
+                if (item is BrowserItem.Storage) {
+                    if (item.volume.isUserManaged) volumeMenu = item.volume
+                    return@onItemLongClick
                 }
 
-                val displayedPath = uiState.currentPath
-
-                BrowserScreen(
-                    items = uiState.browserItems,
-                    title = uiState.title,
-                    optimizeFileNames = uiState.settings.optimizeFileNames,
-                    useFolderJpgAsIcon = uiState.settings.useFolderJpgAsIcon,
-                    focusPath = uiState.focusTargetPath,
-                    focusRequestKey = focusRestoreKey,
-                    gridStateKey = displayedPath,
-                    initialGridPosition = viewModel.directoryGridPosition(displayedPath),
-                    onGridPositionChanged = { viewModel.saveDirectoryGridPosition(displayedPath, it) },
-                    focusEnabled = !overlayOpen,
-                    canCreateFolder = displayedPath != null && uiState.transferMode == null && !selectionMode,
-                    transferActionLabel = if (displayedPath != null) transferActionLabel else null,
-                    selectionMode = selectionMode,
-                    selectedPaths = selectedPaths,
-                    onItemFocused = { viewModel.setFocusedPath(it.path) },
-                    onItemClick = onItemClick@{ item ->
-                        if (overlayOpen) return@onItemClick
-
-                        if (uiState.transferMode != null) {
-                            if (item is BrowserItem.Folder || item is BrowserItem.Storage) {
-                                viewModel.openItem(item)
-                            }
-                            return@onItemClick
-                        }
-
-                        if (selectionMode) toggleSelection(item) else viewModel.openItem(item)
-
-                        if (!selectionMode && item is BrowserItem.File) {
-                            if (!FileOpener.open(context, item.path)) {
-                                Toast
-                                    .makeText(
-                                        context,
-                                        noAppToOpenText,
-                                        Toast.LENGTH_SHORT
-                                    )
-                                    .show()
-                            }
-                        }
-                    },
-                    onItemLongClick = onItemLongClick@{ item ->
-                        if (overlayOpen || uiState.transferMode != null) return@onItemLongClick
-
-                        // A volume is not a file: it offers its own menu, and only when the
-                        // user created it. Internal storage and USB media stay silent.
-                        if (item is BrowserItem.Storage) {
-                            if (item.volume.isUserManaged) volumeMenu = item.volume
-                            return@onItemLongClick
-                        }
-
-                        if (selectionMode) toggleSelection(item) else actionMenuItem = item
-                    },
-                    onCreateFolderClick = {
-                        if (!overlayOpen && displayedPath != null && !selectionMode) {
-                            showNewFolderDialog = true
-                        }
-                    },
-                    onTransferHereClick = { displayedPath?.let { viewModel.startPreparedTransfer(it) } },
-                    onTransferCancelClick = {
-                        viewModel.cancelPreparedTransfer()
-                        restoreBrowserFocus()
-                    },
-                    onSelectAllClick = {
-                        selectedPaths = uiState.browserItems
-                            .filterNot { it is BrowserItem.Storage }
-                            .map { it.path }
-                            .toSet()
-                    },
-                    onSelectionCopyClick = {
-                        viewModel.startTransfer(TransferMode.COPY, selectedItems()) {
-                            cancelSelection()
-                        }
-                    },
-                    onSelectionMoveClick = {
-                        viewModel.startTransfer(TransferMode.MOVE, selectedItems()) {
-                            cancelSelection()
-                        }
-                    },
-                    onSelectionDeleteClick = {
-                        val items = selectedItems()
-                        if (items.isEmpty()) {
-                            Toast
-                                .makeText(
-                                    context,
-                                    noItemsSelectedText,
-                                    Toast.LENGTH_SHORT
-                                )
-                                .show()
-                        } else {
-                            multiDeleteItems = items
-                        }
-                    },
-                    onSelectionCancelClick = { cancelSelection() },
-                    onMenuClick = { if (!overlayOpen && !selectionMode) showMenu = true }
-                )
-
-                actionMenuItem?.let { item ->
-                    ItemActionMenuOverlay(
-                        item = item,
-                        onSelect = {
-                            actionMenuItem = null
-                            selectionMode = true
-                            selectedPaths = setOf(item.path)
-                            restoreBrowserFocus(item.path)
-                        },
-                        onRename = {
-                            actionMenuItem = null
-                            renameItem = item
-                        },
-                        onCopy = {
-                            actionMenuItem = null
-                            viewModel.startTransfer(TransferMode.COPY, listOf(item)) {
-                                restoreBrowserFocus(item.path)
-                            }
-                        },
-                        onMove = {
-                            actionMenuItem = null
-                            viewModel.startTransfer(TransferMode.MOVE, listOf(item)) {
-                                restoreBrowserFocus(item.path)
-                            }
-                        },
-                        onDelete = {
-                            actionMenuItem = null
-                            deleteItem = item
-                        },
-                        onProperties = {
-                            actionMenuItem = null
-                            openProperties(item)
-                        },
-                        onDismiss = {
-                            actionMenuItem = null
-                            restoreBrowserFocus(item.path)
-                        }
-                    )
+                if (selectionMode) toggleSelection(item) else actionMenuItem = item
+            },
+            onCreateFolderClick = {
+                if (!overlayOpen && displayedPath != null && !selectionMode) {
+                    showNewFolderDialog = true
                 }
-
-                propertiesItem?.let { item ->
-                    PropertiesOverlay(
-                        itemName = item.name,
-                        properties = propertiesData,
-                        error = propertiesError,
-                        onDismiss = {
-                            propertiesJob?.cancel()
-                            propertiesJob = null
-                            propertiesItem = null
-                            propertiesData = null
-                            propertiesError = null
-                            restoreBrowserFocus(item.path)
-                        }
-                    )
-                }
-
-                renameItem?.let { item ->
-                    NameInputOverlay(
-                        title = stringResource(R.string.rename),
-                        initialValue = item.name,
-                        confirmLabel = stringResource(R.string.save),
-                        onConfirm = { newName ->
-                            viewModel.renameItem(item, newName) {
-                                renameItem = null
-                                restoreBrowserFocus(newName)
-                            }
-                        },
-                        onDismiss = {
-                            renameItem = null
-                            restoreBrowserFocus(item.path)
-                        }
-                    )
-                }
-
-                deleteItem?.let { item ->
-                    val deletingItemText = stringResource(R.string.deleting_item, item.name)
-                    ConfirmOverlay(
-                        title = stringResource(R.string.confirm_delete),
-                        message = item.name,
-                        confirmLabel = stringResource(R.string.delete),
-                        focusKey = item.path,
-                        onConfirm = {
-                            deleteItem = null
-                            operationMessage = deletingItemText
-
-                            viewModel.deleteItems(listOf(item)) { successCount, failureCount ->
-                                operationMessage = null
-                                restoreBrowserFocus()
-                                showDeleteResult(context, successCount, failureCount)
-                            }
-                        },
-                        onDismiss = {
-                            deleteItem = null
-                            restoreBrowserFocus(item.path)
-                        }
-                    )
-                }
-
-                multiDeleteItems?.let { items ->
-                    val deletingItemProgressPattern = stringResource(R.string.deleting_item_progress)
-                    ConfirmOverlay(
-                        title = pluralStringResource(R.plurals.confirm_delete_count, items.size, items.size),
-                        message = stringResource(R.string.confirm_delete_selected_description),
-                        confirmLabel = stringResource(R.string.delete),
-                        focusKey = items.size,
-                        onConfirm = {
-                            multiDeleteItems = null
-                            clearSelection()
-
-                            viewModel.deleteItems(
-                                items = items,
-                                onProgress = { index, total, item ->
-                                    operationMessage = deletingItemProgressPattern.format(
-                                        index,
-                                        total,
-                                        item.name
-                                    )
-                                },
-                                onFinished = { successCount, failureCount ->
-                                    operationMessage = null
-                                    restoreBrowserFocus()
-                                    showDeleteResult(context, successCount, failureCount, multiple = true)
-                                }
-                            )
-                        },
-                        onDismiss = {
-                            multiDeleteItems = null
-                            restoreBrowserFocus()
-                        }
-                    )
-                }
-
-                if (showNewFolderDialog) {
-                    NameInputOverlay(
-                        title = stringResource(R.string.new_folder),
-                        initialValue = "",
-                        confirmLabel = stringResource(R.string.create),
-                        onConfirm = { name ->
-                            displayedPath?.let { parentPath ->
-                                viewModel.createFolderIn(parentPath, name) { createdPath ->
-                                    showNewFolderDialog = false
-                                    restoreBrowserFocus(createdPath)
-                                }
-                            }
-                        },
-                        onDismiss = {
-                            showNewFolderDialog = false
-                            restoreBrowserFocus()
-                        }
-                    )
-                }
-
-                if (showMenu) {
-                    val settingsLabel = stringResource(R.string.settings)
-                    val addShareLabel = stringResource(R.string.share_add_title)
-
-                    ActionMenuOverlay(
-                        title = stringResource(R.string.menu),
-                        focusKey = "menu",
-                        entries = listOf(
-                            settingsLabel to {
-                                showMenu = false
-                                showSettings = true
-                            },
-                            addShareLabel to {
-                                showMenu = false
-                                shareEditor = ShareEditorTarget.New
-                            }
-                        ),
-                        onDismiss = {
-                            showMenu = false
-                            restoreBrowserFocus()
-                        }
-                    )
-                }
-
-                volumeMenu?.let { volume ->
-                    VolumeActionMenuOverlay(
-                        volume = volume,
-                        onSettings = {
-                            val configId = volume.configId
-                            volumeMenu = null
-
-                            if (configId != null) {
-                                viewModel.loadShare(configId) { share ->
-                                    if (share != null) shareEditor = ShareEditorTarget.Existing(share)
-                                }
-                            }
-                        },
-                        onRemove = {
-                            volumeMenu = null
-                            volumeRemoveTarget = volume
-                        },
-                        onDismiss = {
-                            volumeMenu = null
-                            restoreBrowserFocus(volume.path.value)
-                        }
-                    )
-                }
-
-                volumeRemoveTarget?.let { volume ->
-                    ConfirmOverlay(
-                        title = stringResource(R.string.volume_remove_confirm),
-                        message = stringResource(R.string.volume_remove_confirm_description, volume.name),
-                        confirmLabel = stringResource(R.string.volume_remove),
-                        focusKey = volume.path.value,
-                        onConfirm = {
-                            volumeRemoveTarget = null
-                            viewModel.removeSmbShare(volume)
-                        },
-                        onDismiss = {
-                            volumeRemoveTarget = null
-                            restoreBrowserFocus(volume.path.value)
-                        }
-                    )
-                }
-
-                shareEditor?.let { target ->
-                    ShareEditorOverlay(
-                        target = target,
-                        onTest = viewModel::testSmbShare,
-                        onSave = { share ->
-                            shareEditor = null
-                            viewModel.saveSmbShare(share)
-                        },
-                        onDismiss = {
-                            shareEditor = null
-                            restoreBrowserFocus()
-                        }
-                    )
-                }
-
-                if (showSettings) {
-                    SettingsOverlay(
-                        settings = uiState.settings,
-                        onLanguageTagChanged = { scope.launch { viewModel.setLanguageTag(it) } },
-                        onHideFolderJpgChanged = { scope.launch { viewModel.setHideFolderJpg(it) } },
-                        onUseFolderJpgAsIconChanged = { scope.launch { viewModel.setUseFolderJpgAsIcon(it) } },
-                        onOptimizeFileNamesChanged = { scope.launch { viewModel.setOptimizeFileNames(it) } },
-                        onSortModeChanged = { scope.launch { viewModel.setSortMode(it) } },
-                        onSortAscendingChanged = { scope.launch { viewModel.setSortAscending(it) } },
-                        onFoldersFirstChanged = { scope.launch { viewModel.setFoldersFirst(it) } },
-                        onDismiss = {
-                            showSettings = false
-                            restoreBrowserFocus()
-                        }
-                    )
-                }
-
-                uiState.conflictRequest?.let { request ->
-                    TransferConflictOverlay(
-                        sourceName = request.sourceName,
-                        targetDirectory = request.targetDirectory,
-                        multipleItems = request.multipleItems,
-                        onDecision = { policy, applyToAll ->
-                            viewModel.answerTransferConflict(
-                                TransferConflictAnswer(
-                                    policy = policy,
-                                    applyToAll = applyToAll,
-                                    cancelled = false
-                                )
-                            )
-                        },
-                        onCancel = {
-                            viewModel.answerTransferConflict(
-                                TransferConflictAnswer(
-                                    policy = null,
-                                    applyToAll = false,
-                                    cancelled = true
-                                )
-                            )
-                        }
-                    )
-                }
-
-                uiState.transferProgress?.let { transfer ->
-                    val details = transfer.details
-
-                    TransferProgressOverlay(
-                        title = transfer.title,
-                        currentItem = details.currentItem,
-                        totalItems = details.totalItems,
-                        currentName = details.currentName,
-                        bytesProcessed = details.bytesProcessed,
-                        totalBytes = details.totalBytes,
-                        bytesPerSecond = details.bytesPerSecond,
-                        onCancel = viewModel::cancelRunningTransfer
-                    )
-                }
-
-                operationMessage?.let { OperationProgressOverlay(message = it) }
-
-                BackHandler(enabled = displayedPath != null && !overlayOpen && !selectionMode) {
-                    viewModel.navigateBack()
-                }
-                BackHandler(enabled = displayedPath == null && uiState.transferMode != null && !overlayOpen) {
-                    viewModel.cancelPreparedTransfer()
-                    restoreBrowserFocus()
-                }
-                BackHandler(enabled = selectionMode && !overlayOpen) {
+            },
+            onTransferHereClick = { displayedPath?.let { viewModel.startPreparedTransfer(it) } },
+            onTransferCancelClick = {
+                viewModel.cancelPreparedTransfer()
+                restoreBrowserFocus()
+            },
+            onSelectAllClick = {
+                selectedPaths = uiState.browserItems
+                    .filterNot { it is BrowserItem.Storage }
+                    .map { it.path }
+                    .toSet()
+            },
+            onSelectionCopyClick = {
+                viewModel.startTransfer(TransferMode.COPY, selectedItems()) {
                     cancelSelection()
                 }
-            }
+            },
+            onSelectionMoveClick = {
+                viewModel.startTransfer(TransferMode.MOVE, selectedItems()) {
+                    cancelSelection()
+                }
+            },
+            onSelectionDeleteClick = {
+                val items = selectedItems()
+                if (items.isEmpty()) {
+                    Toast
+                        .makeText(
+                            context,
+                            noItemsSelectedText,
+                            Toast.LENGTH_SHORT
+                        )
+                        .show()
+                } else {
+                    multiDeleteItems = items
+                }
+            },
+            onSelectionCancelClick = { cancelSelection() },
+            onMenuClick = { if (!overlayOpen && !selectionMode) showMenu = true }
+        )
+
+        actionMenuItem?.let { item ->
+            ItemActionMenuOverlay(
+                item = item,
+                onSelect = {
+                    actionMenuItem = null
+                    selectionMode = true
+                    selectedPaths = setOf(item.path)
+                    restoreBrowserFocus(item.path)
+                },
+                onRename = {
+                    actionMenuItem = null
+                    renameItem = item
+                },
+                onCopy = {
+                    actionMenuItem = null
+                    viewModel.startTransfer(TransferMode.COPY, listOf(item)) {
+                        restoreBrowserFocus(item.path)
+                    }
+                },
+                onMove = {
+                    actionMenuItem = null
+                    viewModel.startTransfer(TransferMode.MOVE, listOf(item)) {
+                        restoreBrowserFocus(item.path)
+                    }
+                },
+                onDelete = {
+                    actionMenuItem = null
+                    deleteItem = item
+                },
+                onProperties = {
+                    actionMenuItem = null
+                    openProperties(item)
+                },
+                onDismiss = {
+                    actionMenuItem = null
+                    restoreBrowserFocus(item.path)
+                }
+            )
+        }
+
+        propertiesItem?.let { item ->
+            PropertiesOverlay(
+                itemName = item.name,
+                properties = propertiesData,
+                error = propertiesError,
+                onDismiss = {
+                    propertiesJob?.cancel()
+                    propertiesJob = null
+                    propertiesItem = null
+                    propertiesData = null
+                    propertiesError = null
+                    restoreBrowserFocus(item.path)
+                }
+            )
+        }
+
+        renameItem?.let { item ->
+            NameInputOverlay(
+                title = stringResource(R.string.rename),
+                initialValue = item.name,
+                confirmLabel = stringResource(R.string.save),
+                onConfirm = { newName ->
+                    viewModel.renameItem(item, newName) {
+                        renameItem = null
+                        restoreBrowserFocus(newName)
+                    }
+                },
+                onDismiss = {
+                    renameItem = null
+                    restoreBrowserFocus(item.path)
+                }
+            )
+        }
+
+        deleteItem?.let { item ->
+            val deletingItemText = stringResource(R.string.deleting_item, item.name)
+            ConfirmOverlay(
+                title = stringResource(R.string.confirm_delete),
+                message = item.name,
+                confirmLabel = stringResource(R.string.delete),
+                focusKey = item.path,
+                onConfirm = {
+                    deleteItem = null
+                    operationMessage = deletingItemText
+
+                    viewModel.deleteItems(listOf(item)) { successCount, failureCount ->
+                        operationMessage = null
+                        restoreBrowserFocus()
+                        showDeleteResult(context, successCount, failureCount)
+                    }
+                },
+                onDismiss = {
+                    deleteItem = null
+                    restoreBrowserFocus(item.path)
+                }
+            )
+        }
+
+        multiDeleteItems?.let { items ->
+            val deletingItemProgressPattern = stringResource(R.string.deleting_item_progress)
+            ConfirmOverlay(
+                title = pluralStringResource(R.plurals.confirm_delete_count, items.size, items.size),
+                message = stringResource(R.string.confirm_delete_selected_description),
+                confirmLabel = stringResource(R.string.delete),
+                focusKey = items.size,
+                onConfirm = {
+                    multiDeleteItems = null
+                    clearSelection()
+
+                    viewModel.deleteItems(
+                        items = items,
+                        onProgress = { index, total, item ->
+                            operationMessage = deletingItemProgressPattern.format(
+                                index,
+                                total,
+                                item.name
+                            )
+                        },
+                        onFinished = { successCount, failureCount ->
+                            operationMessage = null
+                            restoreBrowserFocus()
+                            showDeleteResult(context, successCount, failureCount, multiple = true)
+                        }
+                    )
+                },
+                onDismiss = {
+                    multiDeleteItems = null
+                    restoreBrowserFocus()
+                }
+            )
+        }
+
+        if (showNewFolderDialog) {
+            NameInputOverlay(
+                title = stringResource(R.string.new_folder),
+                initialValue = "",
+                confirmLabel = stringResource(R.string.create),
+                onConfirm = { name ->
+                    displayedPath?.let { parentPath ->
+                        viewModel.createFolderIn(parentPath, name) { createdPath ->
+                            showNewFolderDialog = false
+                            restoreBrowserFocus(createdPath)
+                        }
+                    }
+                },
+                onDismiss = {
+                    showNewFolderDialog = false
+                    restoreBrowserFocus()
+                }
+            )
+        }
+
+        if (showMenu) {
+            val settingsLabel = stringResource(R.string.settings)
+            val addShareLabel = stringResource(R.string.share_add_title)
+
+            ActionMenuOverlay(
+                title = stringResource(R.string.menu),
+                focusKey = "menu",
+                entries = listOf(
+                    settingsLabel to {
+                        showMenu = false
+                        showSettings = true
+                    },
+                    addShareLabel to {
+                        showMenu = false
+                        shareEditor = ShareEditorTarget.New
+                    }
+                ),
+                onDismiss = {
+                    showMenu = false
+                    restoreBrowserFocus()
+                }
+            )
+        }
+
+        volumeMenu?.let { volume ->
+            VolumeActionMenuOverlay(
+                volume = volume,
+                onSettings = {
+                    val configId = volume.configId
+                    volumeMenu = null
+
+                    if (configId != null) {
+                        viewModel.loadShare(configId) { share ->
+                            if (share != null) shareEditor = ShareEditorTarget.Existing(share)
+                        }
+                    }
+                },
+                onRemove = {
+                    volumeMenu = null
+                    volumeRemoveTarget = volume
+                },
+                onDismiss = {
+                    volumeMenu = null
+                    restoreBrowserFocus(volume.path.value)
+                }
+            )
+        }
+
+        volumeRemoveTarget?.let { volume ->
+            ConfirmOverlay(
+                title = stringResource(R.string.volume_remove_confirm),
+                message = stringResource(R.string.volume_remove_confirm_description, volume.name),
+                confirmLabel = stringResource(R.string.volume_remove),
+                focusKey = volume.path.value,
+                onConfirm = {
+                    volumeRemoveTarget = null
+                    viewModel.removeSmbShare(volume)
+                },
+                onDismiss = {
+                    volumeRemoveTarget = null
+                    restoreBrowserFocus(volume.path.value)
+                }
+            )
+        }
+
+        shareEditor?.let { target ->
+            ShareEditorOverlay(
+                target = target,
+                onTest = viewModel::testSmbShare,
+                onSave = { share ->
+                    shareEditor = null
+                    viewModel.saveSmbShare(share)
+                },
+                onDismiss = {
+                    shareEditor = null
+                    restoreBrowserFocus()
+                }
+            )
+        }
+
+        if (showSettings) {
+            SettingsOverlay(
+                settings = uiState.settings,
+                onLanguageTagChanged = { scope.launch { viewModel.setLanguageTag(it) } },
+                onHideFolderJpgChanged = { scope.launch { viewModel.setHideFolderJpg(it) } },
+                onUseFolderJpgAsIconChanged = { scope.launch { viewModel.setUseFolderJpgAsIcon(it) } },
+                onOptimizeFileNamesChanged = { scope.launch { viewModel.setOptimizeFileNames(it) } },
+                onSortModeChanged = { scope.launch { viewModel.setSortMode(it) } },
+                onSortAscendingChanged = { scope.launch { viewModel.setSortAscending(it) } },
+                onFoldersFirstChanged = { scope.launch { viewModel.setFoldersFirst(it) } },
+                onDismiss = {
+                    showSettings = false
+                    restoreBrowserFocus()
+                }
+            )
+        }
+
+        uiState.conflictRequest?.let { request ->
+            TransferConflictOverlay(
+                sourceName = request.sourceName,
+                targetDirectory = request.targetDirectory,
+                multipleItems = request.multipleItems,
+                onDecision = { policy, applyToAll ->
+                    viewModel.answerTransferConflict(
+                        TransferConflictAnswer(
+                            policy = policy,
+                            applyToAll = applyToAll,
+                            cancelled = false
+                        )
+                    )
+                },
+                onCancel = {
+                    viewModel.answerTransferConflict(
+                        TransferConflictAnswer(
+                            policy = null,
+                            applyToAll = false,
+                            cancelled = true
+                        )
+                    )
+                }
+            )
+        }
+
+        uiState.transferProgress?.let { transfer ->
+            val details = transfer.details
+
+            TransferProgressOverlay(
+                title = transfer.title,
+                currentItem = details.currentItem,
+                totalItems = details.totalItems,
+                currentName = details.currentName,
+                bytesProcessed = details.bytesProcessed,
+                totalBytes = details.totalBytes,
+                bytesPerSecond = details.bytesPerSecond,
+                onCancel = viewModel::cancelRunningTransfer
+            )
+        }
+
+        operationMessage?.let { OperationProgressOverlay(message = it) }
+
+        BackHandler(enabled = displayedPath != null && !overlayOpen && !selectionMode) {
+            viewModel.navigateBack()
+        }
+        BackHandler(enabled = displayedPath == null && uiState.transferMode != null && !overlayOpen) {
+            viewModel.cancelPreparedTransfer()
+            restoreBrowserFocus()
+        }
+        BackHandler(enabled = selectionMode && !overlayOpen) {
+            cancelSelection()
         }
     }
 }

@@ -19,7 +19,14 @@ import kotlinx.coroutines.launch
 
 class DocumentPickerActivity : AppCompatActivity() {
 
-    private lateinit var viewModel: DocumentPickerViewModel
+    /**
+     * Null until the intent turned out to be one this activity can serve.
+     *
+     * Nullable rather than `lateinit`: an activity that calls `finish()` from `onCreate` is
+     * still taken through `onStart` and `onResume` by the system, so a malformed intent used
+     * to reach the lifecycle callbacks below with nothing assigned.
+     */
+    private var viewModel: DocumentPickerViewModel? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -32,8 +39,9 @@ class DocumentPickerActivity : AppCompatActivity() {
             return
         }
 
-        viewModel = ViewModelProvider(this)[DocumentPickerViewModel::class.java]
+        val viewModel = ViewModelProvider(this)[DocumentPickerViewModel::class.java]
         viewModel.initialize(request)
+        this.viewModel = viewModel
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -48,17 +56,17 @@ class DocumentPickerActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
-        viewModel.startWatchingStorage()
+        viewModel?.startWatchingStorage()
     }
 
     override fun onStop() {
-        viewModel.stopWatchingStorage()
+        viewModel?.stopWatchingStorage()
         super.onStop()
     }
 
     override fun onResume() {
         super.onResume()
-        viewModel.resumeAfterStoragePermission()
+        viewModel?.resumeAfterStoragePermission()
     }
 
     private fun handleEvent(event: PickerUiEvent) {
@@ -77,6 +85,7 @@ class DocumentPickerActivity : AppCompatActivity() {
     }
 
     private fun finishWithUris(uris: List<Uri>) {
+        val viewModel = viewModel ?: return
         if (uris.isEmpty()) return
 
         val result = Intent()

@@ -37,7 +37,16 @@ class FileContentProvider : ContentProvider() {
     }
 
 
-    private val readerThreads = AtomicInteger(0)
+    /**
+     * Reader threads currently alive, and the running number their names are built from.
+     *
+     * They are counted separately because they answer different questions: the first is how
+     * many threads exist right now and decides whether another one may be started, the
+     * second only has to stay unique for the lifetime of the process so two threads never
+     * share a name in a trace.
+     */
+    private val liveReaderThreads = AtomicInteger(0)
+    private val readerThreadNames = AtomicInteger(0)
 
     override fun onCreate(): Boolean = true
 
@@ -86,19 +95,33 @@ class FileContentProvider : ContentProvider() {
         // request to the server, so a shared thread would put a player and the thumbnails of
         // the grid into the same queue: one preview waiting on its timeout would stall
         // playback for as long as it takes.
-        val readerThread = HandlerThread("share-reader-${readerThreads.incrementAndGet()}").apply { start() }
+        //
+        // Bounded all the same. Nothing about a content provider limits how often another
+        // app may ask for a file, and every descriptor that is never released keeps its
+        // thread — plus the socket and the pooled session behind it — for good. Unbounded
+        // that is an out-of-memory error a foreign app can walk us into. Refusing here is
+        // recoverable: the caller gets a FileNotFoundException it already has to handle,
+        // and the reads that are running are not disturbed.
+        if (liveReaderThreads.incrementAndGet() > MAX_READER_THREADS) {
+            liveReaderThreads.decrementAndGet()
+            throw FileNotFoundException(appContext.getString(R.string.too_many_open_streams))
+        }
+
+        val readerThread = HandlerThread("share-reader-${readerThreadNames.incrementAndGet()}").apply { start() }
 
         val descriptor = try {
             storageManager.openProxyFileDescriptor(
                 ParcelFileDescriptor.MODE_READ_ONLY,
                 SourceProxyFileDescriptor(handle) {
                     readerThread.quitSafely()
+                    liveReaderThreads.decrementAndGet()
                     RemoteAccessService.descriptorClosed(appContext)
                 },
                 Handler(readerThread.looper)
             )
         } catch (failure: Throwable) {
             readerThread.quitSafely()
+            liveReaderThreads.decrementAndGet()
             throw failure
         }
 
@@ -235,6 +258,15 @@ class FileContentProvider : ContentProvider() {
     }
 
     companion object {
+
+        /**
+         * How many files may be served from a share at the same time.
+         *
+         * A television reads one video, maybe a second one in a picture-in-picture player.
+         * The limit is set well above that so nothing legitimate runs into it, and far
+         * enough below the point where a thread and a session each would matter.
+         */
+        private const val MAX_READER_THREADS = 8
 
         fun createUri(context: android.content.Context, path: String): Uri {
             val encoded = Base64.encodeToString(

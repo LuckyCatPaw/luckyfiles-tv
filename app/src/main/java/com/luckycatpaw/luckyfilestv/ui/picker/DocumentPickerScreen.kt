@@ -2,8 +2,6 @@ package com.luckycatpaw.luckyfilestv.ui.picker
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -12,12 +10,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Surface
-import androidx.tv.material3.SurfaceDefaults
 import com.luckycatpaw.luckyfilestv.R
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import com.luckycatpaw.luckyfilestv.ui.browser.NameInputOverlay
@@ -25,7 +19,7 @@ import com.luckycatpaw.luckyfilestv.ui.picker.model.DisplayMode
 import com.luckycatpaw.luckyfilestv.ui.picker.model.PickerBrowserItem
 import com.luckycatpaw.luckyfilestv.ui.picker.model.PickerKeys
 import com.luckycatpaw.luckyfilestv.ui.picker.model.PickerMode
-import com.luckycatpaw.luckyfilestv.ui.theme.LuckyFilesTheme
+import com.luckycatpaw.luckyfilestv.ui.theme.AppScreenScaffold
 import kotlinx.coroutines.launch
 
 @Composable
@@ -78,372 +72,360 @@ internal fun DocumentPickerScreen(viewModel: DocumentPickerViewModel) {
         viewModel.finishWithUris(uris)
     }
 
-    LuckyFilesTheme {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            colors = SurfaceDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.background,
-                contentColor = MaterialTheme.colorScheme.onBackground
-            )
-        ) {
-            Box(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                val browsing = uiState.displayMode == DisplayMode.BROWSE
+    AppScreenScaffold {
+        val browsing = uiState.displayMode == DisplayMode.BROWSE
 
-                // Only the multi-select count depends on state the ViewModel cannot see.
-                // Everything else comes from uiState.primaryActionLabel, which is the one
-                // place that knows whether the current location is selectable or writable —
-                // for provider locations as well as local ones.
-                val primaryActionLabel = when {
-                    viewModel.request.allowMultiple ->
-                        stringResource(R.string.select_count, selectedItems.size)
+        // Only the multi-select count depends on state the ViewModel cannot see.
+        // Everything else comes from uiState.primaryActionLabel, which is the one
+        // place that knows whether the current location is selectable or writable —
+        // for provider locations as well as local ones.
+        val primaryActionLabel = when {
+            viewModel.request.allowMultiple ->
+                stringResource(R.string.select_count, selectedItems.size)
 
-                    browsing -> uiState.primaryActionLabel
+            browsing -> uiState.primaryActionLabel
 
-                    else -> null
-                }
+            else -> null
+        }
 
-                val displayedLocalPath = uiState.currentLocalPath
+        val displayedLocalPath = uiState.currentLocalPath
 
-                PickerBrowserScreen(
-                    items = uiState.pickerItems,
-                    title = uiState.title,
-                    optimizeFileNames = uiState.settings.optimizeFileNames,
-                    useFolderJpgAsIcon = uiState.settings.useFolderJpgAsIcon,
-                    focusKey = uiState.focusTargetKey,
-                    focusRequestKey = focusRestoreKey,
-                    gridStateKey = when {
-                        displayedLocalPath != null ->
-                            PickerKeys.local(displayedLocalPath)
+        PickerBrowserScreen(
+            items = uiState.pickerItems,
+            title = uiState.title,
+            optimizeFileNames = uiState.settings.optimizeFileNames,
+            useFolderJpgAsIcon = uiState.settings.useFolderJpgAsIcon,
+            focusKey = uiState.focusTargetKey,
+            focusRequestKey = focusRestoreKey,
+            gridStateKey = when {
+                displayedLocalPath != null ->
+                    PickerKeys.local(displayedLocalPath)
 
-                        uiState.providerStack.isNotEmpty() ->
-                            uiState.providerStack.last().document.uri
+                uiState.providerStack.isNotEmpty() ->
+                    uiState.providerStack.last().document.uri
 
-                        else -> uiState.displayMode
-                    },
-                    initialGridPosition =
-                        viewModel.localGridPosition(displayedLocalPath),
-                    onGridPositionChanged = { position ->
-                        viewModel.saveLocalGridPosition(
-                            displayedLocalPath,
-                            position
-                        )
-                    },
-                    selectedKeys = selectedItems.keys,
-                    canCreateFolder = uiState.canCreateFolder,
-                    primaryActionLabel = primaryActionLabel,
-                    showRecentsAction =
-                        viewModel.pickerMode == PickerMode.OPEN_DOCUMENT ||
-                            viewModel.pickerMode == PickerMode.GET_CONTENT,
-                    onSearchClick = {
-                        showSearchDialog = true
-                    },
-                    onRecentsClick = {
-                        viewModel.runGlobalRecents()
-                    },
-                    onItemClick = itemClick@{ item ->
-                        if (uiState.providerErrorMessage != null) {
-                            return@itemClick
-                        }
-
-                        when (item) {
-                            is PickerBrowserItem.Local -> {
-                                when (val local = item.item) {
-                                    is BrowserItem.Storage ->
-                                        viewModel.openLocalDirectory(local.path)
-
-                                    is BrowserItem.Folder ->
-                                        viewModel.openLocalDirectory(local.path)
-
-                                    is BrowserItem.File -> {
-                                        when (viewModel.pickerMode) {
-                                            PickerMode.OPEN_DOCUMENT,
-                                            PickerMode.GET_CONTENT -> {
-                                                if (viewModel.request.allowMultiple) {
-                                                    toggleSelection(item)
-                                                } else {
-                                                    viewModel.uriForPickerItem(item)?.let {
-                                                        viewModel.finishWithUris(listOf(it))
-                                                    }
-                                                }
-                                            }
-
-                                            else -> Unit
-                                        }
-                                    }
-                                }
-                            }
-
-                            is PickerBrowserItem.ProviderRoot ->
-                                viewModel.openProviderRoot(item.root)
-
-                            is PickerBrowserItem.ProviderDocument -> {
-                                if (item.document.isDirectory) {
-                                    viewModel.openProviderResultDirectory(item)
-                                } else {
-                                    when (viewModel.pickerMode) {
-                                        PickerMode.OPEN_DOCUMENT,
-                                        PickerMode.GET_CONTENT -> {
-                                            if (viewModel.request.allowMultiple) {
-                                                toggleSelection(item)
-                                            } else {
-                                                viewModel.finishWithUris(
-                                                    listOf(item.document.uri)
-                                                )
-                                            }
-                                        }
-
-                                        else -> Unit
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    onItemLongClick = { item ->
-                        if (
-                            uiState.providerErrorMessage == null &&
-                            viewModel.request.allowMultiple &&
-                            item.isFile
-                        ) {
-                            toggleSelection(item)
-                        }
-                    },
-                    onItemFocused = { item ->
-                        viewModel.setFocusedKey(item.key)
-                    },
-                    onCreateFolderClick = {
-                        if (uiState.canCreateFolder) {
-                            showCreateFolderDialog = true
-                        }
-                    },
-                    onPrimaryActionClick = {
-                        when {
-                            viewModel.request.allowMultiple -> {
-                                finishMultipleSelection()
-                            }
-
-                            viewModel.pickerMode == PickerMode.OPEN_DOCUMENT_TREE -> {
-                                viewModel.currentTreeUri()?.let {
-                                    viewModel.finishWithUris(listOf(it))
-                                }
-                            }
-
-                            viewModel.pickerMode == PickerMode.CREATE_DOCUMENT -> {
-                                if (viewModel.canCreateInCurrentLocation()) {
-                                    showCreateFileDialog = true
-                                }
-                            }
-                        }
-                    },
-                    onCancelClick = {
-                        viewModel.cancelPicker()
-                    }
+                else -> uiState.displayMode
+            },
+            initialGridPosition =
+                viewModel.localGridPosition(displayedLocalPath),
+            onGridPositionChanged = { position ->
+                viewModel.saveLocalGridPosition(
+                    displayedLocalPath,
+                    position
                 )
-
-                if (showSearchDialog) {
-                    NameInputOverlay(
-                        title = stringResource(R.string.search),
-                        initialValue = uiState.currentSearchQuery,
-                        confirmLabel = stringResource(R.string.search),
-                        onConfirm = search@{ query ->
-                            val cleanQuery = query.trim()
-
-                            if (cleanQuery.isBlank()) {
-                                Toast.makeText(
-                                    context,
-                                    searchEmptyText,
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                                return@search
-                            }
-
-                            showSearchDialog = false
-                            viewModel.runGlobalSearch(cleanQuery)
-                        },
-                        onDismiss = {
-                            showSearchDialog = false
-                            restoreFocus()
-                        }
-                    )
+            },
+            selectedKeys = selectedItems.keys,
+            canCreateFolder = uiState.canCreateFolder,
+            primaryActionLabel = primaryActionLabel,
+            showRecentsAction =
+                viewModel.pickerMode == PickerMode.OPEN_DOCUMENT ||
+                    viewModel.pickerMode == PickerMode.GET_CONTENT,
+            onSearchClick = {
+                showSearchDialog = true
+            },
+            onRecentsClick = {
+                viewModel.runGlobalRecents()
+            },
+            onItemClick = itemClick@{ item ->
+                if (uiState.providerErrorMessage != null) {
+                    return@itemClick
                 }
 
-                if (showCreateFolderDialog) {
-                    NameInputOverlay(
-                        title = stringResource(R.string.new_folder),
-                        initialValue = "",
-                        confirmLabel = stringResource(R.string.create),
-                        onConfirm = createFolder@{ folderName ->
-                            val cleanName = folderName.trim()
-                            if (cleanName.isBlank()) return@createFolder
+                when (item) {
+                    is PickerBrowserItem.Local -> {
+                        when (val local = item.item) {
+                            is BrowserItem.Storage ->
+                                viewModel.openLocalDirectory(local.path)
 
-                            when {
-                                uiState.currentLocalPath != null -> {
-                                    val parent =
-                                        uiState.currentLocalPath ?: return@createFolder
+                            is BrowserItem.Folder ->
+                                viewModel.openLocalDirectory(local.path)
 
-                                    scope.launch {
-                                        val result = viewModel.createLocalFolder(
-                                            parent,
-                                            cleanName
-                                        )
-
-                                        result.onSuccess { newPath ->
-                                            showCreateFolderDialog = false
-                                            viewModel.openLocalDirectory(
-                                                parent,
-                                                PickerKeys.local(newPath)
-                                            )
-                                            focusRestoreKey++
-                                        }.onFailure {
-                                            Toast.makeText(
-                                                context,
-                                                it.message ?: errorGenericText,
-                                                Toast.LENGTH_LONG
-                                            ).show()
+                            is BrowserItem.File -> {
+                                when (viewModel.pickerMode) {
+                                    PickerMode.OPEN_DOCUMENT,
+                                    PickerMode.GET_CONTENT -> {
+                                        if (viewModel.request.allowMultiple) {
+                                            toggleSelection(item)
+                                        } else {
+                                            viewModel.uriForPickerItem(item)?.let {
+                                                viewModel.finishWithUris(listOf(it))
+                                            }
                                         }
                                     }
-                                }
 
-                                uiState.providerStack.isNotEmpty() -> {
-                                    val location = uiState.providerStack.last()
-
-                                    scope.launch {
-                                        val result = viewModel.createProviderDirectory(
-                                            location,
-                                            cleanName
-                                        )
-
-                                        result.onSuccess { created ->
-                                            showCreateFolderDialog = false
-                                            viewModel.refreshProviderDirectory(
-                                                location,
-                                                PickerKeys.providerDocument(created)
-                                            )
-                                            focusRestoreKey++
-                                        }.onFailure { error ->
-                                            Toast.makeText(
-                                                context,
-                                                error.message
-                                                    ?: errorGenericText,
-                                                Toast.LENGTH_LONG
-                                            ).show()
-                                        }
-                                    }
+                                    else -> Unit
                                 }
                             }
-                        },
-                        onDismiss = {
-                            showCreateFolderDialog = false
-                            restoreFocus()
                         }
-                    )
-                }
+                    }
 
-                if (showCreateFileDialog) {
-                    NameInputOverlay(
-                        title = stringResource(R.string.save_file),
-                        initialValue = viewModel.request.suggestedFileName,
-                        confirmLabel = stringResource(R.string.save),
-                        onConfirm = createFile@{ name ->
-                            val cleanName = name.trim()
-                            if (cleanName.isBlank()) return@createFile
+                    is PickerBrowserItem.ProviderRoot ->
+                        viewModel.openProviderRoot(item.root)
 
-                            when {
-                                uiState.currentLocalPath != null -> {
-                                    val parent =
-                                        uiState.currentLocalPath ?: return@createFile
-
-                                    scope.launch {
-                                        viewModel.createLocalDocument(
-                                            parent,
-                                            cleanName
-                                        ).onSuccess {
-                                            showCreateFileDialog = false
-                                            viewModel.finishWithUris(listOf(it))
-                                        }.onFailure {
-                                            Toast.makeText(
-                                                context,
-                                                it.message ?: errorGenericText,
-                                                Toast.LENGTH_LONG
-                                            ).show()
-                                        }
-                                    }
-                                }
-
-                                uiState.providerStack.isNotEmpty() -> {
-                                    val location = uiState.providerStack.last()
-
-                                    scope.launch {
-                                        val result = viewModel.createProviderDocument(
-                                            location,
-                                            cleanName
+                    is PickerBrowserItem.ProviderDocument -> {
+                        if (item.document.isDirectory) {
+                            viewModel.openProviderResultDirectory(item)
+                        } else {
+                            when (viewModel.pickerMode) {
+                                PickerMode.OPEN_DOCUMENT,
+                                PickerMode.GET_CONTENT -> {
+                                    if (viewModel.request.allowMultiple) {
+                                        toggleSelection(item)
+                                    } else {
+                                        viewModel.finishWithUris(
+                                            listOf(item.document.uri)
                                         )
-
-                                        result.onSuccess {
-                                            showCreateFileDialog = false
-                                            viewModel.finishWithUris(
-                                                listOf(it.uri)
-                                            )
-                                        }.onFailure { error ->
-                                            Toast.makeText(
-                                                context,
-                                                error.message
-                                                    ?: errorGenericText,
-                                                Toast.LENGTH_LONG
-                                            ).show()
-                                        }
                                     }
                                 }
-                            }
-                        },
-                        onDismiss = {
-                            showCreateFileDialog = false
-                            restoreFocus()
-                        }
-                    )
-                }
 
-                BackHandler(
-                    enabled =
-                        !showSearchDialog &&
-                            !showCreateFileDialog &&
-                            !showCreateFolderDialog &&
-                            uiState.providerErrorMessage == null
+                                else -> Unit
+                            }
+                        }
+                    }
+                }
+            },
+            onItemLongClick = { item ->
+                if (
+                    uiState.providerErrorMessage == null &&
+                    viewModel.request.allowMultiple &&
+                    item.isFile
                 ) {
-                    if (uiState.displayMode != DisplayMode.BROWSE) {
-                        viewModel.restoreBrowseSnapshot()
-                    } else {
-                        viewModel.navigateBack()
+                    toggleSelection(item)
+                }
+            },
+            onItemFocused = { item ->
+                viewModel.setFocusedKey(item.key)
+            },
+            onCreateFolderClick = {
+                if (uiState.canCreateFolder) {
+                    showCreateFolderDialog = true
+                }
+            },
+            onPrimaryActionClick = {
+                when {
+                    viewModel.request.allowMultiple -> {
+                        finishMultipleSelection()
+                    }
+
+                    viewModel.pickerMode == PickerMode.OPEN_DOCUMENT_TREE -> {
+                        viewModel.currentTreeUri()?.let {
+                            viewModel.finishWithUris(listOf(it))
+                        }
+                    }
+
+                    viewModel.pickerMode == PickerMode.CREATE_DOCUMENT -> {
+                        if (viewModel.canCreateInCurrentLocation()) {
+                            showCreateFileDialog = true
+                        }
                     }
                 }
+            },
+            onCancelClick = {
+                viewModel.cancelPicker()
+            }
+        )
 
-                ProviderStatusOverlay(
-                    loading = uiState.providerLoading,
-                    info = uiState.providerInfoMessage,
-                    error = uiState.providerErrorMessage,
-                    onRetry = {
-                        when (uiState.displayMode) {
-                            DisplayMode.SEARCH ->
-                                viewModel.runGlobalSearch(uiState.currentSearchQuery)
+        if (showSearchDialog) {
+            NameInputOverlay(
+                title = stringResource(R.string.search),
+                initialValue = uiState.currentSearchQuery,
+                confirmLabel = stringResource(R.string.search),
+                onConfirm = search@{ query ->
+                    val cleanQuery = query.trim()
 
-                            DisplayMode.RECENTS ->
-                                viewModel.runGlobalRecents()
+                    if (cleanQuery.isBlank()) {
+                        Toast.makeText(
+                            context,
+                            searchEmptyText,
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        return@search
+                    }
 
-                            DisplayMode.BROWSE ->
-                                viewModel.retryCurrentProviderLocation()
+                    showSearchDialog = false
+                    viewModel.runGlobalSearch(cleanQuery)
+                },
+                onDismiss = {
+                    showSearchDialog = false
+                    restoreFocus()
+                }
+            )
+        }
+
+        if (showCreateFolderDialog) {
+            NameInputOverlay(
+                title = stringResource(R.string.new_folder),
+                initialValue = "",
+                confirmLabel = stringResource(R.string.create),
+                onConfirm = createFolder@{ folderName ->
+                    val cleanName = folderName.trim()
+                    if (cleanName.isBlank()) return@createFolder
+
+                    when {
+                        uiState.currentLocalPath != null -> {
+                            val parent =
+                                uiState.currentLocalPath ?: return@createFolder
+
+                            scope.launch {
+                                val result = viewModel.createLocalFolder(
+                                    parent,
+                                    cleanName
+                                )
+
+                                result.onSuccess { newPath ->
+                                    showCreateFolderDialog = false
+                                    viewModel.openLocalDirectory(
+                                        parent,
+                                        PickerKeys.local(newPath)
+                                    )
+                                    focusRestoreKey++
+                                }.onFailure {
+                                    Toast.makeText(
+                                        context,
+                                        it.message ?: errorGenericText,
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            }
                         }
-                    },
-                    onDismissError = {
-                        viewModel.dismissProviderError()
-                    },
-                    onDismissInfo = {
-                        if (!uiState.providerLoading) {
-                            viewModel.dismissProviderInfo()
+
+                        uiState.providerStack.isNotEmpty() -> {
+                            val location = uiState.providerStack.last()
+
+                            scope.launch {
+                                val result = viewModel.createProviderDirectory(
+                                    location,
+                                    cleanName
+                                )
+
+                                result.onSuccess { created ->
+                                    showCreateFolderDialog = false
+                                    viewModel.refreshProviderDirectory(
+                                        location,
+                                        PickerKeys.providerDocument(created)
+                                    )
+                                    focusRestoreKey++
+                                }.onFailure { error ->
+                                    Toast.makeText(
+                                        context,
+                                        error.message
+                                            ?: errorGenericText,
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            }
                         }
                     }
-                )
+                },
+                onDismiss = {
+                    showCreateFolderDialog = false
+                    restoreFocus()
+                }
+            )
+        }
+
+        if (showCreateFileDialog) {
+            NameInputOverlay(
+                title = stringResource(R.string.save_file),
+                initialValue = viewModel.request.suggestedFileName,
+                confirmLabel = stringResource(R.string.save),
+                onConfirm = createFile@{ name ->
+                    val cleanName = name.trim()
+                    if (cleanName.isBlank()) return@createFile
+
+                    when {
+                        uiState.currentLocalPath != null -> {
+                            val parent =
+                                uiState.currentLocalPath ?: return@createFile
+
+                            scope.launch {
+                                viewModel.createLocalDocument(
+                                    parent,
+                                    cleanName
+                                ).onSuccess {
+                                    showCreateFileDialog = false
+                                    viewModel.finishWithUris(listOf(it))
+                                }.onFailure {
+                                    Toast.makeText(
+                                        context,
+                                        it.message ?: errorGenericText,
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            }
+                        }
+
+                        uiState.providerStack.isNotEmpty() -> {
+                            val location = uiState.providerStack.last()
+
+                            scope.launch {
+                                val result = viewModel.createProviderDocument(
+                                    location,
+                                    cleanName
+                                )
+
+                                result.onSuccess {
+                                    showCreateFileDialog = false
+                                    viewModel.finishWithUris(
+                                        listOf(it.uri)
+                                    )
+                                }.onFailure { error ->
+                                    Toast.makeText(
+                                        context,
+                                        error.message
+                                            ?: errorGenericText,
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            }
+                        }
+                    }
+                },
+                onDismiss = {
+                    showCreateFileDialog = false
+                    restoreFocus()
+                }
+            )
+        }
+
+        BackHandler(
+            enabled =
+                !showSearchDialog &&
+                    !showCreateFileDialog &&
+                    !showCreateFolderDialog &&
+                    uiState.providerErrorMessage == null
+        ) {
+            if (uiState.displayMode != DisplayMode.BROWSE) {
+                viewModel.restoreBrowseSnapshot()
+            } else {
+                viewModel.navigateBack()
             }
         }
+
+        ProviderStatusOverlay(
+            loading = uiState.providerLoading,
+            info = uiState.providerInfoMessage,
+            error = uiState.providerErrorMessage,
+            onRetry = {
+                when (uiState.displayMode) {
+                    DisplayMode.SEARCH ->
+                        viewModel.runGlobalSearch(uiState.currentSearchQuery)
+
+                    DisplayMode.RECENTS ->
+                        viewModel.runGlobalRecents()
+
+                    DisplayMode.BROWSE ->
+                        viewModel.retryCurrentProviderLocation()
+                }
+            },
+            onDismissError = {
+                viewModel.dismissProviderError()
+            },
+            onDismissInfo = {
+                if (!uiState.providerLoading) {
+                    viewModel.dismissProviderInfo()
+                }
+            }
+        )
     }
 }

@@ -8,6 +8,7 @@ import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
 import com.luckycatpaw.luckyfilestv.data.source.SourceException
 import com.luckycatpaw.luckyfilestv.data.source.SourcePath
 import com.luckycatpaw.luckyfilestv.util.DirectorySync
+import com.luckycatpaw.luckyfilestv.util.safeAdd
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.IOException
@@ -309,12 +310,6 @@ internal class FileTransferEngine(
         } while (Files.exists(candidate.toPath(), LinkOption.NOFOLLOW_LINKS))
 
         return candidate
-    }
-
-    private fun safeAdd(first: Long, second: Long): Long = if (Long.MAX_VALUE - first < second) {
-        Long.MAX_VALUE
-    } else {
-        first + second
     }
 
     private fun safeProgressAdd(current: Long, addition: Long, total: Long): Long {

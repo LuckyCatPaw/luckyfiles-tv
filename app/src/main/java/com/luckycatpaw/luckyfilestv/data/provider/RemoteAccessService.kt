@@ -1,17 +1,15 @@
 package com.luckycatpaw.luckyfilestv.data.provider
 
 import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ServiceInfo
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.util.Log
 import com.luckycatpaw.luckyfilestv.R
+import com.luckycatpaw.luckyfilestv.data.common.ensureNotificationChannel
+import com.luckycatpaw.luckyfilestv.data.common.startForegroundOrFalse
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -40,20 +38,13 @@ internal class RemoteAccessService : Service() {
             .setOngoing(true)
             .build()
 
-        return try {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-            awaitFirstDescriptor()
-            START_STICKY
-        } catch (refused: IllegalStateException) {
-            // See FileTransferService: the Android 12 subclass does not exist on API 30.
-            Log.w(TAG, "Not allowed to start the foreground service", refused)
+        if (!startForegroundOrFalse(NOTIFICATION_ID, notification)) {
             stopSelf()
-            START_NOT_STICKY
-        } catch (refused: SecurityException) {
-            Log.w(TAG, "Missing permission for the foreground service", refused)
-            stopSelf()
-            START_NOT_STICKY
+            return START_NOT_STICKY
         }
+
+        awaitFirstDescriptor()
+        return START_STICKY
     }
 
     override fun onDestroy() {
@@ -77,7 +68,6 @@ internal class RemoteAccessService : Service() {
 
     companion object {
 
-        private const val TAG = "RemoteAccessService"
         private const val CHANNEL_ID = "remote_access"
         private const val NOTIFICATION_ID = 4713
 
@@ -94,7 +84,7 @@ internal class RemoteAccessService : Service() {
          */
         fun start(context: Context) {
             val appContext = context.applicationContext
-            ensureChannel(appContext)
+            ensureNotificationChannel(appContext, CHANNEL_ID, R.string.remote_access_channel_name)
 
             runCatching {
                 appContext.startForegroundService(Intent(appContext, RemoteAccessService::class.java))
@@ -105,9 +95,21 @@ internal class RemoteAccessService : Service() {
             openDescriptors.incrementAndGet()
         }
 
-        /** Stops the service once the last reader is gone. */
+        /**
+         * Stops the service once the last reader is gone.
+         *
+         * Floored rather than decremented blindly. The count is process wide and the
+         * service start is best effort, so a release without a matching open is not a
+         * hypothetical: a descriptor handed out while the service was refused, or one that
+         * outlives a restart of the process, arrives here on its own. Left negative the
+         * count never climbs back above zero, at which point [stopIfIdle] reads a busy
+         * service as idle and takes the foreground state away from a reader that is still
+         * going — which is the exact stall this service exists to prevent.
+         */
         fun descriptorClosed(context: Context) {
-            if (openDescriptors.decrementAndGet() > 0) return
+            val remaining = openDescriptors.updateAndGet { current -> (current - 1).coerceAtLeast(0) }
+
+            if (remaining > 0) return
 
             stop(context)
         }
@@ -122,22 +124,6 @@ internal class RemoteAccessService : Service() {
         private fun stop(context: Context) {
             val appContext = context.applicationContext
             runCatching { appContext.stopService(Intent(appContext, RemoteAccessService::class.java)) }
-        }
-
-        private fun ensureChannel(context: Context) {
-            val manager = context.getSystemService(NotificationManager::class.java)
-
-            if (manager.getNotificationChannel(CHANNEL_ID) != null) return
-
-            manager.createNotificationChannel(
-                NotificationChannel(
-                    CHANNEL_ID,
-                    context.getString(R.string.remote_access_channel_name),
-                    NotificationManager.IMPORTANCE_LOW
-                ).apply {
-                    setShowBadge(false)
-                }
-            )
         }
     }
 }

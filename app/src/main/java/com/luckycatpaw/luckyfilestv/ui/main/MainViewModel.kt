@@ -56,11 +56,30 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
     )
 
     private val _uiState = MutableStateFlow(MainUiState())
+
+    /**
+     * The stored settings, collected once for the whole view model.
+     *
+     * There were two collectors on [SettingsRepository.settings] before — the [combine]
+     * below and the one in `init` that keeps [currentSettings] and the open directory in
+     * step. A cold `Flow` starts over for every collector, so that was two DataStore reads
+     * of the same file, two deserialisations on every change, and two orderings that had no
+     * relation to each other. Shared here, both sides see the same value at the same time.
+     *
+     * Eagerly rather than while subscribed: `init` needs the values whether or not a screen
+     * is currently listening, which is exactly what the second collector used to provide.
+     */
+    private val settings = settingsRepository.settings.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = FileManagerSettings()
+    )
+
     internal val uiState = combine(
         _uiState,
-        settingsRepository.settings
-    ) { state, settings ->
-        state.copy(settings = settings)
+        settings
+    ) { state, current ->
+        state.copy(settings = current)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -106,19 +125,19 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
 
     init {
         viewModelScope.launch {
-            settingsRepository.settings.collect { settings ->
-                applySettings(settings)
+            settings.collect { current ->
+                applySettings(current)
             }
         }
         showStorages()
     }
 
-    private fun applySettings(settings: FileManagerSettings) {
-        if (settings != currentSettings) {
+    private fun applySettings(updated: FileManagerSettings) {
+        if (updated != currentSettings) {
             navigationHandler.clearSnapshots()
         }
 
-        currentSettings = settings
+        currentSettings = updated
 
         _uiState.value.currentPath?.let { path ->
             openDirectory(path, focusedPath)

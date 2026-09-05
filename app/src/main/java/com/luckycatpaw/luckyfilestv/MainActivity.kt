@@ -33,10 +33,22 @@ class MainActivity : AppCompatActivity() {
         viewModel.resumeAfterLocalNetworkPermission()
     }
 
+    /**
+     * Whether the notification permission was already asked for in this task.
+     *
+     * Kept in the saved instance state rather than in a plain field. Android only shows the
+     * system dialog once and silently denies afterwards, so a field that resets on a
+     * configuration change or a recreation after process death turned "asked once" back
+     * into "never asked", and every trip through the transfer flow tried again — a launch
+     * that produces no dialog and no callback the user could act on.
+     */
     private var notificationPermissionRequested = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        notificationPermissionRequested =
+            savedInstanceState?.getBoolean(STATE_NOTIFICATION_PERMISSION_REQUESTED) == true
 
         viewModel = ViewModelProvider(this)[MainViewModel::class.java]
 
@@ -49,6 +61,11 @@ class MainActivity : AppCompatActivity() {
         setContent {
             MainScreen(viewModel)
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(STATE_NOTIFICATION_PERMISSION_REQUESTED, notificationPermissionRequested)
     }
 
     override fun onStart() {
@@ -105,5 +122,9 @@ class MainActivity : AppCompatActivity() {
         runCatching {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+    }
+
+    private companion object {
+        const val STATE_NOTIFICATION_PERMISSION_REQUESTED = "notificationPermissionRequested"
     }
 }

@@ -191,6 +191,7 @@
     <string name="target_read_only">Target folder is read-only.</string>
     <string name="read_only_access">Read-only access only.</string>
     <string name="path_outside_storage">Path is outside permitted storage.</string>
+    <string name="too_many_open_streams">Too many files are being read from network shares at once.</string>
     <string name="search_title_query">Search: %1$s</string>
     <string name="target_folder_missing">Target folder does not exist.</string>
     <string name="document_create_failed">Document could not be created.</string>

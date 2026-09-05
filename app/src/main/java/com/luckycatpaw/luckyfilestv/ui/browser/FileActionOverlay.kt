@@ -27,6 +27,7 @@ import androidx.tv.material3.Text
 import com.luckycatpaw.luckyfilestv.R
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import com.luckycatpaw.luckyfilestv.data.transfer.model.FileConflictPolicy
+import com.luckycatpaw.luckyfilestv.ui.common.ActionMenuOverlay
 import com.luckycatpaw.luckyfilestv.ui.common.DialogCard
 import com.luckycatpaw.luckyfilestv.ui.common.RequestInitialFocus
 import com.luckycatpaw.luckyfilestv.ui.common.TvDialogButton
@@ -35,6 +36,13 @@ import com.luckycatpaw.luckyfilestv.ui.common.TvModalDialog
 import com.luckycatpaw.luckyfilestv.ui.common.TvTextInput
 import com.luckycatpaw.luckyfilestv.util.formatBytes
 
+/**
+ * The action menu for a single browser item.
+ *
+ * Only assembles the entries; the dialog itself is [ActionMenuOverlay], which every other
+ * short list of choices in the app already uses. Building the card here a second time is how
+ * the two drifted apart in spacing before.
+ */
 @Composable
 fun ItemActionMenuOverlay(
     item: BrowserItem,
@@ -46,9 +54,8 @@ fun ItemActionMenuOverlay(
     onSelect: (() -> Unit)? = null,
     onProperties: (() -> Unit)? = null
 ) {
-    val firstFocus = remember { FocusRequester() }
-
-    // The first entry present in the menu owns the initial focus.
+    // The first entry present in the menu owns the initial focus. Cancel is not listed:
+    // ActionMenuOverlay appends it so no caller can leave the user without a way out.
     val entries = buildList {
         onSelect?.let { add(stringResource(R.string.select) to it) }
         add(stringResource(R.string.rename) to onRename)
@@ -56,35 +63,14 @@ fun ItemActionMenuOverlay(
         add(stringResource(R.string.move) to onMove)
         add(stringResource(R.string.delete) to onDelete)
         onProperties?.let { add(stringResource(R.string.properties) to it) }
-        add(stringResource(R.string.cancel) to onDismiss)
     }
 
-    TvModalDialog(onDismiss = onDismiss) {
-        DialogCard(width = 560.dp, padding = 24.dp) {
-            Text(
-                text = item.name,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            Spacer(Modifier.height(18.dp))
-
-            entries.forEachIndexed { index, (label, action) ->
-                if (index > 0) Spacer(Modifier.height(8.dp))
-                TvDialogButton(
-                    text = label,
-                    modifier = Modifier.fillMaxWidth(),
-                    focusRequester = firstFocus.takeIf { index == 0 },
-                    onClick = action
-                )
-            }
-        }
-    }
-
-    RequestInitialFocus(firstFocus, item.path)
+    ActionMenuOverlay(
+        title = item.name,
+        focusKey = item.path,
+        entries = entries,
+        onDismiss = onDismiss
+    )
 }
 
 @Composable
