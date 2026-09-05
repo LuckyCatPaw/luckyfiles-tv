@@ -109,7 +109,15 @@ class FileContentProvider : ContentProvider() {
         return descriptor
     }
 
-    override fun getType(uri: Uri): String = MimeTypes.forFileName(resolveLocation(uri).name)
+    /**
+     * `null` rather than an exception for anything this provider does not serve.
+     *
+     * The contract allows an unknown type, and [resolveLocation] throws for a URI that is
+     * malformed or points outside the offered storage. Letting that travel back through
+     * Binder turned a question the system is allowed to ask into a failure in the caller.
+     */
+    override fun getType(uri: Uri): String? =
+        runCatching { MimeTypes.forFileName(resolveLocation(uri).name) }.getOrNull()
 
     override fun query(
         uri: Uri,

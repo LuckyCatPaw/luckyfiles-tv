@@ -8,12 +8,14 @@ import android.util.LruCache
 import com.luckycatpaw.luckyfilestv.data.common.GeneratedThumbnailCache
 import com.luckycatpaw.luckyfilestv.data.provider.model.DocumentRootInfo
 import com.luckycatpaw.luckyfilestv.data.provider.model.ProviderDocumentInfo
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 
 /**
  * Single entry point for every bitmap the UI displays, and the only place in the app that
@@ -39,7 +41,18 @@ class ImageRepository private constructor(context: Context) {
         override fun sizeOf(key: String, value: Bitmap): Int = (value.byteCount / 1024).coerceAtLeast(1)
     }
 
-    private val keyLocks = Array(32) { Mutex() }
+    /**
+     * One lock per key that is currently being loaded.
+     *
+     * These used to be 32 fixed stripes, which meant two unrelated files could share one:
+     * a thumbnail waiting on a sleeping share held the stripe for the whole round trip, and
+     * every other key that hashed into it waited behind that, including ones the disk cache
+     * would have answered immediately. Entries exist only while somebody is loading and are
+     * removed by the last one out, so the map stays as small as the number of loads in
+     * flight, which the semaphore below already bounds.
+     */
+    private val keyLocks = mutableMapOf<String, KeyLock>()
+    private val keyLocksGuard = Mutex()
 
     /**
      * Keys that recently failed to produce a preview, so scrolling past a broken file does
@@ -105,26 +118,57 @@ class ImageRepository private constructor(context: Context) {
 
         if (hasFreshNegativeEntry(key)) return null
 
-        val lock = keyLocks[(key.hashCode() and Int.MAX_VALUE) % keyLocks.size]
+        val keyLock = acquireKeyLock(key)
 
-        return lock.withLock {
-            memoryCache[key]?.let { return@withLock it }
-            if (hasFreshNegativeEntry(key)) return@withLock null
+        try {
+            return keyLock.mutex.withLock {
+                memoryCache[key]?.let { return@withLock it }
+                if (hasFreshNegativeEntry(key)) return@withLock null
 
-            currentCoroutineContext().ensureActive()
+                currentCoroutineContext().ensureActive()
 
-            val result = globalLoadSemaphore.withPermit {
-                loader()
+                val result = globalLoadSemaphore.withPermit {
+                    loader()
+                }
+
+                if (result != null) {
+                    memoryCache.put(key, result)
+                } else {
+                    putNegativeEntry(key)
+                }
+
+                result
             }
-
-            if (result != null) {
-                memoryCache.put(key, result)
-            } else {
-                putNegativeEntry(key)
-            }
-
-            result
+        } finally {
+            releaseKeyLock(key, keyLock)
         }
+    }
+
+    private suspend fun acquireKeyLock(key: String): KeyLock = keyLocksGuard.withLock {
+        keyLocks.getOrPut(key) { KeyLock() }.also { it.holders++ }
+    }
+
+    /**
+     * Runs even when the caller was cancelled, which is the normal way a preview ends: the
+     * grid scrolls on and drops the request. Leaving the entry behind would turn the map
+     * into exactly the unbounded growth the negative cache was already fixed for.
+     */
+    private suspend fun releaseKeyLock(key: String, keyLock: KeyLock) {
+        withContext(NonCancellable) {
+            keyLocksGuard.withLock {
+                keyLock.holders--
+
+                if (keyLock.holders <= 0 && keyLocks[key] === keyLock) {
+                    keyLocks.remove(key)
+                }
+            }
+        }
+    }
+
+    /** @property holders callers inside or waiting for [mutex], guarded by `keyLocksGuard`. */
+    private class KeyLock {
+        val mutex = Mutex()
+        var holders = 0
     }
 
     private fun hasFreshNegativeEntry(key: String): Boolean {

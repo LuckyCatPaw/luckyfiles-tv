@@ -53,6 +53,18 @@ internal interface FileSource {
     suspend fun move(from: SourcePath, to: SourcePath): Unit =
         throw SourceException.Unsupported("Moving inside the source")
 
+    /**
+     * Whether [move] can relocate [from] to [to] without moving the data itself.
+     *
+     * Asked before a transfer starts, so that a move which will have to copy is measured up
+     * front and can show a progress bar with a total behind it. Must not cost a round trip:
+     * a source that would have to ask the server answers `false` and pays for a scan instead.
+     *
+     * `true` is a prediction, not a promise — the rename may still be refused, and the copy
+     * path takes over as it always did. `false` has to be certain.
+     */
+    suspend fun canMoveWithoutCopy(from: SourcePath, to: SourcePath): Boolean = false
+
     /** Removes a file, or a directory including its contents. */
     suspend fun delete(path: SourcePath)
 

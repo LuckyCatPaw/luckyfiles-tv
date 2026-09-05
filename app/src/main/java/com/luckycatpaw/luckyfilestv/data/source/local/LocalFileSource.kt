@@ -159,6 +159,43 @@ internal class LocalFileSource(
         }
     }
 
+    /**
+     * A rename stays inside one volume. Across two there is nothing to rename, and the
+     * caller has to copy the bytes over.
+     *
+     * Compared on canonical paths, so `/sdcard` and `/storage/emulated/0` count as the same
+     * volume. Anything this cannot establish answers `false`: measuring a tree that would
+     * not have needed it costs one walk, while the opposite puts a move on a progress bar
+     * with no total behind it.
+     */
+    override suspend fun canMoveWithoutCopy(from: SourcePath, to: SourcePath): Boolean =
+        withContext(dispatcher) {
+            if (!from.isLocal || !to.isLocal) return@withContext false
+
+            val mounted = roots()
+            val sourceVolume = volumeOf(from, mounted) ?: return@withContext false
+            val targetVolume = volumeOf(to, mounted) ?: return@withContext false
+
+            sourceVolume.path == targetVolume.path
+        }
+
+    /**
+     * The volume a location sits on, or `null` when it lies below none of them.
+     *
+     * The longest matching root wins: shared storage is mounted below the file system root,
+     * so a plain "first match" would report everything as being on the same volume.
+     */
+    private fun volumeOf(path: SourcePath, mounted: List<Volume>): Volume? {
+        // The target of a transfer does not exist yet. canonicalPath resolves the part that
+        // does and normalises the rest, which is exactly what is needed here.
+        val canonical = runCatching { path.toFile().canonicalPath }.getOrNull() ?: return null
+
+        return canonicalRoots(mounted)
+            .filterKeys { root -> FileUtil.isSameOrChildPath(root, canonical) }
+            .maxByOrNull { (root, _) -> root.length }
+            ?.value
+    }
+
     override suspend fun delete(path: SourcePath) {
         withContext(dispatcher) {
             val file = path.normalized()

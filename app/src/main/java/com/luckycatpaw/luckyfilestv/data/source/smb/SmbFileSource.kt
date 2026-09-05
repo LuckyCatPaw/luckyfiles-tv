@@ -29,6 +29,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.EnumSet
+import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -215,6 +216,19 @@ internal class SmbFileSource(
                 null
             ).use { entry -> entry.rename(destination.relativePath, false) }
         }
+    }
+
+    /**
+     * A server-side rename works inside one share and nowhere else, which is the rule
+     * [move] enforces a moment later. Resolving both locations only reads the configured
+     * shares, so the answer costs no round trip to the server.
+     */
+    override suspend fun canMoveWithoutCopy(from: SourcePath, to: SourcePath): Boolean = try {
+        resolve(from, SourceOperation.RENAME).share.sessionKey ==
+            resolve(to, SourceOperation.RENAME).share.sessionKey
+    } catch (unknown: SourceException) {
+        // A location that resolves to no configured share is not one this can rename.
+        false
     }
 
     override suspend fun delete(path: SourcePath) {
@@ -448,13 +462,16 @@ private val FileIdBothDirectoryInformation.isDirectory: Boolean
  * local rename produces.
  *
  * Reserved device names are matched on the part before the first dot, which is how Windows
- * resolves them: `NUL.txt` is the null device, not a text file.
+ * resolves them: `NUL.txt` is the null device, not a text file. The comparison is pinned to
+ * [Locale.ROOT] because the device list is a fixed set of ASCII words, and the user's locale
+ * has no say in it — a Turkish phone maps `i` to `İ` and would let a name through that the
+ * server then rejects.
  */
 private fun isAcceptedByWindows(name: String): Boolean {
     if (name.any { it in RESERVED_CHARACTERS || it.code < 0x20 }) return false
     if (name.endsWith('.') || name.endsWith(' ')) return false
 
-    return name.substringBefore('.').uppercase() !in RESERVED_DEVICE_NAMES
+    return name.substringBefore('.').uppercase(Locale.ROOT) !in RESERVED_DEVICE_NAMES
 }
 
 private const val RESERVED_CHARACTERS = "<>:\"|?*"

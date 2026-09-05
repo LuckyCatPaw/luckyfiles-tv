@@ -71,7 +71,8 @@ internal class SmbSessionPool(
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
 
-    private val client: SMBClient by lazy { SMBClient(config) }
+    private val clientHolder = lazy { SMBClient(config) }
+    private val client: SMBClient by clientHolder
     private val mutex = Mutex()
     private val pooled = mutableMapOf<String, Connecting>()
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
@@ -147,6 +148,14 @@ internal class SmbSessionPool(
         }
 
         closeAll()
+
+        // Backstop, and the reason it runs before the scope goes down: a session still
+        // shaking hands is retired by a coroutine on that scope, and cancelling it first
+        // would leave the socket underneath open for good. Closing the client takes every
+        // connection it ever made with it. Untouched when nobody ever connected, so a pool
+        // built for a connection test does not open a client just to close it again.
+        if (clientHolder.isInitialized()) runCatching { clientHolder.value.close() }
+
         scope.cancel()
     }
 
@@ -330,6 +339,7 @@ internal class SmbSessionPool(
         private val lock = Any()
         private var users = 0
         private var retired = false
+        private var closed = false
 
         val usable: Boolean
             get() = synchronized(lock) { !retired } && diskShare.isConnected
@@ -346,7 +356,11 @@ internal class SmbSessionPool(
 
         fun release() {
             val last = synchronized(lock) {
-                users--
+                // Floored rather than decremented blindly. A borrower that returns twice
+                // would otherwise drive the count below zero, at which point the session
+                // reads as idle while somebody is still reading from it.
+                if (users > 0) users--
+
                 retired && users <= 0
             }
 
@@ -364,7 +378,13 @@ internal class SmbSessionPool(
             if (idle) closeNow()
         }
 
+        /** Runs once. Retiring an idle session and returning its last lease can both land here. */
         private fun closeNow() {
+            synchronized(lock) {
+                if (closed) return
+                closed = true
+            }
+
             runCatching { diskShare.close() }
             runCatching { session.close() }
             runCatching { connection.close() }

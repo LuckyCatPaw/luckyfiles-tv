@@ -127,9 +127,12 @@ class TransferCoordinator(
                 if (
                     !sourceIsSymbolicLink &&
                     sourceIsDirectory &&
-                    localSource != null &&
-                    targetDirectory != null &&
-                    FileUtil.isSameOrChild(localSource, targetDirectory)
+                    targetIsInsideSource(
+                        localSource = localSource,
+                        localTarget = targetDirectory,
+                        source = source,
+                        target = canonicalTargetLocation
+                    )
                 ) {
                     issues += TransferIssue(
                         sourcePath = source.pathValue,
@@ -232,7 +235,12 @@ class TransferCoordinator(
 
                 val item = plannedItems[index]
 
-                if (operation == TransferOperation.MOVE) {
+                // A move inside one volume or one share is a rename: no bytes travel, and
+                // walking the tree for a number nothing displays is what made moving a large
+                // folder feel like it had stalled. Everything that will have to copy is
+                // measured here like a copy, which is what gives the progress a total that
+                // no longer grows while the transfer is already running.
+                if (operation == TransferOperation.MOVE && willRenameInPlace(item)) {
                     continue
                 }
 
@@ -342,14 +350,24 @@ class TransferCoordinator(
                                     error(appContext.getString(R.string.symbolic_links_not_supported))
                                 }
 
-                                val stats = item.source.scan()
+                                // Measured during planning unless the rename was expected to
+                                // work. What is left here is a source that changed its mind
+                                // between the two, so its size joins the total late — one
+                                // step on the bar instead of one per item.
+                                val plannedSize = item.size
 
-                                if (stats.symbolicLinkCount > 0L) {
-                                    error(appContext.getString(R.string.symbolic_links_not_supported))
+                                if (plannedSize != null) {
+                                    itemSize = plannedSize
+                                } else {
+                                    val stats = item.source.scan()
+
+                                    if (stats.symbolicLinkCount > 0L) {
+                                        error(appContext.getString(R.string.symbolic_links_not_supported))
+                                    }
+
+                                    itemSize = stats.size
+                                    totalBytes = safeAdd(totalBytes, itemSize)
                                 }
-
-                                itemSize = stats.size
-                                totalBytes = safeAdd(totalBytes, itemSize)
 
                                 targetDirectory?.let { directory ->
                                     insufficientSpaceIssue(directory, itemSize)?.let { error(it.message) }
@@ -461,6 +479,53 @@ class TransferCoordinator(
                 cause = e
             )
         }
+    }
+
+    /**
+     * Whether this item is expected to move without copying, and therefore needs no scan.
+     *
+     * The two guards in front repeat what [FileTransferEngine.tryFastMove] checks before it
+     * even asks the source, so that a prediction and the attempt behind it cannot disagree
+     * about the obvious cases. A wrong `true` is not harmful: the fallback in the transfer
+     * loop still measures the tree, it just does so late.
+     */
+    private suspend fun willRenameInPlace(item: PlannedTransfer): Boolean {
+        if (item.replace) return false
+        if (item.source.location.scheme != item.target.scheme) return false
+
+        return try {
+            sources.source(item.target).canMoveWithoutCopy(item.source.location, item.target)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (unknown: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Whether the destination lies inside the folder being transferred.
+     *
+     * Copying a directory into itself has no end: every file written into the target is a
+     * file the walk still has to visit. Locally the two sides are compared as canonical
+     * paths, so a symlinked route into the source is caught as well. A share offers nothing
+     * to canonicalise against, so the configured locations are compared as they stand —
+     * which means the same server reached under two different names (`smb://nas` and
+     * `smb://192.168.1.5`) still slips through. The depth limit in the remote walk is what
+     * stops that case, this is what turns the ordinary one into a proper message.
+     *
+     * Mixed transfers cannot contain themselves: a local folder and a share never overlap.
+     */
+    private fun targetIsInsideSource(
+        localSource: File?,
+        localTarget: File?,
+        source: TransferSource,
+        target: SourcePath
+    ): Boolean = when {
+        localSource != null && localTarget != null -> FileUtil.isSameOrChild(localSource, localTarget)
+
+        localSource == null && !target.isLocal -> target.isSameOrChildOf(source.location)
+
+        else -> false
     }
 
     private fun transferTargetFor(path: SourcePath): TransferTarget = if (path.isLocal) {

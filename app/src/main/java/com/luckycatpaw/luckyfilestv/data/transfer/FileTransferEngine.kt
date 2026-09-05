@@ -5,6 +5,7 @@ import com.luckycatpaw.luckyfilestv.R
 import com.luckycatpaw.luckyfilestv.data.common.FileTreeWalker
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeEntryType
 import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
+import com.luckycatpaw.luckyfilestv.data.source.SourceException
 import com.luckycatpaw.luckyfilestv.data.source.SourcePath
 import com.luckycatpaw.luckyfilestv.util.DirectorySync
 import java.io.BufferedOutputStream
@@ -80,6 +81,12 @@ internal class FileTransferEngine(
      * then costs no traffic at all. Everything the source refuses (another volume, another
      * share, an occupied target) falls through to the copy path, which reports a conflict
      * with a proper message.
+     *
+     * A server that is gone or a password that is wrong is not such a refusal. Both arrive
+     * as an [IOException] like the rest, and treating them as "rename cannot do this" turned
+     * a move into a full byte copy over a connection that had just failed — which then
+     * failed again, several minutes later and with a message from the copy path. They are
+     * passed on so the user sees what actually happened and can retry deliberately.
      */
     suspend fun tryFastMove(source: TransferSource, target: SourcePath, replace: Boolean): TransferItemResult? {
         currentCoroutineContext().ensureActive()
@@ -89,6 +96,10 @@ internal class FileTransferEngine(
 
         try {
             sources.source(target).move(source.location, target)
+        } catch (unreachable: SourceException.Unreachable) {
+            throw unreachable
+        } catch (unauthenticated: SourceException.AuthenticationRequired) {
+            throw unauthenticated
         } catch (ignored: IOException) {
             return null
         }

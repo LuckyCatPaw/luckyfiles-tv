@@ -10,6 +10,7 @@ import com.luckycatpaw.luckyfilestv.data.source.SourcePath
 import java.io.File
 import java.io.InputStream
 import java.nio.file.Files
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
@@ -196,13 +197,20 @@ internal sealed interface TransferSource {
             }
 
             onDirectory("", root.lastModified)
-            descend("", root.lastModified, onFile, onDirectory, onDirectoryComplete, onUnreadable)
+            descend("", 0, onFile, onDirectory, onDirectoryComplete, onUnreadable)
             onDirectoryComplete("", root.lastModified)
         }
 
+        /**
+         * @param depth levels below the root of the transfer. A share has no symbolic links,
+         *   but a DFS referral or a reparse point can still point back into a directory
+         *   already being walked, and unlike the local walker there is no canonical path to
+         *   recognise that by. The limit turns a loop that would fill the target disk into a
+         *   reported issue at a depth no real folder structure reaches.
+         */
         private suspend fun descend(
             relativePath: String,
-            lastModified: Long,
+            depth: Int,
             onFile: suspend (String, Long, Long) -> Unit,
             onDirectory: suspend (String, Long) -> Unit,
             onDirectoryComplete: suspend (String, Long) -> Unit,
@@ -210,10 +218,20 @@ internal sealed interface TransferSource {
         ) {
             currentCoroutineContext().ensureActive()
 
+            if (depth >= MAX_DEPTH) {
+                onUnreadable(childOf(relativePath).value)
+                return
+            }
+
             val source = sources.source(path)
 
             val children = try {
                 source.list(childOf(relativePath), LIST_EVERYTHING).entries
+            } catch (cancelled: CancellationException) {
+                // Stopping the transfer is not a folder that could not be read. Without this
+                // the abort is reported as an unreadable directory and the walk carries on
+                // to the next sibling before the check at the top of descend catches it.
+                throw cancelled
             } catch (unreadable: Exception) {
                 onUnreadable(childOf(relativePath).value)
                 return
@@ -224,7 +242,7 @@ internal sealed interface TransferSource {
 
                 if (child.isDirectory) {
                     onDirectory(childRelative, child.lastModified)
-                    descend(childRelative, child.lastModified, onFile, onDirectory, onDirectoryComplete, onUnreadable)
+                    descend(childRelative, depth + 1, onFile, onDirectory, onDirectoryComplete, onUnreadable)
                     onDirectoryComplete(childRelative, child.lastModified)
                 } else {
                     onFile(childRelative, child.size, child.lastModified)
@@ -236,6 +254,9 @@ internal sealed interface TransferSource {
 
             /** A copy takes everything, including what the browser hides. */
             val LIST_EVERYTHING = ListOptions(sort = SortOptions(), hideFolderJpg = false)
+
+            /** Deeper than any folder structure a user builds, shallow enough to stop a loop. */
+            const val MAX_DEPTH = 64
         }
     }
 }

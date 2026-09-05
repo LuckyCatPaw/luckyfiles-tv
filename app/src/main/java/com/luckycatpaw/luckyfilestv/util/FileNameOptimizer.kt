@@ -70,22 +70,6 @@ object FileNameOptimizer {
     private val nameSeparatorsRegex = Regex("""[._]+""")
     private val whitespaceRegex = Regex("""\s+""")
 
-    private val knownVideoExtensions = setOf(
-        "avi",
-        "mkv",
-        "mp4",
-        "m4v",
-        "mov",
-        "webm",
-        "mpeg",
-        "mpg",
-        "ts",
-        "m2ts",
-        "wmv",
-        "flv",
-        "vob"
-    )
-
     fun optimize(fileName: String): String {
         if (fileName.isBlank()) return fileName
 
@@ -186,12 +170,19 @@ object FileNameOptimizer {
 
     private fun Int.toEpisodeNumber(): String = coerceAtLeast(0).toString().padStart(length = 2, padChar = '0')
 
+    /**
+     * Strips the container extension so the release name behind it can be read.
+     *
+     * The list is [MimeTypes.VIDEO_EXTENSIONS], not a copy of it: the two sets were
+     * identical down to the order, and a format added for previews or for the mime type
+     * would silently have kept its extension in the displayed name.
+     */
     private fun removeKnownVideoExtension(fileName: String): String {
         val lastDot = fileName.lastIndexOf('.')
         if (lastDot <= 0 || lastDot >= fileName.lastIndex) return fileName
 
         val extension = fileName.substring(lastDot + 1).lowercase(Locale.ROOT)
-        return if (extension in knownVideoExtensions) {
+        return if (extension in MimeTypes.VIDEO_EXTENSIONS) {
             fileName.substring(0, lastDot)
         } else {
             fileName

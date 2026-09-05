@@ -30,20 +30,23 @@ import kotlinx.coroutines.withContext
 class GeneratedThumbnailCache private constructor(context: Context) {
 
     private val appContext = context.applicationContext
-    private val appVersionCode = runCatching {
-        appContext.packageManager
-            .getPackageInfo(appContext.packageName, 0)
-            .longVersionCode
-    }.getOrDefault(0L)
 
     private val baseDirectory = File(
         appContext.cacheDir,
         CACHE_ROOT_DIRECTORY
     )
 
+    /**
+     * Named after the cache format, not after the app version.
+     *
+     * It used to carry the version code as well, which meant every update threw the whole
+     * cache away and a large library re-decoded every video frame it had already produced.
+     * A new build does not change what a thumbnail looks like — [CACHE_SCHEMA_VERSION] does,
+     * and it has to be raised by hand whenever the generation or the encoding changes.
+     */
     private val currentDirectory = File(
         baseDirectory,
-        "app_${appVersionCode}_schema_$CACHE_SCHEMA_VERSION"
+        "schema_$CACHE_SCHEMA_VERSION"
     )
 
     private val maintenanceThreadFactory = ThreadFactory { runnable ->
@@ -67,7 +70,7 @@ class GeneratedThumbnailCache private constructor(context: Context) {
     init {
         currentDirectory.mkdirs()
         maintenanceExecutor.execute {
-            deleteOldAppVersionCaches()
+            deleteOutdatedCaches()
             pruneDiskCache()
         }
     }
@@ -119,20 +122,46 @@ class GeneratedThumbnailCache private constructor(context: Context) {
             return null
         }
 
-        file.setLastModified(System.currentTimeMillis())
+        touch(file)
         return bitmap
     }
 
-    private fun writeToDisk(hashedKey: String, bitmap: Bitmap) {
+    /**
+     * Marks an entry as recently used, at most once per [TOUCH_INTERVAL_MILLIS].
+     *
+     * The timestamp is the only thing [pruneDiskCache] sorts on, so it has to be kept up to
+     * date — but writing it on every hit meant a metadata write per tile while the grid was
+     * being scrolled. The interval is far shorter than the time between two prunes, so the
+     * order they are evicted in does not change; what disappears is the write.
+     *
+     * A stamp in the future comes from a clock that has since been corrected and would
+     * otherwise survive every prune, so it is pulled back to now.
+     */
+    private fun touch(file: File) {
+        val now = System.currentTimeMillis()
+        val stamped = file.lastModified()
+
+        if (stamped in (now - TOUCH_INTERVAL_MILLIS)..now) return
+
+        file.setLastModified(now)
+    }
+
+    /**
+     * @return `true` when enough entries were written that the size limit is worth checking
+     *   again. Deliberately reported rather than acted on: the caller already owns the
+     *   maintenance thread, so pruning from there needs no second task and cannot be turned
+     *   away by a full queue.
+     */
+    private fun writeToDisk(hashedKey: String, bitmap: Bitmap): Boolean {
         if (!currentDirectory.exists() && !currentDirectory.mkdirs()) {
-            return
+            return false
         }
 
         val target = cacheFile(hashedKey)
 
         if (target.isFile) {
-            target.setLastModified(System.currentTimeMillis())
-            return
+            touch(target)
+            return false
         }
 
         val temporary = File(
@@ -194,21 +223,10 @@ class GeneratedThumbnailCache private constructor(context: Context) {
 
         if (!success) {
             temporary.delete()
-            return
+            return false
         }
 
-        if (
-            writesSinceMaintenance.incrementAndGet() >=
-            MAINTENANCE_WRITE_INTERVAL
-        ) {
-            writesSinceMaintenance.set(0)
-            try {
-                maintenanceExecutor.execute {
-                    pruneDiskCache()
-                }
-            } catch (_: RejectedExecutionException) {
-            }
-        }
+        return writesSinceMaintenance.incrementAndGet() >= MAINTENANCE_WRITE_INTERVAL
     }
 
     private fun scheduleDiskWrite(hashedKey: String, bitmap: Bitmap) {
@@ -218,13 +236,22 @@ class GeneratedThumbnailCache private constructor(context: Context) {
 
         try {
             maintenanceExecutor.execute {
-                try {
+                val maintenanceDue = try {
                     writeToDisk(
                         hashedKey = hashedKey,
                         bitmap = bitmap
                     )
                 } finally {
                     pendingDiskWrites.remove(hashedKey)
+                }
+
+                // In this task rather than in one of its own. The executor has a single
+                // thread and a bounded queue, so a submitted prune would have run here
+                // anyway — except while the queue was full, which is exactly when the cache
+                // is growing fastest and the prune was silently dropped instead.
+                if (maintenanceDue) {
+                    writesSinceMaintenance.set(0)
+                    pruneDiskCache()
                 }
             }
         } catch (_: RejectedExecutionException) {
@@ -237,7 +264,14 @@ class GeneratedThumbnailCache private constructor(context: Context) {
         "$hashedKey.jpg"
     )
 
-    private fun deleteOldAppVersionCaches() {
+    /**
+     * Removes every cache directory that is not the current one.
+     *
+     * Two kinds end up here: a raised [CACHE_SCHEMA_VERSION], and the per-app-version
+     * directories earlier builds created. The latter are swept up once, on the first start
+     * after the update that stopped writing them.
+     */
+    private fun deleteOutdatedCaches() {
         if (!baseDirectory.exists()) {
             baseDirectory.mkdirs()
             return
@@ -340,6 +374,7 @@ class GeneratedThumbnailCache private constructor(context: Context) {
         private const val CACHE_BUDGET_RATIO_OF_FREE_SPACE = 0.02
         private const val TARGET_CACHE_RATIO = 0.85
         private const val THUMBNAIL_RESERVE_BYTES_ESTIMATE = 512L * 1024L
+        private const val TOUCH_INTERVAL_MILLIS = 12L * 60L * 60L * 1000L
 
         @Volatile
         private var instance: GeneratedThumbnailCache? = null
