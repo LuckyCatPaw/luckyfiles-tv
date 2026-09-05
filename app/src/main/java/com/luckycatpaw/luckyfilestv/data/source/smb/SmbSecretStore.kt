@@ -3,6 +3,7 @@ package com.luckycatpaw.luckyfilestv.data.source.smb
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -19,17 +20,27 @@ import javax.crypto.spec.GCMParameterSpec
  */
 internal class SmbSecretStore {
 
+    private val keyLock = Any()
+
     private val keyStore: KeyStore by lazy {
         KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
     }
 
-    fun encrypt(value: String): String {
+    /**
+     * @throws SecretStoreException when the keystore refuses to work, e.g. on a device whose
+     *   secure hardware is in a bad state. Typed rather than let through raw: this runs
+     *   inside the transaction that saves a share, so the caller has to be able to tell the
+     *   user their password was not stored instead of showing a provider's own wording.
+     */
+    fun encrypt(value: String): String = try {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, key())
 
         val encrypted = cipher.doFinal(value.toByteArray(StandardCharsets.UTF_8))
 
-        return Base64.encodeToString(cipher.iv + encrypted, Base64.NO_WRAP)
+        Base64.encodeToString(cipher.iv + encrypted, Base64.NO_WRAP)
+    } catch (failure: Exception) {
+        throw SecretStoreException(failure)
     }
 
     /** `null` when the stored value cannot be read, e.g. after the key was invalidated. */
@@ -42,8 +53,16 @@ internal class SmbSecretStore {
         String(cipher.doFinal(raw, IV_LENGTH, raw.size - IV_LENGTH), StandardCharsets.UTF_8)
     }.getOrNull()
 
-    private fun key(): SecretKey =
+    /**
+     * Looking up and creating the key are one step.
+     *
+     * Two threads finding no key at the same time both generated one, and the second
+     * generation replaces the alias — which leaves everything the first one encrypted in the
+     * meantime permanently unreadable. Saving several shares at once is enough to hit it.
+     */
+    private fun key(): SecretKey = synchronized(keyLock) {
         (keyStore.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry)?.secretKey ?: createKey()
+    }
 
     private fun createKey(): SecretKey = KeyGenerator
         .getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
@@ -70,3 +89,11 @@ internal class SmbSecretStore {
         const val IV_LENGTH = 12
     }
 }
+
+/**
+ * The keystore could not encrypt a password, so nothing was saved.
+ *
+ * Deliberately without a message of its own: a provider's wording ("Keystore operation
+ * failed") is not something to put in front of the user, so the caller supplies the text.
+ */
+internal class SecretStoreException(cause: Throwable) : IOException(null, cause)

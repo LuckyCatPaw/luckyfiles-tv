@@ -37,10 +37,11 @@ import kotlinx.coroutines.runBlocking
 /**
  * Windows shares.
  *
- * Single operations — create a folder, rename, delete — go straight to the server. What is
- * still missing is the transfer layer writing here: it assumes local semantics for that,
- * with replacement transactions and an fsync on the parent directory, and neither exists
- * over SMB in that form.
+ * Single operations — create a folder, rename, delete — go straight to the server, and so
+ * does writing: a transfer to a share streams through [openOutput]. What a share cannot
+ * offer is the durability the local side has. There is no fsync for a remote directory and
+ * the server decides for itself when it commits, so a copy here has no replacement
+ * transaction behind it and a failed one leaves a partial file for the cleanup to remove.
  */
 internal class SmbFileSource(
     private val shares: SmbShareStore,
@@ -73,7 +74,7 @@ internal class SmbFileSource(
     override suspend fun list(path: SourcePath, options: ListOptions): DirectoryListing {
         val target = resolve(path, SourceOperation.LIST)
 
-        val entries = execute(SourceOperation.LIST, path, target) { diskShare ->
+        val entries = execute(SourceOperation.LIST, path, target, SmbCallKind.IDEMPOTENT) { diskShare ->
             diskShare.list(target.relativePath)
                 .asSequence()
                 .filterNot { it.fileName == CURRENT_DIRECTORY || it.fileName == PARENT_DIRECTORY }
@@ -97,7 +98,9 @@ internal class SmbFileSource(
         val target = resolve(path, SourceOperation.READ)
 
         return try {
-            execute(SourceOperation.READ, path, target) { diskShare -> diskShare.entryAt(path, target.relativePath) }
+            execute(SourceOperation.READ, path, target, SmbCallKind.IDEMPOTENT) { diskShare ->
+                diskShare.entryAt(path, target.relativePath)
+            }
         } catch (missing: SourceException.NotFound) {
             null
         }
@@ -150,7 +153,7 @@ internal class SmbFileSource(
         val created = parent.child(cleanName)
         val target = resolve(created, SourceOperation.CREATE_DIRECTORY)
 
-        execute(SourceOperation.CREATE_DIRECTORY, created, target) { diskShare ->
+        execute(SourceOperation.CREATE_DIRECTORY, created, target, SmbCallKind.MUTATING) { diskShare ->
             if (diskShare.folderExists(target.relativePath) || diskShare.fileExists(target.relativePath)) {
                 throw SourceException.AlreadyExists(cleanName)
             }
@@ -170,7 +173,7 @@ internal class SmbFileSource(
         val source = resolve(path, SourceOperation.RENAME)
         val destination = resolve(renamed, SourceOperation.RENAME)
 
-        execute(SourceOperation.RENAME, path, source) { diskShare ->
+        execute(SourceOperation.RENAME, path, source, SmbCallKind.MUTATING) { diskShare ->
             diskShare.open(
                 source.relativePath,
                 EnumSet.of(AccessMask.DELETE, AccessMask.GENERIC_READ),
@@ -202,7 +205,7 @@ internal class SmbFileSource(
             throw SourceException.Unsupported("Moving between shares")
         }
 
-        execute(SourceOperation.RENAME, from, source) { diskShare ->
+        execute(SourceOperation.RENAME, from, source, SmbCallKind.MUTATING) { diskShare ->
             diskShare.open(
                 source.relativePath,
                 EnumSet.of(AccessMask.DELETE, AccessMask.GENERIC_READ),
@@ -217,7 +220,7 @@ internal class SmbFileSource(
     override suspend fun delete(path: SourcePath) {
         val target = resolve(path, SourceOperation.DELETE)
 
-        execute(SourceOperation.DELETE, path, target) { diskShare ->
+        execute(SourceOperation.DELETE, path, target, SmbCallKind.MUTATING) { diskShare ->
             if (diskShare.folderExists(target.relativePath)) {
                 diskShare.rmdir(target.relativePath, true)
             } else {
@@ -226,11 +229,23 @@ internal class SmbFileSource(
         }
     }
 
+    /**
+     * The returned stream outlives this call, so it holds the session itself.
+     *
+     * Without the lease the pool would consider the share free again the moment the stream
+     * exists, and a network change during a long copy would close it underneath the writer.
+     */
     override suspend fun openOutput(path: SourcePath, overwrite: Boolean): OutputStream {
-        val target = resolve(path, SourceOperation.WRITE)
+        // Checked here as well as in the rename and folder paths, because a copy reaches a
+        // share with a name the local side was happy with. Without this the user gets the
+        // server's status code for a file called "Season 1: Pilot.mkv".
+        validName(path.name, forDirectory = false)
 
-        return execute(SourceOperation.WRITE, path, target) { diskShare ->
-            val remoteFile = diskShare.openFile(
+        val target = resolve(path, SourceOperation.WRITE)
+        val lease = lease(SourceOperation.WRITE, path, target)
+
+        return mapping(SourceOperation.WRITE, path, target, onFailure = lease::close) {
+            val remoteFile = lease.diskShare.openFile(
                 target.relativePath,
                 EnumSet.of(AccessMask.GENERIC_WRITE),
                 null,
@@ -251,7 +266,11 @@ internal class SmbFileSource(
                     try {
                         super.close()
                     } finally {
-                        remoteFile.close()
+                        try {
+                            remoteFile.close()
+                        } finally {
+                            lease.close()
+                        }
                     }
                 }
             }
@@ -279,7 +298,9 @@ internal class SmbFileSource(
             val current = pending.removeFirst()
 
             val children = try {
-                execute(SourceOperation.PROPERTIES, path, target) { diskShare -> diskShare.list(current) }
+                execute(SourceOperation.PROPERTIES, path, target, SmbCallKind.IDEMPOTENT) { diskShare ->
+                    diskShare.list(current)
+                }
             } catch (denied: SourceException.AccessDenied) {
                 unreadable++
                 continue
@@ -308,16 +329,48 @@ internal class SmbFileSource(
         )
     }
 
+    /**
+     * @param kind whether the pool may repeat [block] on a fresh session when the transport
+     *   drops mid-call. Everything that writes has to say so, see [SmbCallKind].
+     */
     private suspend fun <T> execute(
         operation: SourceOperation,
         path: SourcePath,
         target: SmbTarget,
+        kind: SmbCallKind,
         block: (DiskShare) -> T
     ): T = try {
-        sessions.withShare(target.share, block)
+        sessions.withShare(target.share, kind, block)
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (error: Throwable) {
+        throw error.toSourceException(operation, path, target.share.host)
+    }
+
+    /** Borrows a session for something that keeps working after this call returns. */
+    private suspend fun lease(
+        operation: SourceOperation,
+        path: SourcePath,
+        target: SmbTarget
+    ): SmbShareLease = mapping(operation, path, target) { sessions.lease(target.share) }
+
+    /**
+     * Runs [block] with the same error vocabulary [execute] produces, and hands anything
+     * already borrowed back before the failure leaves the source.
+     */
+    private inline fun <T> mapping(
+        operation: SourceOperation,
+        path: SourcePath,
+        target: SmbTarget,
+        onFailure: () -> Unit = {},
+        block: () -> T
+    ): T = try {
+        block()
+    } catch (cancelled: CancellationException) {
+        onFailure()
+        throw cancelled
+    } catch (error: Throwable) {
+        onFailure()
         throw error.toSourceException(operation, path, target.share.host)
     }
 
@@ -335,9 +388,14 @@ internal class SmbFileSource(
         return SmbTarget(share = share, relativePath = segments.drop(1).joinToString(SEPARATOR))
     }
 
-    private fun validName(name: String, forDirectory: Boolean): String =
-        runCatching { FileUtil.validateFileName(name) }
+    private fun validName(name: String, forDirectory: Boolean): String {
+        val clean = runCatching { FileUtil.validateFileName(name) }
             .getOrElse { throw SourceException.InvalidName(name, forDirectory) }
+
+        if (!isAcceptedByWindows(clean)) throw SourceException.InvalidName(name, forDirectory)
+
+        return clean
+    }
 
     private fun DiskShare.entryAt(path: SourcePath, relativePath: String): FileEntry {
         val information = getFileInformation(relativePath)
@@ -383,6 +441,30 @@ private val FileIdBothDirectoryInformation.isDirectory: Boolean
     get() = (fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) != 0L
 
 /**
+ * Whether a Windows server will take this name.
+ *
+ * SMB inherits the Win32 rules, and breaking them fails at the server with a status code
+ * that means nothing to the user. Rejecting the name here turns it into the same message a
+ * local rename produces.
+ *
+ * Reserved device names are matched on the part before the first dot, which is how Windows
+ * resolves them: `NUL.txt` is the null device, not a text file.
+ */
+private fun isAcceptedByWindows(name: String): Boolean {
+    if (name.any { it in RESERVED_CHARACTERS || it.code < 0x20 }) return false
+    if (name.endsWith('.') || name.endsWith(' ')) return false
+
+    return name.substringBefore('.').uppercase() !in RESERVED_DEVICE_NAMES
+}
+
+private const val RESERVED_CHARACTERS = "<>:\"|?*"
+
+private val RESERVED_DEVICE_NAMES: Set<String> =
+    setOf("CON", "PRN", "AUX", "NUL") +
+        (1..9).map { "COM$it" } +
+        (1..9).map { "LPT$it" }
+
+/**
  * Open handle on a share.
  *
  * Reopens itself when the session underneath disappears. A file played by another app is
@@ -397,7 +479,13 @@ private class SmbRandomAccessSource(
     private val sessions: SmbSessionPool
 ) : RandomAccessSource {
 
-    private var handle: File? = null
+    /**
+     * Handle and lease belong together and are always swapped as a pair: reads arrive on the
+     * descriptor's thread while a reopen may run on a coroutine, and a half-replaced pair
+     * would either read from a closed handle or leak the session behind it.
+     */
+    private val lock = Any()
+    private var open: OpenHandle? = null
 
     override val size: Long by lazy {
         withHandle { it.fileInformation.standardInformation.endOfFile }
@@ -406,18 +494,32 @@ private class SmbRandomAccessSource(
     override fun read(fileOffset: Long, destination: ByteArray, destinationOffset: Int, length: Int): Int =
         withHandle { it.read(destination, fileOffset, destinationOffset, length) }.coerceAtLeast(0)
 
-    suspend fun openSuspending(): File = handle ?: sessions
-        .withShare(share) { diskShare ->
-            diskShare.openFile(
-                relativePath,
-                EnumSet.of(AccessMask.GENERIC_READ),
-                null,
-                SMB2ShareAccess.ALL,
-                SMB2CreateDisposition.FILE_OPEN,
-                null
+    suspend fun openSuspending(): File {
+        current()?.let { return it.file }
+
+        // The handle stays open for as long as the film lasts, so the session has to be
+        // held for that time rather than returned after the open.
+        val lease = sessions.lease(share)
+
+        val opened = try {
+            OpenHandle(
+                lease = lease,
+                file = lease.diskShare.openFile(
+                    relativePath,
+                    EnumSet.of(AccessMask.GENERIC_READ),
+                    null,
+                    SMB2ShareAccess.ALL,
+                    SMB2CreateDisposition.FILE_OPEN,
+                    null
+                )
             )
+        } catch (failure: Throwable) {
+            lease.close()
+            throw failure
         }
-        .also { handle = it }
+
+        return install(opened).file
+    }
 
     /**
      * Blocking variant for the reopen during a read.
@@ -425,26 +527,46 @@ private class SmbRandomAccessSource(
      * Reads arrive on the descriptor's own thread, which is not a coroutine and exists to be
      * blocked. Only that path uses this.
      */
-    private fun open(): File = handle ?: runBlocking { openSuspending() }
+    private fun openBlocking(): File = current()?.file ?: runBlocking { openSuspending() }
 
-    override fun close() {
-        runCatching { handle?.close() }
-        handle = null
-    }
+    override fun close() = discard()
 
     /** One retry on a fresh handle; a second failure is a real one and reaches the caller. */
     private fun <T> withHandle(block: (File) -> T): T = try {
-        block(open())
+        block(openBlocking())
     } catch (dropped: SMBRuntimeException) {
         discard()
-        block(open())
+        block(openBlocking())
     } catch (dropped: IOException) {
         discard()
-        block(open())
+        block(openBlocking())
+    }
+
+    private fun current(): OpenHandle? = synchronized(lock) { open }
+
+    /** Keeps whichever handle got there first, so a race opens no second session. */
+    private fun install(opened: OpenHandle): OpenHandle {
+        val installed = synchronized(lock) {
+            open ?: opened.also { open = it }
+        }
+
+        if (installed !== opened) opened.close()
+
+        return installed
     }
 
     private fun discard() {
-        runCatching { handle?.close() }
-        handle = null
+        synchronized(lock) { open.also { open = null } }?.close()
+    }
+
+    private class OpenHandle(private val lease: SmbShareLease, val file: File) {
+
+        fun close() {
+            try {
+                runCatching { file.close() }
+            } finally {
+                lease.close()
+            }
+        }
     }
 }

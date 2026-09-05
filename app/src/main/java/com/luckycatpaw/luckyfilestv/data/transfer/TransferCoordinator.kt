@@ -8,6 +8,9 @@ import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeCycleException
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeOutsideRootException
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeReadException
 import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
+import com.luckycatpaw.luckyfilestv.data.source.SourceException
+import com.luckycatpaw.luckyfilestv.data.source.SourceMessages
+import com.luckycatpaw.luckyfilestv.data.source.SourceOperation
 import com.luckycatpaw.luckyfilestv.data.source.SourcePath
 import com.luckycatpaw.luckyfilestv.data.transfer.model.FileConflictPolicy
 import com.luckycatpaw.luckyfilestv.data.transfer.model.TransferCancelledException
@@ -40,6 +43,7 @@ class TransferCoordinator(
     }
 
     private val appContext = context.applicationContext
+    private val sourceMessages = SourceMessages(appContext)
     private val transferEngine by lazy {
         FileTransferEngine(
             context = appContext,
@@ -611,6 +615,15 @@ class TransferCoordinator(
         is FileTreeOutsideRootException ->
             appContext.getString(R.string.unsafe_file_tree)
 
+        // A source phrases its failures for the log: "Access denied during WRITE:
+        // smb://nas/media". SourceMessages is the single place that turns one into a
+        // sentence, and it reads the operation off the exception itself — the one passed
+        // here only covers the shapes that carry none.
+        is SourceException ->
+            sourceMessages.localize(error, SourceOperation.WRITE)
+
+        // Everything the transfer layer raises itself is already localised, e.g. the
+        // "already exists" the engine throws when a target appeared underneath it.
         else ->
             error.message
                 ?.takeIf { it.isNotBlank() }

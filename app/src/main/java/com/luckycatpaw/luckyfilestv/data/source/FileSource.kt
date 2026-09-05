@@ -7,8 +7,7 @@ import java.io.InputStream
 import java.io.OutputStream
 
 /**
- * A place files can be browsed and changed in: on-device storage today, a network share
- * later.
+ * A place files can be browsed and changed in: on-device storage and Windows shares.
  *
  * Implementations are stateless towards the caller and free of Android UI concerns. They
  * signal failures with [SourceException] so that a single mapper produces the user visible

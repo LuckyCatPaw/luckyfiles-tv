@@ -62,13 +62,9 @@ internal fun ShareEditorOverlay(
 
     var host by remember(existing) { mutableStateOf(existing?.host.orEmpty()) }
     var shareName by remember(existing) { mutableStateOf(existing?.name.orEmpty()) }
-    var user by remember(existing) {
-        mutableStateOf((existing?.credentials as? SmbCredentials.Password)?.user.orEmpty())
-    }
+    var user by remember(existing) { mutableStateOf(existing?.credentials.accountName()) }
     var password by remember(existing) { mutableStateOf("") }
-    var domain by remember(existing) {
-        mutableStateOf((existing?.credentials as? SmbCredentials.Password)?.domain.orEmpty())
-    }
+    var domain by remember(existing) { mutableStateOf(existing?.credentials.accountDomain()) }
     var displayName by remember(existing) { mutableStateOf(existing?.displayName.orEmpty()) }
     var guest by remember(existing) { mutableStateOf(existing?.credentials is SmbCredentials.Guest) }
     var advanced by remember { mutableStateOf(false) }
@@ -337,6 +333,22 @@ private fun Field(
  *   display name falls back to the share name, and an empty password on an existing share
  *   keeps the stored one instead of clearing it.
  */
+/**
+ * Account of a stored share, also when its password could not be decrypted: the user then
+ * only has to supply the password again instead of every field.
+ */
+private fun SmbCredentials?.accountName(): String = when (this) {
+    is SmbCredentials.Password -> user
+    is SmbCredentials.Unreadable -> user
+    else -> ""
+}
+
+private fun SmbCredentials?.accountDomain(): String = when (this) {
+    is SmbCredentials.Password -> domain.orEmpty()
+    is SmbCredentials.Unreadable -> domain.orEmpty()
+    else -> ""
+}
+
 private fun buildShare(
     existing: SmbShare?,
     host: String,

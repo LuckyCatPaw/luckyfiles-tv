@@ -267,7 +267,18 @@ internal fun <T : Any> TvBrowserScaffold(
 
     LaunchedEffect(itemKeys, focusKey, focusRequestKey, columnCount, focusEnabled) {
         val explicitRequest = focusRequestKey != servedFocusRequestKey
-        servedFocusRequestKey = focusRequestKey
+
+        // Spent only once it can be acted on.
+        //
+        // After creating a folder the request arrives naming that folder, while the listing
+        // that contains it is still one reload away — so the first pass cannot serve it and
+        // parks focus in the header. Marking the request served there made the *next* pass,
+        // the one that could have served it, look like an ordinary reload, and an ordinary
+        // reload loses against a header that counts as the deliberate focus owner. Focus
+        // then stayed up there with no grid index to return to.
+        if (explicitRequest && focusEnabled && (focusKey == null || explicitFocusIndex >= 0)) {
+            servedFocusRequestKey = focusRequestKey
+        }
 
         focusState.applyInitialFocus(
             targetIndex = requestedFocusIndex(),

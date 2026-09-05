@@ -8,7 +8,6 @@ import android.util.LruCache
 import com.luckycatpaw.luckyfilestv.data.common.GeneratedThumbnailCache
 import com.luckycatpaw.luckyfilestv.data.provider.model.DocumentRootInfo
 import com.luckycatpaw.luckyfilestv.data.provider.model.ProviderDocumentInfo
-import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
@@ -41,7 +40,17 @@ class ImageRepository private constructor(context: Context) {
     }
 
     private val keyLocks = Array(32) { Mutex() }
-    private val negativeCache = ConcurrentHashMap<String, Long>()
+
+    /**
+     * Keys that recently failed to produce a preview, so scrolling past a broken file does
+     * not retry it on every pass.
+     *
+     * Bounded. As an unbounded map it grew by one entry for every file the user scrolled
+     * past and only shrank when the same key came up again, which on a one-way walk through
+     * a large folder never happens. Evicting the least recently used entry costs nothing:
+     * after [NEGATIVE_TTL_MILLIS] it would be thrown away on the next read anyway.
+     */
+    private val negativeCache = LruCache<String, Long>(NEGATIVE_CACHE_ENTRIES)
     private val globalLoadSemaphore = Semaphore(4)
 
     /**
@@ -56,7 +65,7 @@ class ImageRepository private constructor(context: Context) {
             level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND ||
                 level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL -> {
                 memoryCache.evictAll()
-                negativeCache.clear()
+                negativeCache.evictAll()
             }
 
             level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW ->
@@ -119,22 +128,26 @@ class ImageRepository private constructor(context: Context) {
     }
 
     private fun hasFreshNegativeEntry(key: String): Boolean {
-        val expiresAt = negativeCache[key] ?: return false
+        val expiresAt = negativeCache.get(key) ?: return false
         return if (expiresAt > SystemClock.elapsedRealtime()) {
             true
         } else {
-            negativeCache.remove(key, expiresAt)
+            negativeCache.remove(key)
             false
         }
     }
 
     private fun putNegativeEntry(key: String) {
-        negativeCache[key] = SystemClock.elapsedRealtime() + 30_000L
+        negativeCache.put(key, SystemClock.elapsedRealtime() + NEGATIVE_TTL_MILLIS)
     }
 
     companion object {
         private const val MIN_MEMORY_CACHE_KB = 8 * 1024
         private const val MAX_MEMORY_CACHE_KB = 48 * 1024
+
+        /** Roughly a dozen screens of a grid, at a key and a timestamp per entry. */
+        private const val NEGATIVE_CACHE_ENTRIES = 256
+        private const val NEGATIVE_TTL_MILLIS = 30_000L
 
         @Volatile
         private var instance: ImageRepository? = null

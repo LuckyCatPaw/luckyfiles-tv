@@ -28,7 +28,18 @@ internal class FileSourceRegistry(private val sources: List<FileSource>) {
     /** Entry points of every source, in registration order: local storage first. */
     suspend fun roots(): List<Volume> = sources.flatMap { it.roots() }
 
-    suspend fun volumeAt(path: SourcePath): Volume? = roots().firstOrNull { it.path == path }
+    /**
+     * Only the source that owns the location is asked.
+     *
+     * Navigation calls this several times per screen, and going through every source meant a
+     * step inside local storage also read and decrypted the configured shares. An unknown
+     * scheme has no volume rather than an exception: this answers a question, it does not
+     * perform an operation.
+     */
+    suspend fun volumeAt(path: SourcePath): Volume? = sources
+        .firstOrNull { it.id == path.scheme }
+        ?.roots()
+        ?.firstOrNull { it.path == path }
 
     suspend fun isRoot(path: SourcePath): Boolean = volumeAt(path) != null
 

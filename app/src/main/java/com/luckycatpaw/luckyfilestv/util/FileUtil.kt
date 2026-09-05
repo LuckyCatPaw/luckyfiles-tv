@@ -64,8 +64,18 @@ object FileUtil {
     /**
      * Checks if child is same as or a descendant of parent.
      */
-    fun isSameOrChildPath(parentPath: String, childPath: String): Boolean =
-        childPath == parentPath || childPath.startsWith(parentPath + File.separator)
+    /**
+     * The separator is appended only when [parentPath] does not already end in one, because
+     * the filesystem root is its own separator: `"/" + "/"` produced `"//"`, which nothing
+     * starts with, so every path came back as being outside `/`.
+     */
+    fun isSameOrChildPath(parentPath: String, childPath: String): Boolean {
+        if (childPath == parentPath) return true
+
+        val prefix = if (parentPath.endsWith(File.separatorChar)) parentPath else parentPath + File.separator
+
+        return childPath.startsWith(prefix)
+    }
 
     /**
      * Checks if child is same as or a descendant of parent.

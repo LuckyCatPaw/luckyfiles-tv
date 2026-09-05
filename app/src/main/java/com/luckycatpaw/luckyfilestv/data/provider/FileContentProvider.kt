@@ -13,6 +13,7 @@ import android.provider.OpenableColumns
 import android.util.Base64
 import com.luckycatpaw.luckyfilestv.R
 import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
+import com.luckycatpaw.luckyfilestv.data.source.RandomAccessSource
 import com.luckycatpaw.luckyfilestv.data.source.SourcePath
 import com.luckycatpaw.luckyfilestv.util.MimeTypes
 import java.io.File
@@ -54,15 +55,32 @@ class FileContentProvider : ContentProvider() {
             return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
         }
 
-        val storageManager = requireNotNull(context).getSystemService(StorageManager::class.java)
-
         val handle = try {
             runBlocking { sources.source(location).openRandomAccess(location) }
         } catch (failure: Exception) {
             throw FileNotFoundException(failure.message ?: location.value)
         }
 
-        RemoteAccessService.descriptorOpened()
+        // From here the handle belongs to the descriptor, which closes it on release. If it
+        // never gets that far, nobody else will: the source has to be closed here.
+        return try {
+            proxyDescriptor(handle)
+        } catch (failure: Throwable) {
+            runCatching { handle.close() }
+            throw failure
+        }
+    }
+
+    /**
+     * Wraps a source in a descriptor another app can read from.
+     *
+     * The reader thread and the foreground service are counted as strictly as the handle:
+     * a failure in here used to leave a live thread behind and a service that never learned
+     * its reader was gone, so the ongoing notification stayed up for the rest of the session.
+     */
+    private fun proxyDescriptor(handle: RandomAccessSource): ParcelFileDescriptor {
+        val appContext = requireNotNull(context).applicationContext
+        val storageManager = appContext.getSystemService(StorageManager::class.java)
 
         // A thread per descriptor, not one for all of them. Every read on it is a blocking
         // request to the server, so a shared thread would put a player and the thumbnails of
@@ -70,14 +88,25 @@ class FileContentProvider : ContentProvider() {
         // playback for as long as it takes.
         val readerThread = HandlerThread("share-reader-${readerThreads.incrementAndGet()}").apply { start() }
 
-        return storageManager.openProxyFileDescriptor(
-            ParcelFileDescriptor.MODE_READ_ONLY,
-            SourceProxyFileDescriptor(handle) {
-                readerThread.quitSafely()
-                RemoteAccessService.descriptorClosed(requireNotNull(context).applicationContext)
-            },
-            Handler(readerThread.looper)
-        )
+        val descriptor = try {
+            storageManager.openProxyFileDescriptor(
+                ParcelFileDescriptor.MODE_READ_ONLY,
+                SourceProxyFileDescriptor(handle) {
+                    readerThread.quitSafely()
+                    RemoteAccessService.descriptorClosed(appContext)
+                },
+                Handler(readerThread.looper)
+            )
+        } catch (failure: Throwable) {
+            readerThread.quitSafely()
+            throw failure
+        }
+
+        // Counted once the descriptor exists, not before: the release callback that takes
+        // the count down again cannot run any earlier, so there is nothing to undo.
+        RemoteAccessService.descriptorOpened()
+
+        return descriptor
     }
 
     override fun getType(uri: Uri): String = MimeTypes.forFileName(resolveLocation(uri).name)

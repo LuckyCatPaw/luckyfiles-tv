@@ -12,6 +12,7 @@ import java.io.FileNotFoundException
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
+import java.nio.file.attribute.BasicFileAttributes
 import java.util.ArrayDeque
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -103,7 +104,9 @@ class FileTreeWalker {
                 continue
             }
 
-            if (Files.isSymbolicLink(file.toPath())) {
+            val attributes = attributesOf(file)
+
+            if (attributes?.isSymbolicLink == true) {
                 onEntry(
                     file.toEntry(
                         relativePath = frame.relativePath,
@@ -113,20 +116,29 @@ class FileTreeWalker {
                 continue
             }
 
+            // Also the path for an entry that vanished between the listing and now: there is
+            // nothing to descend into, and reporting it as an empty file is what a separate
+            // `isDirectory` call used to produce.
+            if (attributes?.isDirectory != true) {
+                onEntry(
+                    file.toEntry(
+                        relativePath = frame.relativePath,
+                        type = FileTreeEntryType.FILE,
+                        size = attributes?.size() ?: 0L
+                    )
+                )
+                continue
+            }
+
+            // Resolved for directories only, because only descending can leave the tree. A
+            // symbolic link is recognised above and never followed, so a plain entry inside
+            // an already contained directory cannot point anywhere else — and paying a
+            // `realpath` for every one of fifty thousand files to learn that is what made a
+            // properties scan slow.
             val canonical = file.canonicalFile
 
             if (!FileUtil.isSameOrChildPath(rootCanonical.path, canonical.path)) {
                 throw FileTreeOutsideRootException(file)
-            }
-
-            if (!canonical.isDirectory) {
-                onEntry(
-                    canonical.toEntry(
-                        relativePath = frame.relativePath,
-                        type = FileTreeEntryType.FILE
-                    )
-                )
-                continue
             }
 
             if (!visitedDirectories.add(canonical.path)) {
@@ -202,20 +214,34 @@ class FileTreeWalker {
         )
     }
 
-    private fun File.toEntry(relativePath: String, type: FileTreeEntryType): FileTreeEntry {
-        val size = when (type) {
-            FileTreeEntryType.FILE -> length().coerceAtLeast(0L)
-            FileTreeEntryType.SYMBOLIC_LINK -> 0L
-            FileTreeEntryType.DIRECTORY -> 0L
-        }
-
-        return FileTreeEntry(
-            file = this,
-            relativePath = relativePath,
-            type = type,
-            size = size
-        )
+    /**
+     * Type and size of an entry in a single `lstat`.
+     *
+     * The walk used to ask three times per entry — [Files.isSymbolicLink], `isDirectory` and
+     * `length` — plus a `realpath`, and a directory of fifty thousand files pays each of
+     * those fifty thousand times.
+     *
+     * @return `null` when the entry could not be read at all, which is not worth aborting a
+     *   scan over: files disappear while a tree is being walked.
+     */
+    private fun attributesOf(file: File): BasicFileAttributes? = try {
+        Files.readAttributes(file.toPath(), BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+    } catch (_: IOException) {
+        null
+    } catch (_: SecurityException) {
+        null
     }
+
+    private fun File.toEntry(
+        relativePath: String,
+        type: FileTreeEntryType,
+        size: Long = 0L
+    ): FileTreeEntry = FileTreeEntry(
+        file = this,
+        relativePath = relativePath,
+        type = type,
+        size = if (type == FileTreeEntryType.FILE) size.coerceAtLeast(0L) else 0L
+    )
 
     private fun safeAdd(first: Long, second: Long): Long = if (Long.MAX_VALUE - first < second) {
         Long.MAX_VALUE

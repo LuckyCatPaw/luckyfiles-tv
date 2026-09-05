@@ -10,10 +10,10 @@ import com.luckycatpaw.luckyfilestv.util.DirectorySync
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.IOException
+import java.lang.ref.SoftReference
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.util.UUID
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -171,7 +171,7 @@ internal class FileTransferEngine(
         var copiedBytes = 0L
         var lastUpdateNanos = 0L
         var targetOwned = false
-        val copyBuffer = ByteArray(COPY_BUFFER_SIZE)
+        val copyBuffer = CopyBuffers.acquire()
 
         try {
             check(!target.exists()) {
@@ -267,16 +267,16 @@ internal class FileTransferEngine(
 
             onBytesCopied(totalBytes)
             target.flush()
-        } catch (e: CancellationException) {
-            if (targetOwned) {
-                deleteForCleanup(target)
-            }
-            throw e
         } catch (e: Exception) {
+            // Cancellation lands here too — it is an Exception — and wants the same thing: a
+            // half written target is not something to leave behind, whether the copy failed
+            // or the user stopped it.
             if (targetOwned) {
                 deleteForCleanup(target)
             }
             throw e
+        } finally {
+            CopyBuffers.release(copyBuffer)
         }
     }
 
@@ -311,8 +311,33 @@ internal class FileTransferEngine(
         return if (total > 0L) result.coerceAtMost(total) else result
     }
 
+    /**
+     * Hands out the buffer a copy reads through, one item at a time.
+     *
+     * A megabyte is the right size for one large file and a lot of garbage for five hundred
+     * small ones, because a buffer used to be allocated per item. Items are copied in
+     * sequence, so a single buffer serves the whole run; the lock is there for the case of
+     * two transfers overlapping, and next to opening and closing a file it costs nothing.
+     *
+     * Held softly so an idle app gives the megabyte back under memory pressure. Losing it
+     * costs one allocation on the next copy.
+     */
+    private object CopyBuffers {
+
+        private const val SIZE = 1024 * 1024
+
+        private var pooled: SoftReference<ByteArray>? = null
+
+        fun acquire(): ByteArray = synchronized(this) {
+            pooled?.get()?.also { pooled = null }
+        } ?: ByteArray(SIZE)
+
+        fun release(buffer: ByteArray) {
+            synchronized(this) { pooled = SoftReference(buffer) }
+        }
+    }
+
     companion object {
-        private const val COPY_BUFFER_SIZE = 1024 * 1024
         private const val PROGRESS_UPDATE_NANOS = 100_000_000L
     }
 }

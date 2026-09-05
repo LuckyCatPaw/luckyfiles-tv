@@ -65,10 +65,16 @@ internal class TvFileGridFocusState internal constructor(private var itemCount: 
     val indices: IntRange
         get() = 0 until itemCount
 
-    internal fun requesterAt(index: Int): FocusRequester {
-        require(index in indices)
-        return requesters.getOrPut(index) { FocusRequester() }
-    }
+    /**
+     * The requester for a composed item.
+     *
+     * No range check. The index comes from the grid iterating the list it is rendering, so
+     * it is authoritative, while [itemCount] here is a copy that can be one composition
+     * behind. Rejecting the index on that basis turned a bookkeeping mismatch into a dead
+     * process; an entry that should not exist is removed by [release] on dispose anyway.
+     */
+    internal fun requesterAt(index: Int): FocusRequester =
+        requesters.getOrPut(index) { FocusRequester() }
 
     internal fun register(index: Int, requester: FocusRequester) {
         requesters[index] = requester
@@ -150,9 +156,16 @@ internal fun rememberTvFileGridFocusState(itemKeys: List<*>, key: Any? = Unit): 
         TvFileGridFocusState(itemKeys.size)
     }
 
-    androidx.compose.runtime.SideEffect {
-        state.updateItemCount(itemKeys.size)
-    }
+    // Applied during composition, not from a SideEffect.
+    //
+    // The state survives a change of the list — that is the point of keying it on the grid
+    // rather than on the items — and the grid composes the entries of the *new* list in the
+    // same pass. A SideEffect runs only once that pass is over, so every item beyond the old
+    // count was composed against a stale range. Refreshing a directory that had grown was
+    // enough to hit it.
+    //
+    // itemCount is a plain field, so writing it here invalidates nothing and cannot recurse.
+    state.updateItemCount(itemKeys.size)
 
     return state
 }

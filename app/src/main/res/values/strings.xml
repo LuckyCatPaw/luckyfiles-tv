@@ -192,7 +192,6 @@
     <string name="read_only_access">Read-only access only.</string>
     <string name="path_outside_storage">Path is outside permitted storage.</string>
     <string name="search_title_query">Search: %1$s</string>
-    <string name="target_folder_create_failed">Target folder could not be created.</string>
     <string name="target_folder_missing">Target folder does not exist.</string>
     <string name="document_create_failed">Document could not be created.</string>
     <string name="target_folder_parent_missing">Target folder is missing.</string>
@@ -229,6 +228,7 @@
     <string name="transfer_stopped_time_limit">Transfer stopped. Android limits background transfers to six hours per day. Open LuckyFiles TV to start the remaining files again.</string>
     <string name="transfer_stopped_no_foreground">Transfer could not be started. The daily limit for background transfers is used up. Open LuckyFiles TV and try again later.</string>
     <string name="share_authentication_failed">Sign-in to the share failed. Please check the username and password.</string>
+    <string name="share_password_not_stored">The password could not be stored securely, so the share was not saved.</string>
     <string name="menu">Menu</string>
     <string name="share_add_title">Add share</string>
     <string name="share_edit_title">Edit share</string>

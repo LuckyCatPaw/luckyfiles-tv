@@ -117,13 +117,21 @@ internal class BrowserFocusState<K> internal constructor(
         }
     }
 
+    /**
+     * Moves focus from the header back into the grid, e.g. on D-pad down.
+     *
+     * Falls back to the first entry when no index is remembered. Without that the header is
+     * a dead end whenever the grid was never focused or its index was reset — pressing down
+     * simply did nothing, with no way out short of leaving the directory.
+     */
     fun restoreGridFocus(enabled: Boolean = true) {
         if (!enabled) return
 
         val index = when {
             selectedIndex in gridFocusState.indices -> selectedIndex
             focusedIndex in gridFocusState.indices -> focusedIndex
-            else -> -1
+            gridFocusState.indices.isEmpty() -> -1
+            else -> 0
         }
 
         if (index < 0) return
@@ -244,7 +252,11 @@ internal class BrowserFocusState<K> internal constructor(
         val requester = headerRequester()
         if (requester != null) {
             activeFocusArea = BrowserFocusArea.HEADER
-            headerFocusIsExplicit = true
+            // Not explicit. This is the fallback for "the grid had nowhere to put focus",
+            // which is the very case the flag exists to tell apart from a deliberate D-pad
+            // up. Claiming it here made a later run — once the grid does have a target —
+            // hand focus straight back to the header.
+            headerFocusIsExplicit = false
             withFrameNanos { }
             runCatching { requester.requestFocus() }
         }

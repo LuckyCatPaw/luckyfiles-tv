@@ -24,7 +24,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -350,11 +349,19 @@ internal fun <T> TvFileGrid(
                     isSelected,
                     onClick,
                     onFocused,
-                    Modifier
-                        .focusRequester(requester)
-                        .focusProperties {
-                            canFocus = enabled
-                        }
+                    // Deliberately no `canFocus = enabled`.
+                    //
+                    // Every overlay is a Dialog in its own window, so while one is up this
+                    // grid cannot receive input at all — the key handler above swallows
+                    // whatever might still arrive. Taking focusability away from the item
+                    // that currently holds focus bought nothing and cost the scroll
+                    // position: Compose has to re-target focus the moment its node stops
+                    // being focusable, and the node it settles on is pulled into view.
+                    //
+                    // Left focusable, the item simply keeps focus behind the dialog and has
+                    // it back when the dialog closes. The highlight still disappears in the
+                    // meantime, because `isSelected` below stays gated on `enabled`.
+                    Modifier.focusRequester(requester)
                 )
 
                 if (isMarked(item)) {

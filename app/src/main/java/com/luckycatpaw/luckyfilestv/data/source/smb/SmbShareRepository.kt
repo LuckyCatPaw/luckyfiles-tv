@@ -27,8 +27,23 @@ internal class SmbShareRepository(
     private val secrets: SmbSecretStore = SmbSecretStore()
 ) : SmbShareStore {
 
+    /**
+     * Last decoded document, kept so reading the shares stays cheap.
+     *
+     * Every single call against a share resolves it through this list first, so copying a
+     * folder used to parse the JSON and run one keystore decryption per file. The document
+     * is the cache key, which means a change to the stored value invalidates it by itself
+     * and no write has to remember to.
+     *
+     * The decrypted passwords live here for as long as the process does. That is no worse
+     * than before — every [SmbShare] handed to the session pool already carries one — but
+     * it is the reason this cache is not shared beyond the repository.
+     */
+    @Volatile
+    private var decoded: DecodedShares? = null
+
     val shares: Flow<List<SmbShare>> = context.smbDataStore.data.map { preferences ->
-        preferences[SHARES]?.let(::decode).orEmpty().ifEmpty { ConfiguredSmbShares.compiledIn }
+        preferences[SHARES]?.let(::decodeCached).orEmpty()
     }
 
     override suspend fun shares(): List<SmbShare> = shares.first()
@@ -47,9 +62,19 @@ internal class SmbShareRepository(
 
     private suspend fun update(transform: (List<SmbShare>) -> List<SmbShare>) {
         context.smbDataStore.edit { preferences ->
-            val current = preferences[SHARES]?.let(::decode).orEmpty()
+            val current = preferences[SHARES]?.let(::decodeCached).orEmpty()
             preferences[SHARES] = encode(transform(current))
         }
+    }
+
+    private fun decodeCached(stored: String): List<SmbShare> {
+        decoded
+            ?.takeIf { it.document == stored }
+            ?.let { return it.shares }
+
+        val shares = decode(stored)
+        decoded = DecodedShares(document = stored, shares = shares)
+        return shares
     }
 
     private fun encode(shares: List<SmbShare>): String {
@@ -77,6 +102,14 @@ internal class SmbShareRepository(
             .put(USER, credentials.user)
             .put(DOMAIN, credentials.domain.orEmpty())
             .put(SECRET, secrets.encrypt(credentials.password))
+
+        // Written back exactly as it was read. Editing one share rewrites the whole
+        // document, and a secret that is unreadable today must not be lost because of it.
+        is SmbCredentials.Unreadable -> JSONObject()
+            .put(TYPE, PASSWORD)
+            .put(USER, credentials.user)
+            .put(DOMAIN, credentials.domain.orEmpty())
+            .put(SECRET, credentials.storedSecret)
     }
 
     /** A stored document that cannot be read must not take the share list with it. */
@@ -98,14 +131,29 @@ internal class SmbShareRepository(
 
     private fun decodeCredentials(entry: JSONObject): SmbCredentials = when (entry.getString(TYPE)) {
         GUEST -> SmbCredentials.Guest
-        PASSWORD -> SmbCredentials.Password(
-            user = entry.getString(USER),
-            password = secrets.decrypt(entry.getString(SECRET)).orEmpty(),
-            domain = entry.optString(DOMAIN).takeIf { it.isNotBlank() }
-        )
-
+        PASSWORD -> decodePassword(entry)
         else -> SmbCredentials.Anonymous
     }
+
+    /**
+     * A secret that will not decrypt does not become an empty password.
+     *
+     * The share stays in the list and keeps its account name; what is missing is asked for
+     * in the editor. Dropping the entry instead would make the share disappear without a
+     * word, and an empty password would be a failed login against a real account.
+     */
+    private fun decodePassword(entry: JSONObject): SmbCredentials {
+        val user = entry.getString(USER)
+        val domain = entry.optString(DOMAIN).takeIf { it.isNotBlank() }
+        val stored = entry.getString(SECRET)
+
+        val password = secrets.decrypt(stored)
+            ?: return SmbCredentials.Unreadable(user = user, domain = domain, storedSecret = stored)
+
+        return SmbCredentials.Password(user = user, password = password, domain = domain)
+    }
+
+    private class DecodedShares(val document: String, val shares: List<SmbShare>)
 
     private companion object {
         val SHARES = stringPreferencesKey("shares")

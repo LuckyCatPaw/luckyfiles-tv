@@ -25,6 +25,7 @@ import java.io.RandomAccessFile
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.LinkOption
+import java.nio.file.attribute.BasicFileAttributes
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -52,6 +53,9 @@ internal class LocalFileSource(
         cheapMetadata = true,
         requiresNetwork = false
     )
+
+    @Volatile
+    private var canonicalRoots: CanonicalRoots? = null
 
     override suspend fun roots(): List<Volume> = volumes.volumes()
 
@@ -210,25 +214,63 @@ internal class LocalFileSource(
      * everywhere else. Resolving the volumes once here replaces the per-volume `realpath`
      * the title lookup used to run in the UI layer.
      */
+    /**
+     * The name a directory is shown under, which is the volume label at a storage root.
+     *
+     * Resolving every volume to its canonical path used to happen on each directory change,
+     * and inside a subdirectory none of them ever matched, so the work was spent in full
+     * before falling through to the plain name. The resolved roots are now built once per
+     * volume snapshot instead.
+     */
     private suspend fun displayName(path: SourcePath, canonical: File): String {
-        volumes.volumes()
-            .firstOrNull { volume ->
-                volume.path == path ||
-                    runCatching { volume.path.toFile().canonicalPath }.getOrNull() == canonical.path
-            }
-            ?.let { return it.name }
+        val mounted = volumes.volumes()
+
+        mounted.firstOrNull { it.path == path }?.let { return it.name }
+        canonicalRoots(mounted)[canonical.path]?.let { return it.name }
 
         return path.name.ifBlank { path.value }
     }
 
+    /**
+     * Storage roots by canonical path.
+     *
+     * Keyed on the snapshot's identity: [LocalVolumeRepository] hands out the same list
+     * until the mounts change, so a new instance is exactly the signal to resolve again.
+     */
+    private fun canonicalRoots(mounted: List<Volume>): Map<String, Volume> {
+        canonicalRoots
+            ?.takeIf { it.mounted === mounted }
+            ?.let { return it.byCanonicalPath }
+
+        val resolved = mounted.associateBy { volume ->
+            runCatching { volume.path.toFile().canonicalPath }.getOrDefault(volume.path.value)
+        }
+
+        canonicalRoots = CanonicalRoots(mounted, resolved)
+        return resolved
+    }
+
+    /**
+     * One stat per entry instead of three.
+     *
+     * `isDirectory`, `length` and `lastModified` each cost their own syscall on [File], and
+     * a listing pays all of them for every child. Links are followed, as they were before:
+     * a symlink to a folder opens as a folder in the browser. A dangling one reads as an
+     * empty file with no date, which is what the three separate calls returned as well.
+     */
     private fun File.toEntry(readSize: Boolean): FileEntry {
-        val directory = isDirectory
+        val attributes = runCatching {
+            Files.readAttributes(toPath(), BasicFileAttributes::class.java)
+        }.getOrNull()
+
+        val directory = attributes?.isDirectory == true
+
         return FileEntry(
             path = SourcePath.of(this),
             name = name,
             isDirectory = directory,
-            size = if (readSize && !directory) length() else 0L,
-            lastModified = lastModified()
+            size = if (readSize && !directory) attributes?.size()?.coerceAtLeast(0L) ?: 0L else 0L,
+            lastModified = attributes?.lastModifiedTime()?.toMillis() ?: 0L
         )
     }
 
@@ -243,6 +285,8 @@ internal class LocalFileSource(
      * then relocate the target instead of the link itself. The caller also planned conflicts
      * against exactly this path, so silently pointing somewhere else would be unchecked.
      */
+    private class CanonicalRoots(val mounted: List<Volume>, val byCanonicalPath: Map<String, Volume>)
+
     private fun SourcePath.normalized(): File = toFile().toPath().toAbsolutePath().normalize().toFile()
 
     private fun SourcePath.canonical(operation: SourceOperation): File = try {

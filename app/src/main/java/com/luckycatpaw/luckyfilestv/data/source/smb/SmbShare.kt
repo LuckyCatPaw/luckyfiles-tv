@@ -51,12 +51,31 @@ internal sealed interface SmbCredentials {
     }
 
     /**
-     * Password stays a [String] for now because it comes from a hard coded test share. Once
-     * the configuration UI lands this becomes a `CharArray` that can be cleared, held by an
-     * encrypted store rather than by the model.
+     * Password stays a [String] for now. Making it a `CharArray` that can be cleared only
+     * pays off once nothing else copies it on the way here, which the JSON decoding in the
+     * store still does.
      */
     data class Password(val user: String, val password: String, val domain: String? = null) : SmbCredentials {
         override val identity: String get() = if (domain.isNullOrBlank()) user else "$domain\\$user"
+    }
+
+    /**
+     * A stored password that could not be decrypted, e.g. after the keystore key was
+     * invalidated.
+     *
+     * Deliberately its own case rather than an empty [Password]: logging in with a blank
+     * password is a failed attempt against a real account, and a NAS that counts those locks
+     * the user out of far more than this app. The account name survives so the editor can
+     * ask for the password alone, and [storedSecret] is kept unchanged so rewriting the
+     * share list — which happens whenever any other share is edited — does not throw the
+     * ciphertext away over what may have been a temporary failure.
+     */
+    data class Unreadable(
+        val user: String,
+        val domain: String?,
+        val storedSecret: String
+    ) : SmbCredentials {
+        override val identity: String get() = "unreadable"
     }
 }
 
@@ -64,16 +83,4 @@ internal sealed interface SmbCredentials {
 internal fun interface SmbShareStore {
 
     suspend fun shares(): List<SmbShare>
-}
-
-/**
- * Shares compiled into the build.
- *
- * A stopgap for trying a server out while the editor does not exist yet: it is only used
- * when nothing has been configured on the device. Once a share has been added through the
- * UI this list is ignored, and it disappears entirely with the editor.
- */
-internal object ConfiguredSmbShares {
-
-    val compiledIn: List<SmbShare> = emptyList()
 }

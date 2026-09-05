@@ -18,6 +18,7 @@ import com.luckycatpaw.luckyfilestv.data.source.SourceOperation
 import com.luckycatpaw.luckyfilestv.data.source.Volume
 import com.luckycatpaw.luckyfilestv.data.source.VolumeKind
 import com.luckycatpaw.luckyfilestv.data.source.local.LocalVolumeRepository
+import com.luckycatpaw.luckyfilestv.data.source.smb.SecretStoreException
 import com.luckycatpaw.luckyfilestv.data.source.smb.SmbFileSource
 import com.luckycatpaw.luckyfilestv.data.source.smb.SmbSessionPool
 import com.luckycatpaw.luckyfilestv.data.source.smb.SmbShare
@@ -334,7 +335,16 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
         viewModelScope.launch {
             runCatching { smbShareRepository.save(share) }
                 .onSuccess { showStorages() }
-                .onFailure { reportFailure(it, R.string.error_generic) }
+                .onFailure { failure ->
+                    reportFailure(
+                        failure,
+                        if (failure is SecretStoreException) {
+                            R.string.share_password_not_stored
+                        } else {
+                            R.string.error_generic
+                        }
+                    )
+                }
         }
     }
 
