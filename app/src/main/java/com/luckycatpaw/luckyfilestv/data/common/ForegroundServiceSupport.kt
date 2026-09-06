@@ -12,8 +12,7 @@ import androidx.annotation.StringRes
 private const val LOG_TAG = "ForegroundService"
 
 /** The notification manager, which both services reach for on every notification they post. */
-internal fun Context.notificationManager(): NotificationManager =
-    getSystemService(NotificationManager::class.java)
+internal fun Context.notificationManager(): NotificationManager = getSystemService(NotificationManager::class.java)
 
 /**
  * Creates the channel if it is not there yet.

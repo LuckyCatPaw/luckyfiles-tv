@@ -93,8 +93,7 @@ internal sealed interface TransferTarget {
 
             override fun write(byte: Int) = delegate.write(byte)
 
-            override fun write(buffer: ByteArray, offset: Int, length: Int) =
-                delegate.write(buffer, offset, length)
+            override fun write(buffer: ByteArray, offset: Int, length: Int) = delegate.write(buffer, offset, length)
 
             override fun close() {
                 try {

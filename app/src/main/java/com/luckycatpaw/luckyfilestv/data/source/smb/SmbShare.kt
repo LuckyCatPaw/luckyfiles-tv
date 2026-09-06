@@ -84,11 +84,7 @@ internal sealed interface SmbCredentials {
      * share list — which happens whenever any other share is edited — does not throw the
      * ciphertext away over what may have been a temporary failure.
      */
-    data class Unreadable(
-        val user: String,
-        val domain: String?,
-        val storedSecret: String
-    ) : SmbCredentials {
+    data class Unreadable(val user: String, val domain: String?, val storedSecret: String) : SmbCredentials {
         override val identity: String get() = "unreadable"
 
         /** The stored value is ciphertext rather than a secret, but nothing needs it in a log. */

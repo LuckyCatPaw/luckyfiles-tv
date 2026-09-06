@@ -115,8 +115,7 @@ internal class TvFileGridFocusState internal constructor(private var itemCount: 
      * behind. Rejecting the index on that basis turned a bookkeeping mismatch into a dead
      * process; an entry that should not exist is removed by [release] on dispose anyway.
      */
-    internal fun requesterAt(index: Int): FocusRequester =
-        requesters.getOrPut(index) { FocusRequester() }
+    internal fun requesterAt(index: Int): FocusRequester = requesters.getOrPut(index) { FocusRequester() }
 
     internal fun register(index: Int, requester: FocusRequester) {
         requesters[index] = requester

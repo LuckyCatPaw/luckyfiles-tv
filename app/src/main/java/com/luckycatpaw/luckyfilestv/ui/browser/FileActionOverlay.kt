@@ -26,7 +26,6 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.luckycatpaw.luckyfilestv.R
-import com.luckycatpaw.luckyfilestv.ui.theme.AppShapes
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import com.luckycatpaw.luckyfilestv.data.transfer.model.FileConflictPolicy
 import com.luckycatpaw.luckyfilestv.ui.common.ActionMenuOverlay
@@ -36,6 +35,7 @@ import com.luckycatpaw.luckyfilestv.ui.common.TvDialogButton
 import com.luckycatpaw.luckyfilestv.ui.common.TvLoadingSpinner
 import com.luckycatpaw.luckyfilestv.ui.common.TvModalDialog
 import com.luckycatpaw.luckyfilestv.ui.common.TvTextInput
+import com.luckycatpaw.luckyfilestv.ui.theme.AppShapes
 import com.luckycatpaw.luckyfilestv.util.formatBytes
 
 /**

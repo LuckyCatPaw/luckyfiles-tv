@@ -2,7 +2,6 @@ package com.luckycatpaw.luckyfilestv.data.common
 
 import android.content.Context
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -10,11 +9,13 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.pdf.PdfRenderer
 import android.media.MediaMetadataRetriever
+import android.net.Uri
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.graphics.createBitmap
+import androidx.core.graphics.get
 import androidx.core.graphics.scale
 import com.luckycatpaw.luckyfilestv.data.provider.FileContentProvider
 import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
@@ -100,17 +101,16 @@ internal object LocalThumbnailDecoder {
     }
 
     /**
-     * Decodes a preview without caching anything. Both the in-memory and the disk cache live
-     * in [com.luckycatpaw.luckyfilestv.data.repository.ImageRepository] and
-     * [GeneratedThumbnailCache]; this object is only ever called on a cache miss.
-     */
-    /**
      * Decodes a preview, wherever the file lives.
      *
      * One path for every source. The decoders read through the app's own content provider,
      * which hands out a plain descriptor for a local file and a proxy for a remote one — so
      * a video on a share is seeked into rather than downloaded, and both end up choosing
      * their frame the same way. An APK is the exception: its icon needs an installable path.
+     *
+     * Nothing is cached here. Both caches sit in
+     * [com.luckycatpaw.luckyfilestv.data.repository.ImageRepository] and
+     * [GeneratedThumbnailCache], so every call that arrives is already a miss.
      */
     suspend fun decode(context: Context, type: String, path: String): Bitmap? {
         if (type == "apk") {
@@ -207,10 +207,7 @@ internal object LocalThumbnailDecoder {
 
         for (x in 0 until steps) {
             for (y in 0 until steps) {
-                val pixel = getPixel(
-                    (width - 1) * x / (steps - 1),
-                    (height - 1) * y / (steps - 1)
-                )
+                val pixel = this[(width - 1) * x / (steps - 1), (height - 1) * y / (steps - 1)]
 
                 total += android.graphics.Color.red(pixel) +
                     android.graphics.Color.green(pixel) +

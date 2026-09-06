@@ -362,11 +362,8 @@ internal class SmbFileSource(
     }
 
     /** Borrows a session for something that keeps working after this call returns. */
-    private suspend fun lease(
-        operation: SourceOperation,
-        path: SourcePath,
-        target: SmbTarget
-    ): SmbShareLease = mapping(operation, path, target) { sessions.lease(target.share) }
+    private suspend fun lease(operation: SourceOperation, path: SourcePath, target: SmbTarget): SmbShareLease =
+        mapping(operation, path, target) { sessions.lease(target.share) }
 
     /**
      * Runs [block] with the same error vocabulary [execute] produces, and hands anything

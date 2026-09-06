@@ -506,9 +506,7 @@ class TransferCoordinator(
         target: SourcePath
     ): Boolean = when {
         localSource != null && localTarget != null -> FileUtil.isSameOrChild(localSource, localTarget)
-
         localSource == null && !target.isLocal -> target.isSameOrChildOf(source.location)
-
         else -> false
     }
 

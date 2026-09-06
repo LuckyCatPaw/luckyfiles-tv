@@ -69,8 +69,7 @@ value class SourcePath private constructor(val value: String) {
         }
 
     /** Location of [name] inside this directory. */
-    fun child(name: String): SourcePath =
-        SourcePath(if (value.endsWith('/')) value + name else value + '/' + name)
+    fun child(name: String): SourcePath = SourcePath(if (value.endsWith('/')) value + name else value + '/' + name)
 
     /** Location of [name] next to this entry, `null` at the root of a source. */
     fun sibling(name: String): SourcePath? = parent?.child(name)

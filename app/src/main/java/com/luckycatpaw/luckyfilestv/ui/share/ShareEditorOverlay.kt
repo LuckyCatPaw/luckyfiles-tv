@@ -328,11 +328,6 @@ private fun Field(
 }
 
 /**
- * @return the share to store, or `null` when host or share name are missing. An empty
- *   display name falls back to the share name, and an empty password on an existing share
- *   keeps the stored one instead of clearing it.
- */
-/**
  * Account of a stored share, also when its password could not be decrypted: the user then
  * only has to supply the password again instead of every field.
  */
@@ -348,6 +343,11 @@ private fun SmbCredentials?.accountDomain(): String = when (this) {
     else -> ""
 }
 
+/**
+ * @return the share to store, or `null` when host or share name are missing. An empty
+ *   display name falls back to the share name, and an empty password on an existing share
+ *   keeps the stored one instead of clearing it.
+ */
 private fun buildShare(
     existing: SmbShare?,
     host: String,

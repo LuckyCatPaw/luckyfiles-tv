@@ -36,7 +36,6 @@ class FileContentProvider : ContentProvider() {
         FileSourceRegistry.create(requireNotNull(context).applicationContext)
     }
 
-
     /**
      * Reader threads currently alive, and the running number their names are built from.
      *

@@ -1,0 +1,32 @@
+version: 2
+
+updates:
+  # The dependency freshness checks in app/lint.xml are set to informational, so
+  # a new upstream release shows up in the lint report but never fails a build.
+  # This is where acting on them belongs instead.
+  #
+  # Everything is collapsed into a single group on purpose: one pull request a
+  # month with every update in it, rather than a stream of individual ones. The
+  # trade-off is that a single bad update blocks the rest until it is pinned or
+  # dropped from the branch.
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 1
+    groups:
+      all-dependencies:
+        patterns:
+          - "*"
+
+  # The action pins in ci.yml move maybe twice a year. Monthly and grouped is
+  # more than enough to keep them from going stale.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 1
+    groups:
+      all-actions:
+        patterns:
+          - "*"
