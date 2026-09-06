@@ -13,12 +13,23 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
+ * The mounted volumes, as the one thing a file source needs from them.
+ *
+ * Narrow on purpose: [LocalVolumeRepository] also watches for mount changes and caches, none
+ * of which a source cares about. Mirrors `SmbShareStore`, which does the same for shares.
+ */
+internal fun interface LocalVolumes {
+
+    suspend fun volumes(): List<Volume>
+}
+
+/**
  * The volumes the platform has mounted.
  *
  * All of them come from the system, so none of them carries a [Volume.actions] entry: the
  * user can neither reconfigure internal storage nor remove a USB stick from within the app.
  */
-internal class LocalVolumeRepository(private val context: Context) {
+internal class LocalVolumeRepository(private val context: Context) : LocalVolumes {
 
     private val storageManager: StorageManager =
         context.getSystemService(StorageManager::class.java)
@@ -37,7 +48,7 @@ internal class LocalVolumeRepository(private val context: Context) {
     @Volatile
     private var cachedVolumes: CachedVolumes? = null
 
-    suspend fun volumes(): List<Volume> = withContext(Dispatchers.IO) {
+    override suspend fun volumes(): List<Volume> = withContext(Dispatchers.IO) {
         volumesSync()
     }
 

@@ -11,8 +11,8 @@ import com.luckycatpaw.luckyfilestv.data.common.model.FileProperties
 import com.luckycatpaw.luckyfilestv.data.common.model.FileSortMode
 import com.luckycatpaw.luckyfilestv.data.repository.FileRepository
 import com.luckycatpaw.luckyfilestv.data.repository.SettingsRepository
+import com.luckycatpaw.luckyfilestv.data.source.AndroidSourceMessages
 import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
-import com.luckycatpaw.luckyfilestv.data.source.SourceMessages
 import com.luckycatpaw.luckyfilestv.data.source.SourceOperation
 import com.luckycatpaw.luckyfilestv.data.source.Volume
 import com.luckycatpaw.luckyfilestv.data.source.VolumeKind
@@ -50,9 +50,10 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
     private val volumeRepository = LocalVolumeRepository(appContext)
     private val smbShareRepository = SmbShareRepository(appContext)
     private val settingsRepository = SettingsRepository(appContext)
+    private val sourceMessages = AndroidSourceMessages(appContext)
     private val fileRepository = FileRepository(
-        context = appContext,
-        sources = FileSourceRegistry.create(appContext, volumeRepository, fileTreeWalker, smbShareRepository)
+        sources = FileSourceRegistry.create(appContext, volumeRepository, fileTreeWalker, smbShareRepository),
+        messages = sourceMessages
     )
 
     private val _uiState = MutableStateFlow(MainUiState())
@@ -405,7 +406,7 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
             result
                 .onSuccess { onResult(true, appContext.getString(R.string.share_test_success)) }
                 .onFailure { error ->
-                    onResult(false, SourceMessages(appContext).localize(error, SourceOperation.LIST))
+                    onResult(false, sourceMessages.localize(error, SourceOperation.LIST))
                 }
         }
     }

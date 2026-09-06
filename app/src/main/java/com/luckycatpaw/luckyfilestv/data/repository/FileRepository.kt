@@ -1,6 +1,5 @@
 package com.luckycatpaw.luckyfilestv.data.repository
 
-import android.content.Context
 import android.util.Log
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
 import com.luckycatpaw.luckyfilestv.data.common.model.FileManagerSettings
@@ -25,9 +24,7 @@ internal data class DirectoryContent(val items: List<BrowserItem>, val title: St
  * knowledge about paths, threading and error wording sits below this class; adding a network
  * source changes nothing here.
  */
-internal class FileRepository(context: Context, private val sources: FileSourceRegistry) {
-
-    private val messages = SourceMessages(context)
+internal class FileRepository(private val sources: FileSourceRegistry, private val messages: SourceMessages) {
 
     /** Entry points of all sources: mounted volumes today, network shares later. */
     suspend fun roots(): List<BrowserItem.Storage> = sources.roots().map(BrowserItem::Storage)

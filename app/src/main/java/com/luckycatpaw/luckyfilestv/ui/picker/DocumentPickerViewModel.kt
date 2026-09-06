@@ -15,6 +15,7 @@ import com.luckycatpaw.luckyfilestv.data.repository.DocumentsProviderRepository
 import com.luckycatpaw.luckyfilestv.data.repository.FileRepository
 import com.luckycatpaw.luckyfilestv.data.repository.LocalFileSearchRepository
 import com.luckycatpaw.luckyfilestv.data.repository.SettingsRepository
+import com.luckycatpaw.luckyfilestv.data.source.AndroidSourceMessages
 import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
 import com.luckycatpaw.luckyfilestv.data.source.local.LocalVolumeRepository
 import com.luckycatpaw.luckyfilestv.ui.common.BrowserCoordinator
@@ -57,7 +58,10 @@ internal class DocumentPickerViewModel(application: Application) : AndroidViewMo
     private val volumeRepository = LocalVolumeRepository(appContext)
     private val settingsRepository = SettingsRepository(appContext)
     private val documentsRepository = DocumentsProviderRepository(appContext)
-    private val fileRepository = FileRepository(appContext, FileSourceRegistry.create(appContext, volumeRepository))
+    private val fileRepository = FileRepository(
+        sources = FileSourceRegistry.create(appContext, volumeRepository),
+        messages = AndroidSourceMessages(appContext)
+    )
     private val localSearchRepository = LocalFileSearchRepository(volumeRepository)
     private val providerQueryRunner = ProviderQueryRunner(appContext)
 

@@ -53,12 +53,24 @@ internal sealed class SourceException(message: String, cause: Throwable? = null)
         SourceException("Unreachable: $authority", cause)
 }
 
-/** Single place that phrases a source failure for the user. */
-internal class SourceMessages(context: Context) {
+/**
+ * Single place that phrases a source failure for the user.
+ *
+ * An interface because it is the only reason the repository and the transfer coordinator
+ * used to need a Context: they hand a failure over to be worded and never touch Android for
+ * anything else. A test supplies a stand-in and the layer becomes reachable.
+ */
+internal fun interface SourceMessages {
+
+    fun localize(error: Throwable, operation: SourceOperation): String
+}
+
+/** The wording as it comes out of the resource files. */
+internal class AndroidSourceMessages(context: Context) : SourceMessages {
 
     private val appContext = context.applicationContext
 
-    fun localize(error: Throwable, operation: SourceOperation): String = when (error) {
+    override fun localize(error: Throwable, operation: SourceOperation): String = when (error) {
         is SourceException -> localizeSourceError(error)
         else -> fallback(operation)
     }
