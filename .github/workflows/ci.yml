@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   check:
-    name: ktlint and lint
+    name: ktlint, lint and tests
     runs-on: ubuntu-latest
 
     permissions:
@@ -53,6 +53,12 @@ jobs:
       # resource, so a finding can exist in one and not the other.
       - name: Android Lint
         run: ./gradlew lintPlayDebug lintSystemDebug
+
+      # One flavor is enough: the unit tests sit in src/test and are identical
+      # for both. The HTML report lands under app/build/reports and is picked up
+      # by the upload step below when this fails.
+      - name: Unit tests
+        run: ./gradlew testPlayDebugUnitTest
 
       # preBuild already depends on ktlintCheck, but that task is up to date by
       # now, so this costs nothing and proves both flavors still compile.

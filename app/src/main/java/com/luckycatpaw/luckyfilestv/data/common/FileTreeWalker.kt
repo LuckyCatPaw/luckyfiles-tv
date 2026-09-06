@@ -18,7 +18,22 @@ import java.util.ArrayDeque
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
-class FileTreeWalker {
+class FileTreeWalker internal constructor(
+    /**
+     * The realpath step, taken once per directory.
+     *
+     * A link is recognised by the lstat in [attributesOf] and never followed, so neither the
+     * cycle nor the outside-root branch below can fire in a tree that holds still. What they
+     * cover is the window between that lstat and this call: shared storage is writable by
+     * every other app on the device, and a directory that turns into a link inside that
+     * window would otherwise be walked out of the tree, or walked twice.
+     *
+     * Injectable so a test can open that window on purpose. Nothing in the app passes it.
+     */
+    private val canonicalFileOf: (File) -> File
+) {
+
+    constructor() : this({ it.canonicalFile })
 
     suspend fun scan(root: File): FileTreeStats {
         var size = 0L
@@ -62,6 +77,13 @@ class FileTreeWalker {
         )
     }
 
+    /**
+     * Walks [root] without ever following a symbolic link, including one that is [root]
+     * itself: such a root yields a single [FileTreeEntryType.SYMBOLIC_LINK] entry and no
+     * descent. Resolving it is the caller's decision, because the answer differs per caller
+     * — properties canonicalises first, a delete has to remove the link and not the tree
+     * behind it, and a transfer refuses the whole item on exactly this signal.
+     */
     suspend fun walk(
         root: File,
         onEntry: suspend (FileTreeEntry) -> Unit,
@@ -77,7 +99,7 @@ class FileTreeWalker {
             throw FileNotFoundException(source.absolutePath)
         }
 
-        val rootCanonical = source.canonicalFile
+        val rootCanonical = canonicalFileOf(source)
         val visitedDirectories = mutableSetOf<String>()
         val stack = ArrayDeque<WalkFrame>()
 
@@ -136,7 +158,7 @@ class FileTreeWalker {
             // an already contained directory cannot point anywhere else — and paying a
             // `realpath` for every one of fifty thousand files to learn that is what made a
             // properties scan slow.
-            val canonical = file.canonicalFile
+            val canonical = canonicalFileOf(file)
 
             if (!FileUtil.isSameOrChildPath(rootCanonical.path, canonical.path)) {
                 throw FileTreeOutsideRootException(file)
