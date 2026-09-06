@@ -228,7 +228,7 @@ internal sealed interface TransferSource {
                 // the abort is reported as an unreadable directory and the walk carries on
                 // to the next sibling before the check at the top of descend catches it.
                 throw cancelled
-            } catch (unreadable: Exception) {
+            } catch (_: Exception) {
                 onUnreadable(childOf(relativePath).value)
                 return
             }

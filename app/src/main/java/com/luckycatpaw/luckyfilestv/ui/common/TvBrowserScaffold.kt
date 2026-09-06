@@ -276,7 +276,8 @@ internal fun <T : Any> TvBrowserScaffold(
         // the one that could have served it, look like an ordinary reload, and an ordinary
         // reload loses against a header that counts as the deliberate focus owner. Focus
         // then stayed up there with no grid index to return to.
-        if (explicitRequest && focusEnabled && (focusKey == null || explicitFocusIndex >= 0)) {
+        val targetIsReachable = focusKey == null || explicitFocusIndex >= 0
+        if (explicitRequest && focusEnabled && targetIsReachable) {
             servedFocusRequestKey = focusRequestKey
         }
 

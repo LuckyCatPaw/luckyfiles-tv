@@ -88,7 +88,7 @@ internal object TransferSession {
                 )
             } catch (e: TransferCancelledException) {
                 e.partialResult
-            } catch (e: CancellationException) {
+            } catch (_: CancellationException) {
                 TransferResult(
                     completedPaths = emptyList(),
                     skippedCount = 0,
@@ -157,6 +157,9 @@ internal object TransferSession {
         }
     }
 
+    // The empty body is the point: this throws away answers left over from a transfer
+    // that has already ended, so the next one does not start on a stale decision.
+    @Suppress("EmptyWhileBlock")
     private fun drainConflictAnswers() {
         while (conflictAnswers.tryReceive().isSuccess) {
         }

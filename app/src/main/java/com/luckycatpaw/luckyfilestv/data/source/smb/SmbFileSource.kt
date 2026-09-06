@@ -102,7 +102,7 @@ internal class SmbFileSource(
             execute(SourceOperation.READ, path, target, SmbCallKind.IDEMPOTENT) { diskShare ->
                 diskShare.entryAt(path, target.relativePath)
             }
-        } catch (missing: SourceException.NotFound) {
+        } catch (_: SourceException.NotFound) {
             null
         }
     }
@@ -130,6 +130,10 @@ internal class SmbFileSource(
     override suspend fun openInput(path: SourcePath, offset: Long): InputStream =
         RandomAccessInputStream(openRandomAccess(path), offset)
 
+    // Throwable on purpose: cancellation is rethrown first, and anything else is turned
+    // into a SourceException the caller can show. An Error reaching this is unlikely and
+    // arriving as a source error is still better than the read hanging.
+    @Suppress("TooGenericExceptionCaught")
     override suspend fun openRandomAccess(path: SourcePath): RandomAccessSource {
         val target = resolve(path, SourceOperation.READ)
         val handle = SmbRandomAccessSource(target.share, target.relativePath, sessions)
@@ -226,7 +230,7 @@ internal class SmbFileSource(
     override suspend fun canMoveWithoutCopy(from: SourcePath, to: SourcePath): Boolean = try {
         resolve(from, SourceOperation.RENAME).share.sessionKey ==
             resolve(to, SourceOperation.RENAME).share.sessionKey
-    } catch (unknown: SourceException) {
+    } catch (_: SourceException) {
         // A location that resolves to no configured share is not one this can rename.
         false
     }
@@ -315,7 +319,7 @@ internal class SmbFileSource(
                 execute(SourceOperation.PROPERTIES, path, target, SmbCallKind.IDEMPOTENT) { diskShare ->
                     diskShare.list(current)
                 }
-            } catch (denied: SourceException.AccessDenied) {
+            } catch (_: SourceException.AccessDenied) {
                 unreadable++
                 continue
             }
@@ -347,6 +351,9 @@ internal class SmbFileSource(
      * @param kind whether the pool may repeat [block] on a fresh session when the transport
      *   drops mid-call. Everything that writes has to say so, see [SmbCallKind].
      */
+    // Throwable on purpose: cancellation is rethrown first, everything else becomes a
+    // SourceException so no SMB internal escapes into the UI layer.
+    @Suppress("TooGenericExceptionCaught")
     private suspend fun <T> execute(
         operation: SourceOperation,
         path: SourcePath,
@@ -369,6 +376,9 @@ internal class SmbFileSource(
      * Runs [block] with the same error vocabulary [execute] produces, and hands anything
      * already borrowed back before the failure leaves the source.
      */
+    // Throwable on purpose: onFailure has to run on every path out, including the ones
+    // Exception does not cover, or the borrowed lease is never given back.
+    @Suppress("TooGenericExceptionCaught")
     private inline fun <T> mapping(
         operation: SourceOperation,
         path: SourcePath,
@@ -508,6 +518,9 @@ private class SmbRandomAccessSource(
     override fun read(fileOffset: Long, destination: ByteArray, destinationOffset: Int, length: Int): Int =
         withHandle { it.read(destination, fileOffset, destinationOffset, length) }.coerceAtLeast(0)
 
+    // Throwable on purpose: the lease is returned before the failure is rethrown. Narrowing
+    // to Exception would skip that on an Error and leak a pooled session.
+    @Suppress("TooGenericExceptionCaught")
     suspend fun openSuspending(): File {
         current()?.let { return it.file }
 
@@ -548,10 +561,10 @@ private class SmbRandomAccessSource(
     /** One retry on a fresh handle; a second failure is a real one and reaches the caller. */
     private fun <T> withHandle(block: (File) -> T): T = try {
         block(openBlocking())
-    } catch (dropped: SMBRuntimeException) {
+    } catch (_: SMBRuntimeException) {
         discard()
         block(openBlocking())
-    } catch (dropped: IOException) {
+    } catch (_: IOException) {
         discard()
         block(openBlocking())
     }

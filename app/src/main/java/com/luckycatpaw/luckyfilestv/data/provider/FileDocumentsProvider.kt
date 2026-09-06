@@ -207,9 +207,9 @@ class FileDocumentsProvider : DocumentsProvider() {
 
         try {
             FileUtil.moveWithoutReplacing(source, destination)
-        } catch (exists: FileAlreadyExistsException) {
+        } catch (_: FileAlreadyExistsException) {
             notFound(R.string.provider_document_exists, safeName)
-        } catch (renameFailed: IOException) {
+        } catch (_: IOException) {
             notFound(R.string.provider_could_not_rename, source.name)
         }
 

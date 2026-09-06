@@ -481,7 +481,7 @@ class TransferCoordinator(
             sources.source(item.target).canMoveWithoutCopy(item.source.location, item.target)
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (unknown: Exception) {
+        } catch (_: Exception) {
             false
         }
     }

@@ -41,6 +41,9 @@ internal class DirectSocketFactory(private val connectTimeoutMillis: Int = CONNE
     override fun createSocket(host: InetAddress, port: Int, localAddress: InetAddress, localPort: Int): Socket =
         connected(InetSocketAddress(host, port), InetSocketAddress(localAddress, localPort))
 
+    // Throwable on purpose: the half open socket is closed before the failure is rethrown.
+    // Narrowing to Exception would skip that on an Error and leak a file descriptor.
+    @Suppress("TooGenericExceptionCaught")
     private fun connected(remote: InetSocketAddress, local: InetSocketAddress?): Socket {
         val socket = Socket(Proxy.NO_PROXY)
 

@@ -1,8 +1,11 @@
 import com.android.build.api.variant.HasUnitTestBuilder
+import io.gitlab.arturbosch.detekt.Detekt
+import io.gitlab.arturbosch.detekt.DetektCreateBaselineTask
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.detekt)
 }
 
 val ktlintTool = configurations.create("ktlintTool") {
@@ -77,6 +80,9 @@ val ktlintFormat = tasks.register<JavaExec>("ktlintFormat") {
 
 // Before every build. preBuild is what every variant hangs off, so this covers
 // assembleDebug the same way it covers bundlePlayRelease.
+//
+// Only ktlint hangs here. detekt takes far longer, so it belongs on check rather than
+// in front of every build.
 tasks.named("preBuild") {
     dependsOn(ktlintCheck)
 }
@@ -86,8 +92,16 @@ tasks.named("preBuild") {
 // Both lint variants by name rather than the `lint` task AGP wires in: that one covers
 // the default variant alone, which would silently leave the system flavor unchecked. The
 // pair here is what the CI workflow runs, so a green `check` means a green pipeline.
+//
+// detekt is the plain task because under AGP 9 there is no other: AGP's built-in Kotlin
+// stops the detekt plugin from creating its per-variant tasks, so `detekt` is all that
+// gets registered. It runs without type resolution, which leaves the rules needing a
+// resolved type inert - RedundantSuspendModifier, SuspendFunWithFlowReturnType,
+// SuspendFunWithCoroutineScopeReceiver and part of potential-bugs. Worth re-checking on
+// the next detekt upgrade with `./gradlew tasks --all`.
 tasks.named("check") {
     dependsOn(ktlintCheck)
+    dependsOn("detekt")
     dependsOn("lintPlayDebug", "lintSystemDebug")
 }
 
@@ -153,6 +167,42 @@ android {
         // stub rather than on the behaviour under test.
         unitTests.isReturnDefaultValues = true
     }
+}
+
+detekt {
+    // Without this the file below replaces the default configuration instead of
+    // overriding it, and every rule it does not mention behaves unpredictably. It also
+    // means new rules from a detekt upgrade arrive switched on rather than staying
+    // silent because the config never heard of them.
+    buildUponDefaultConfig = true
+    allRules = false
+    config.setFrom(files("$rootDir/config/detekt/detekt.yml"))
+
+    // The thresholds in that file describe where the code should end up, not where it
+    // is. The gap lives here, so anything new fails the build while the existing
+    // findings stay a list that can be worked off. Create it with:
+    //
+    //   ./gradlew detektBaseline
+    baseline = file("$rootDir/config/detekt/baseline.xml")
+    parallel = true
+}
+
+tasks.withType<Detekt>().configureEach {
+    // Defaults to 1.8 and then disagrees with everything else in the build.
+    jvmTarget = JavaVersion.VERSION_17.toString()
+
+    reports {
+        html.required.set(true)
+        // Read by GitHub code scanning when the workflow uploads it.
+        sarif.required.set(true)
+        xml.required.set(false)
+        txt.required.set(false)
+        md.required.set(false)
+    }
+}
+
+tasks.withType<DetektCreateBaselineTask>().configureEach {
+    jvmTarget = JavaVersion.VERSION_17.toString()
 }
 
 // The unit tests live in src/test and know nothing about flavors or build types, so all
