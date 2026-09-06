@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Picked up automatically because it sits in the module root; no lintConfig
+    entry in build.gradle.kts is needed.
+
+    Everything below is a dependency freshness check. All of them fire because
+    somebody, somewhere, published a new version, which says nothing about the
+    state of this code. With abortOnError they would break the build on whatever
+    day that happens, on whichever machine sees it first.
+
+    They are set to informational rather than disabled on purpose: the findings
+    stay in the lint report, so a glance at the HTML still tells you what has
+    moved on, but nothing fails. Acting on them is Dependabot's job, one pull
+    request at a time.
+
+    Two of these (GradleDependency, NewerVersionAvailable) reach out over the
+    network on every run, which is also why lint is slower than it needs to be.
+-->
+<lint>
+    <!-- A newer Android Gradle Plugin exists. -->
+    <issue id="AndroidGradlePluginVersion" severity="informational" />
+
+    <!-- A newer version of an SDK or AndroidX dependency exists. -->
+    <issue id="GradleDependency" severity="informational" />
+
+    <!-- A newer version exists on Maven Central. -->
+    <issue id="NewerVersionAvailable" severity="informational" />
+
+    <!--
+        targetSdk is below the newest available platform. Unlike the others this
+        one has a real Play deadline behind it, so it is worth looking at once a
+        year - but it should surface as a task, not as a red build on the day a
+        new SDK ships.
+    -->
+    <issue id="OldTargetApi" severity="informational" />
+</lint>

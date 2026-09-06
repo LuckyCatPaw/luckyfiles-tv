@@ -96,7 +96,9 @@ internal class SmbShareRepository(
 
     private fun encode(credentials: SmbCredentials): JSONObject = when (credentials) {
         SmbCredentials.Anonymous -> JSONObject().put(TYPE, ANONYMOUS)
+
         SmbCredentials.Guest -> JSONObject().put(TYPE, GUEST)
+
         is SmbCredentials.Password -> JSONObject()
             .put(TYPE, PASSWORD)
             .put(USER, credentials.user)

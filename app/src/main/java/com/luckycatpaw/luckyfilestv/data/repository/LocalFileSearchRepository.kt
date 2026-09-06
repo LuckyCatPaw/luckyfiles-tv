@@ -106,11 +106,7 @@ internal class LocalFileSearchRepository(private val volumes: LocalVolumeReposit
      * Hidden entries and anything under a restricted root never reach [onEntry] at all, so a
      * caller cannot forget to filter them.
      */
-    private suspend fun walk(
-        roots: List<File>,
-        settings: FileManagerSettings,
-        onEntry: (File) -> Boolean
-    ) {
+    private suspend fun walk(roots: List<File>, settings: FileManagerSettings, onEntry: (File) -> Boolean) {
         val pendingDirectories = ArrayDeque<File>().apply { addAll(roots) }
         val visitedDirectories = HashSet<String>()
         var scannedEntries = 0

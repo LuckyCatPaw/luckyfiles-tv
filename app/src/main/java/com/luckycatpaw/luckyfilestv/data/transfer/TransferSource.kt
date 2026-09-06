@@ -74,8 +74,7 @@ internal sealed interface TransferSource {
 
         override suspend fun exists(): Boolean = file.exists()
 
-        override suspend fun isSymbolicLink(): Boolean =
-            Files.isSymbolicLink(file.toPath())
+        override suspend fun isSymbolicLink(): Boolean = Files.isSymbolicLink(file.toPath())
 
         override suspend fun delete() = fileTreeWalker.delete(file)
 
@@ -117,10 +116,7 @@ internal sealed interface TransferSource {
      * fetched instead of asking for sizes and dates a second time. Symbolic links do not
      * exist here: a share reports plain files and directories.
      */
-    class Remote(
-        val path: SourcePath,
-        private val sources: FileSourceRegistry
-    ) : TransferSource {
+    class Remote(val path: SourcePath, private val sources: FileSourceRegistry) : TransferSource {
 
         override val name: String get() = path.name
 

@@ -233,16 +233,13 @@ class FileTreeWalker {
         null
     }
 
-    private fun File.toEntry(
-        relativePath: String,
-        type: FileTreeEntryType,
-        size: Long = 0L
-    ): FileTreeEntry = FileTreeEntry(
-        file = this,
-        relativePath = relativePath,
-        type = type,
-        size = if (type == FileTreeEntryType.FILE) size.coerceAtLeast(0L) else 0L
-    )
+    private fun File.toEntry(relativePath: String, type: FileTreeEntryType, size: Long = 0L): FileTreeEntry =
+        FileTreeEntry(
+            file = this,
+            relativePath = relativePath,
+            type = type,
+            size = if (type == FileTreeEntryType.FILE) size.coerceAtLeast(0L) else 0L
+        )
 
     private data class WalkFrame(val file: File, val relativePath: String, val directoryComplete: Boolean)
 }

@@ -1,4 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-permission android:name="android.permission.MANAGE_DOCUMENTS" />
+<manifest
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+        Lint is right that a normally installed app is never granted a signature
+        level permission, and that is exactly why this flavor exists: it is only
+        ever built into a system image or installed as a privileged app, where
+        MANAGE_DOCUMENTS is granted and FileDocumentsProvider can serve the
+        system document picker. The play flavor does not declare it at all, so
+        the check stays live everywhere it can still catch a real mistake.
+    -->
+    <uses-permission
+        android:name="android.permission.MANAGE_DOCUMENTS"
+        tools:ignore="ProtectedPermissions" />
 </manifest>

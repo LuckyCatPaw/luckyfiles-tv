@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A second push to the same branch makes the first run pointless. Without this,
+# a branch that gets three quick fixes queues three full Gradle builds.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: ktlint and lint
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      # Lets the lint SARIF land in the repository's security tab, where the
+      # findings show up inline on the pull request diff.
+      security-events: write
+      # Lets setup-gradle post the build summary as a PR comment on failure.
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # 21 to match the JBR that Android Studio ships with, so a build that
+      # passes locally does not fail here on a toolchain difference.
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # Handles the dependency and build cache, and verifies the checksum of
+      # every gradle-wrapper.jar in the repository on the way in — a separate
+      # wrapper-validation step is not needed.
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          add-job-summary-as-pr-comment: on-failure
+
+      # ktlint first. It takes seconds, and a formatting failure would otherwise
+      # be buried under lint output nobody wants to read.
+      - name: ktlint
+        run: ./gradlew ktlintCheck
+
+      # Both flavors. play and system differ in their manifest and in one
+      # resource, so a finding can exist in one and not the other.
+      - name: Android Lint
+        run: ./gradlew lintPlayDebug lintSystemDebug
+
+      # preBuild already depends on ktlintCheck, but that task is up to date by
+      # now, so this costs nothing and proves both flavors still compile.
+      - name: Assemble
+        run: ./gradlew assemblePlayDebug assembleSystemDebug
+
+      # One step per flavor, each with its own category. Code scanning refuses a
+      # single upload that contains two runs under the same category, and
+      # pointing at the reports directory hands it exactly that.
+      #
+      # Both run even when lint failed, which is when the report is worth
+      # reading. Pull requests from forks get no security-events permission, so
+      # neither step is allowed to take the job down with it.
+      - name: Upload lint results (play)
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: app/build/reports/lint-results-playDebug.sarif
+          category: android-lint-play
+
+      - name: Upload lint results (system)
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: app/build/reports/lint-results-systemDebug.sarif
+          category: android-lint-system
+
+      # The HTML report reads far better than the console output when something
+      # does break.
+      - name: Upload reports
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: reports
+          path: |
+            app/build/reports/
+            build/reports/
+          retention-days: 7
+          if-no-files-found: ignore

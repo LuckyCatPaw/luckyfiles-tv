@@ -79,19 +79,16 @@ internal class SmbSessionPool(
 
     private var networkWatch: NetworkWatch? = null
 
-    suspend fun <T> withShare(
-        share: SmbShare,
-        kind: SmbCallKind,
-        block: (DiskShare) -> T
-    ): T = withContext(dispatcher) {
-        try {
-            useOnce(share, block)
-        } catch (dropped: TransportException) {
-            if (kind == SmbCallKind.MUTATING) throw dropped
+    suspend fun <T> withShare(share: SmbShare, kind: SmbCallKind, block: (DiskShare) -> T): T =
+        withContext(dispatcher) {
+            try {
+                useOnce(share, block)
+            } catch (dropped: TransportException) {
+                if (kind == SmbCallKind.MUTATING) throw dropped
 
-            useOnce(share, block)
+                useOnce(share, block)
+            }
         }
-    }
 
     /**
      * Borrows a share for longer than a single call.
@@ -435,9 +432,7 @@ internal class SmbSessionPool(
  * process, so a lease belongs in a `use` block or in the `close()` of whatever outlives the
  * call that took it.
  */
-internal class SmbShareLease internal constructor(
-    private val borrowed: SmbSessionPool.PooledShare
-) : Closeable {
+internal class SmbShareLease internal constructor(private val borrowed: SmbSessionPool.PooledShare) : Closeable {
 
     private val returned = AtomicBoolean(false)
 

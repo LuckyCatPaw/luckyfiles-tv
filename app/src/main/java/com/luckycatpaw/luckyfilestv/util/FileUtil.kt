@@ -62,9 +62,6 @@ object FileUtil {
     }
 
     /**
-     * Checks if child is same as or a descendant of parent.
-     */
-    /**
      * The separator is appended only when [parentPath] does not already end in one, because
      * the filesystem root is its own separator: `"/" + "/"` produced `"//"`, which nothing
      * starts with, so every path came back as being outside `/`.

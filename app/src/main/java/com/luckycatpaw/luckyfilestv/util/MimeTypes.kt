@@ -32,11 +32,17 @@ internal object MimeTypes {
             // Android's own table does not carry this one, and the package installer reacts
             // to nothing else.
             "apk" -> APK
+
             "mkv" -> "video/x-matroska"
+
             "mp4" -> "video/mp4"
+
             "avi" -> "video/x-msvideo"
+
             "webm" -> "video/webm"
+
             "mov" -> "video/quicktime"
+
             else -> null
         }
 

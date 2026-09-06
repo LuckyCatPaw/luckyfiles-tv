@@ -16,10 +16,8 @@ import java.io.IOException
  *
  * Called on the handler thread the descriptor was opened with, never on the main thread.
  */
-internal class SourceProxyFileDescriptor(
-    private val source: RandomAccessSource,
-    private val onReleased: () -> Unit
-) : ProxyFileDescriptorCallback() {
+internal class SourceProxyFileDescriptor(private val source: RandomAccessSource, private val onReleased: () -> Unit) :
+    ProxyFileDescriptorCallback() {
 
     override fun onGetSize(): Long = try {
         source.size

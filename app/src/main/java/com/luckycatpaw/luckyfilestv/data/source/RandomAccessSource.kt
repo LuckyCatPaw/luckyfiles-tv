@@ -26,10 +26,7 @@ internal interface RandomAccessSource : Closeable {
 }
 
 /** Sequential view of a [RandomAccessSource], for callers that only want a stream. */
-internal class RandomAccessInputStream(
-    private val source: RandomAccessSource,
-    startOffset: Long = 0L
-) : InputStream() {
+internal class RandomAccessInputStream(private val source: RandomAccessSource, startOffset: Long = 0L) : InputStream() {
 
     private var position: Long = startOffset
 

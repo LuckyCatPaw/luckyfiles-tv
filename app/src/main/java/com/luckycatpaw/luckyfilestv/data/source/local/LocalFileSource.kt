@@ -168,16 +168,15 @@ internal class LocalFileSource(
      * not have needed it costs one walk, while the opposite puts a move on a progress bar
      * with no total behind it.
      */
-    override suspend fun canMoveWithoutCopy(from: SourcePath, to: SourcePath): Boolean =
-        withContext(dispatcher) {
-            if (!from.isLocal || !to.isLocal) return@withContext false
+    override suspend fun canMoveWithoutCopy(from: SourcePath, to: SourcePath): Boolean = withContext(dispatcher) {
+        if (!from.isLocal || !to.isLocal) return@withContext false
 
-            val mounted = roots()
-            val sourceVolume = volumeOf(from, mounted) ?: return@withContext false
-            val targetVolume = volumeOf(to, mounted) ?: return@withContext false
+        val mounted = roots()
+        val sourceVolume = volumeOf(from, mounted) ?: return@withContext false
+        val targetVolume = volumeOf(to, mounted) ?: return@withContext false
 
-            sourceVolume.path == targetVolume.path
-        }
+        sourceVolume.path == targetVolume.path
+    }
 
     /**
      * The volume a location sits on, or `null` when it lies below none of them.
@@ -247,11 +246,6 @@ internal class LocalFileSource(
     }
 
     /**
-     * Name a directory is shown under: the volume label at a storage root, the folder name
-     * everywhere else. Resolving the volumes once here replaces the per-volume `realpath`
-     * the title lookup used to run in the UI layer.
-     */
-    /**
      * The name a directory is shown under, which is the volume label at a storage root.
      *
      * Resolving every volume to its canonical path used to happen on each directory change,
@@ -311,9 +305,8 @@ internal class LocalFileSource(
         )
     }
 
-    private fun validName(name: String, forDirectory: Boolean): String =
-        runCatching { FileUtil.validateFileName(name) }
-            .getOrElse { throw SourceException.InvalidName(name, forDirectory) }
+    private fun validName(name: String, forDirectory: Boolean): String = runCatching { FileUtil.validateFileName(name) }
+        .getOrElse { throw SourceException.InvalidName(name, forDirectory) }
 
     /**
      * Resolves `.` and `..` without touching symbolic links.

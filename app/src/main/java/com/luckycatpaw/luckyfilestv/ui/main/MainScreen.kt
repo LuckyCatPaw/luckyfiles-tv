@@ -137,35 +137,49 @@ internal fun MainScreen(viewModel: MainViewModel) {
             result.skippedCount,
             result.issues.size
         )
-    } else ""
+    } else {
+        ""
+    }
 
     val transferMultipleWarningsText = stringResource(R.string.transfer_multiple_warnings)
     val transferSourceWarningCountText = if (transferCompletion != null) {
         val count = transferCompletion.result.sourceDeleteWarningCount
         pluralStringResource(R.plurals.transfer_source_warning_count, count, count)
-    } else ""
+    } else {
+        ""
+    }
     val transferBackupWarningCountText = if (transferCompletion != null) {
         val count = transferCompletion.result.cleanupWarningCount
         pluralStringResource(R.plurals.transfer_backup_warning_count, count, count)
-    } else ""
+    } else {
+        ""
+    }
 
     val moveSourceDeleteWarningText = if (transferCompletion != null) {
         val count = transferCompletion.result.sourceDeleteWarningCount
         pluralStringResource(R.plurals.move_source_delete_warning, count, count)
-    } else ""
+    } else {
+        ""
+    }
     val transferCleanupWarningText = if (transferCompletion != null) {
         val count = transferCompletion.result.cleanupWarningCount
         pluralStringResource(R.plurals.transfer_cleanup_warning, count, count)
-    } else ""
+    } else {
+        ""
+    }
 
     val itemsCopiedText = if (transferCompletion != null) {
         val count = transferCompletion.result.completedPaths.size
         pluralStringResource(R.plurals.items_copied, count, count)
-    } else ""
+    } else {
+        ""
+    }
     val itemsMovedText = if (transferCompletion != null) {
         val count = transferCompletion.result.completedPaths.size
         pluralStringResource(R.plurals.items_moved, count, count)
-    } else ""
+    } else {
+        ""
+    }
 
     LaunchedEffect(uiState.transferCompletion) {
         val completion = uiState.transferCompletion ?: return@LaunchedEffect

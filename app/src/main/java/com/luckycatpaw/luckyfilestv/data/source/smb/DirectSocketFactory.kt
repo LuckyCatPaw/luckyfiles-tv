@@ -27,27 +27,19 @@ import javax.net.SocketFactory
  * share goes through a content provider on a Binder thread, so the wait lands in the app
  * that asked us for the file and shows up there as an ANR.
  */
-internal class DirectSocketFactory(
-    private val connectTimeoutMillis: Int = CONNECT_TIMEOUT_MILLIS
-) : SocketFactory() {
+internal class DirectSocketFactory(private val connectTimeoutMillis: Int = CONNECT_TIMEOUT_MILLIS) : SocketFactory() {
 
     override fun createSocket(): Socket = Socket(Proxy.NO_PROXY)
 
-    override fun createSocket(host: String, port: Int): Socket =
-        connected(InetSocketAddress(host, port), null)
+    override fun createSocket(host: String, port: Int): Socket = connected(InetSocketAddress(host, port), null)
 
     override fun createSocket(host: String, port: Int, localAddress: InetAddress, localPort: Int): Socket =
         connected(InetSocketAddress(host, port), InetSocketAddress(localAddress, localPort))
 
-    override fun createSocket(host: InetAddress, port: Int): Socket =
-        connected(InetSocketAddress(host, port), null)
+    override fun createSocket(host: InetAddress, port: Int): Socket = connected(InetSocketAddress(host, port), null)
 
-    override fun createSocket(
-        host: InetAddress,
-        port: Int,
-        localAddress: InetAddress,
-        localPort: Int
-    ): Socket = connected(InetSocketAddress(host, port), InetSocketAddress(localAddress, localPort))
+    override fun createSocket(host: InetAddress, port: Int, localAddress: InetAddress, localPort: Int): Socket =
+        connected(InetSocketAddress(host, port), InetSocketAddress(localAddress, localPort))
 
     private fun connected(remote: InetSocketAddress, local: InetSocketAddress?): Socket {
         val socket = Socket(Proxy.NO_PROXY)

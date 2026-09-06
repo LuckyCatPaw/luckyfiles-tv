@@ -33,7 +33,6 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.luckycatpaw.luckyfilestv.R
-import com.luckycatpaw.luckyfilestv.ui.theme.AppShapes
 import com.luckycatpaw.luckyfilestv.data.common.model.FileManagerSettings
 import com.luckycatpaw.luckyfilestv.data.common.model.FileSortMode
 import com.luckycatpaw.luckyfilestv.ui.common.DialogCard
@@ -41,6 +40,7 @@ import com.luckycatpaw.luckyfilestv.ui.common.TvModalDialog
 import com.luckycatpaw.luckyfilestv.ui.common.tvContentColor
 import com.luckycatpaw.luckyfilestv.ui.common.tvFocusHighlight
 import com.luckycatpaw.luckyfilestv.ui.common.tvFocusable
+import com.luckycatpaw.luckyfilestv.ui.theme.AppShapes
 
 private enum class SettingsFocusItem {
     LANGUAGE_SYSTEM,

@@ -49,9 +49,9 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.luckycatpaw.luckyfilestv.data.common.LocalThumbnailDecoder
 import com.luckycatpaw.luckyfilestv.data.common.model.BrowserItem
+import com.luckycatpaw.luckyfilestv.data.repository.ImageRepository
 import com.luckycatpaw.luckyfilestv.data.source.SourcePath
 import com.luckycatpaw.luckyfilestv.data.source.VolumeKind
-import com.luckycatpaw.luckyfilestv.data.repository.ImageRepository
 import com.luckycatpaw.luckyfilestv.ui.common.TvFileGridDefaults
 import com.luckycatpaw.luckyfilestv.ui.picker.model.PickerBrowserItem
 import com.luckycatpaw.luckyfilestv.ui.theme.AppShapes
@@ -260,12 +260,7 @@ private fun CommonBrowserGridItem(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MarqueeNameLine(
-    text: String,
-    selected: Boolean,
-    color: ComposeColor,
-    style: TextStyle
-) {
+private fun MarqueeNameLine(text: String, selected: Boolean, color: ComposeColor, style: TextStyle) {
     Text(
         text = text,
         color = color,
@@ -392,12 +387,7 @@ private fun ProviderItemPreview(item: PickerBrowserItem, selected: Boolean) {
  * differ in padding. What actually varies is the icon and the animation label.
  */
 @Composable
-private fun PreviewCrossfade(
-    bitmap: ImageBitmap?,
-    fallbackIcon: ImageVector,
-    selected: Boolean,
-    label: String
-) {
+private fun PreviewCrossfade(bitmap: ImageBitmap?, fallbackIcon: ImageVector, selected: Boolean, label: String) {
     Crossfade(
         targetState = bitmap,
         animationSpec = tween(durationMillis = 300),
@@ -435,7 +425,9 @@ private fun localFallbackIcon(item: BrowserItem): ImageVector = when (item) {
         VolumeKind.REMOVABLE -> Icons.Filled.Usb
         VolumeKind.NETWORK -> Icons.Filled.Lan
     }
+
     is BrowserItem.Folder -> Icons.Filled.Folder
+
     is BrowserItem.File -> fileIconForExtension(File(item.path).extension.lowercase(Locale.ROOT))
 }
 
