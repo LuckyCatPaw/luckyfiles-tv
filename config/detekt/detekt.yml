@@ -1,0 +1,101 @@
+build:
+    maxIssues: 0
+    excludeCorrectable: false
+config:
+    validation: true
+    warningsAsErrors: true
+complexity:
+    active: true
+    LongMethod:
+        active: true
+        # No Composable exemption on purpose: many parameters are normal in Compose,
+        # 400 lines are not.
+        threshold: 60
+    LongParameterList:
+        active: true
+        functionThreshold: 6
+        constructorThreshold: 7
+        ignoreDefaultParameters: false
+        ignoreAnnotated:
+            - 'Composable'
+    LargeClass:
+        active: true
+        threshold: 600
+    TooManyFunctions:
+        active: true
+        # Default is 11, which costs 17 findings here and says little. At 20 it is 8.
+        thresholdInFiles: 20
+        thresholdInClasses: 20
+        thresholdInInterfaces: 20
+        thresholdInObjects: 20
+        thresholdInEnums: 20
+        ignorePrivate: false
+        ignoreDeprecated: true
+        ignoreOverridden: true
+    CyclomaticComplexMethod:
+        active: true
+        threshold: 15
+        ignoreSingleWhenExpression: true
+        ignoreSimpleWhenEntries: true
+    CognitiveComplexMethod:
+        active: true
+        threshold: 15
+    NestedBlockDepth:
+        active: true
+        threshold: 4
+style:
+    active: true
+    MaxLineLength:
+        active: false
+    WildcardImport:
+        active: false
+    MagicNumber:
+        active: false
+    ReturnCount:
+        active: true
+        max: 4
+        excludeGuardClauses: true
+    ThrowsCount:
+        active: true
+        max: 4
+        excludeGuardClauses: true
+    LoopWithTooManyJumpStatements:
+        active: true
+        maxJumpCount: 3
+    ForbiddenComment:
+        active: true
+        comments:
+            - reason: 'Must not ship.'
+              value: 'STOPSHIP'
+exceptions:
+    active: true
+    TooGenericExceptionCaught:
+        active: true
+        # Exception is missing from this list on purpose: catching it around file and
+        # network access is legitimate here. The three below never are.
+        exceptionNames:
+            - 'Throwable'
+            - 'Error'
+            - 'RuntimeException'
+    SwallowedException:
+        active: true
+coroutines:
+    active: true
+    InjectDispatcher:
+        active: true
+    RedundantSuspendModifier:
+        active: true
+    SleepInsteadOfDelay:
+        active: true
+    SuspendFunWithFlowReturnType:
+        active: true
+    SuspendFunWithCoroutineScopeReceiver:
+        active: true
+    GlobalCoroutineUsage:
+        active: true
+naming:
+    active: true
+    FunctionNaming:
+        active: true
+        ignoreAnnotated:
+            - 'Composable'

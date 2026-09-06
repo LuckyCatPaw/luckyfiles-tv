@@ -178,7 +178,7 @@ class DocumentsProviderRepository(context: Context) {
         }
     } catch (e: CancellationException) {
         throw e
-    } catch (e: SecurityException) {
+    } catch (_: SecurityException) {
         RootQueryOutcome(
             error = DocumentProviderError(
                 authority = provider.authority,

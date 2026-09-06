@@ -49,6 +49,9 @@ class FileContentProvider : ContentProvider() {
 
     override fun onCreate(): Boolean = true
 
+    // Throwable on purpose: the source is closed here and the failure rethrown untouched.
+    // Narrowing to Exception would skip that on an Error and leak the open source.
+    @Suppress("TooGenericExceptionCaught")
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
         if (mode != "r") {
             throw FileNotFoundException(requireNotNull(context).getString(R.string.read_only_access))
@@ -66,7 +69,10 @@ class FileContentProvider : ContentProvider() {
         val handle = try {
             runBlocking { sources.source(location).openRandomAccess(location) }
         } catch (failure: Exception) {
-            throw FileNotFoundException(failure.message ?: location.value)
+            // FileNotFoundException has no constructor that takes a cause, and dropping it
+            // here is what made every failed open look identical in a crash report: the
+            // reason a share refused the file used to end at this line.
+            throw FileNotFoundException(failure.message ?: location.value).initCause(failure)
         }
 
         // From here the handle belongs to the descriptor, which closes it on release. If it
@@ -86,6 +92,9 @@ class FileContentProvider : ContentProvider() {
      * a failure in here used to leave a live thread behind and a service that never learned
      * its reader was gone, so the ongoing notification stayed up for the rest of the session.
      */
+    // Throwable on purpose: the reader thread is stopped and its count taken back down.
+    // Narrowing to Exception would skip that on an Error and leak a thread.
+    @Suppress("TooGenericExceptionCaught")
     private fun proxyDescriptor(handle: RandomAccessSource): ParcelFileDescriptor {
         val appContext = requireNotNull(context).applicationContext
         val storageManager = appContext.getSystemService(StorageManager::class.java)
@@ -203,13 +212,13 @@ class FileContentProvider : ContentProvider() {
                 StandardCharsets.UTF_8
             )
         } catch (error: IllegalArgumentException) {
-            throw FileNotFoundException(error.message)
+            throw FileNotFoundException(error.message).initCause(error)
         }
 
         val location = try {
             SourcePath.parse(decodedPath)
         } catch (error: IllegalArgumentException) {
-            throw FileNotFoundException(error.message)
+            throw FileNotFoundException(error.message).initCause(error)
         }
 
         if (!isAllowed(location)) {

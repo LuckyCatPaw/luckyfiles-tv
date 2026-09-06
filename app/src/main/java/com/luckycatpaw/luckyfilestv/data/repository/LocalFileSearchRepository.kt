@@ -113,12 +113,15 @@ internal class LocalFileSearchRepository(private val volumes: LocalVolumeReposit
         var wantsMore = true
         val deadlineNanos = System.nanoTime() + SCAN_TIME_BUDGET_MS * 1_000_000
 
-        while (
-            wantsMore &&
-            pendingDirectories.isNotEmpty() &&
-            scannedEntries < MAX_SCAN_ENTRIES &&
+        // Four reasons to stop, split in two so the loop header reads as what it means:
+        // there is work left and someone still wants it, and the scan has not spent its
+        // budget. A search on a television has to come back either way.
+        fun withinBudget(): Boolean = scannedEntries < MAX_SCAN_ENTRIES &&
             System.nanoTime() < deadlineNanos
-        ) {
+
+        fun keepScanning(): Boolean = wantsMore && pendingDirectories.isNotEmpty() && withinBudget()
+
+        while (keepScanning()) {
             currentCoroutineContext().ensureActive()
             val directory = pendingDirectories.removeFirst().canonicalOrNull() ?: continue
 

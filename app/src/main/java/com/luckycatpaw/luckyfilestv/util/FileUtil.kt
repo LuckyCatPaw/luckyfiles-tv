@@ -22,11 +22,9 @@ object FileUtil {
      */
     fun validateFileName(name: String): String {
         val clean = name.trim()
-        if (clean.isBlank()) throw IllegalArgumentException("Name cannot be empty")
-        if (clean == "." || clean == "..") throw IllegalArgumentException("Invalid name: $clean")
-        if ('/' in clean || '\\' in clean || '\u0000' in clean) {
-            throw IllegalArgumentException("Name contains invalid characters")
-        }
+        require(clean.isNotBlank()) { "Name cannot be empty" }
+        require(clean != "." && clean != "..") { "Invalid name: $clean" }
+        require('/' !in clean && '\\' !in clean && '\u0000' !in clean) { "Name contains invalid characters" }
         return clean
     }
 

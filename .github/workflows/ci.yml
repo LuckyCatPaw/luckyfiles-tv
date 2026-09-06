@@ -54,6 +54,9 @@ jobs:
       - name: Android Lint
         run: ./gradlew lintPlayDebug lintSystemDebug
 
+      - name: Detekt
+        run: ./gradlew detekt
+
       # One flavor is enough: the unit tests sit in src/test and are identical
       # for both. The HTML report lands under app/build/reports and is picked up
       # by the upload step below when this fails.

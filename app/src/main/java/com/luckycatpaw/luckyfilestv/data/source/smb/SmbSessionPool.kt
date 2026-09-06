@@ -197,6 +197,10 @@ internal class SmbSessionPool(
      * leased, but only by something that also took it out of the pool, so the next attempt
      * starts a fresh connection instead of finding the same corpse again.
      */
+    // Throwable on purpose: a failed connection is dropped from the pool before the failure
+    // is rethrown. Narrowing to Exception would skip that on an Error and leave an entry
+    // behind that nothing can ever complete.
+    @Suppress("TooGenericExceptionCaught")
     private suspend fun acquire(share: SmbShare): PooledShare {
         repeat(ACQUIRE_ATTEMPTS) {
             val connecting = mutex.withLock { connectingLocked(share) }
@@ -268,6 +272,10 @@ internal class SmbSessionPool(
         scope.launch { runCatching { connecting.deferred.await() }.getOrNull()?.retire() }
     }
 
+    // Throwable on purpose: session and connection are closed before the failure is
+    // rethrown. Narrowing to Exception would skip that on an Error and leak a session on
+    // the server.
+    @Suppress("TooGenericExceptionCaught")
     private fun open(share: SmbShare): PooledShare {
         // Resolved before the socket, so an unreadable password costs no connection and,
         // more importantly, no failed login attempt against the account behind it.
