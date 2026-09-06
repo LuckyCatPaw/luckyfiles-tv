@@ -39,7 +39,7 @@ import kotlinx.coroutines.withContext
  * directory again on the main thread.
  */
 internal class LocalFileSource(
-    private val volumes: LocalVolumeRepository,
+    private val volumes: LocalVolumes,
     private val fileTreeWalker: FileTreeWalker = FileTreeWalker(),
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : FileSource {
@@ -105,7 +105,11 @@ internal class LocalFileSource(
             fileCount = scan.fileCount,
             folderCount = scan.directoryCount,
             extension = file.extension.takeIf { it.isNotBlank() },
-            mimeType = MimeTypes.forFileName(file.name),
+            // A directory has no content type. Asking anyway used to answer
+            // application/octet-stream, which the properties overlay then showed for a
+            // folder, and it is the reason a folder could not be described without the
+            // platform's mime table being present.
+            mimeType = if (file.isDirectory) null else MimeTypes.forFileName(file.name),
             unreadableDirectoryCount = scan.unreadableDirectoryCount
         )
     }

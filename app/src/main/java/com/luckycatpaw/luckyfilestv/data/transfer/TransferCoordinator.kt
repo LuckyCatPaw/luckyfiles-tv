@@ -7,9 +7,9 @@ import com.luckycatpaw.luckyfilestv.data.common.FileTreeWalker
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeCycleException
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeOutsideRootException
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeReadException
+import com.luckycatpaw.luckyfilestv.data.source.AndroidSourceMessages
 import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
 import com.luckycatpaw.luckyfilestv.data.source.SourceException
-import com.luckycatpaw.luckyfilestv.data.source.SourceMessages
 import com.luckycatpaw.luckyfilestv.data.source.SourceOperation
 import com.luckycatpaw.luckyfilestv.data.source.SourcePath
 import com.luckycatpaw.luckyfilestv.data.transfer.model.FileConflictPolicy
@@ -44,7 +44,7 @@ class TransferCoordinator(
     }
 
     private val appContext = context.applicationContext
-    private val sourceMessages = SourceMessages(appContext)
+    private val sourceMessages = AndroidSourceMessages(appContext)
     private val transferEngine by lazy {
         FileTransferEngine(
             context = appContext,
