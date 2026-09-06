@@ -1,3 +1,5 @@
+import com.android.build.api.variant.HasUnitTestBuilder
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -80,8 +82,13 @@ tasks.named("preBuild") {
 }
 
 // And on check as well, so `./gradlew check` needs no compilation to be useful.
+//
+// Both lint variants by name rather than the `lint` task AGP wires in: that one covers
+// the default variant alone, which would silently leave the system flavor unchecked. The
+// pair here is what the CI workflow runs, so a green `check` means a green pipeline.
 tasks.named("check") {
     dependsOn(ktlintCheck)
+    dependsOn("lintPlayDebug", "lintSystemDebug")
 }
 
 android {
@@ -138,6 +145,28 @@ android {
     buildFeatures {
         compose = true
     }
+
+    testOptions {
+        // Local unit tests run against a stubbed android.jar whose methods throw
+        // by default. Anything that touches android.util.Log on the way through —
+        // FileRepository does, on every failed operation — would then fail on the
+        // stub rather than on the behaviour under test.
+        unitTests.isReturnDefaultValues = true
+    }
+}
+
+// The unit tests live in src/test and know nothing about flavors or build types, so all
+// four variants would run the identical suite — and compile it four times to do so. That
+// is why the CI workflow names one variant instead of calling the `test` task. Enabling
+// only that variant lets `check` do the same without listing tasks by hand. Keep the name
+// in step with the workflow.
+//
+// The cast is how the API is reached: enableUnitTest lives on HasUnitTestBuilder, and
+// beforeVariants hands over a builder type that does not expose it.
+androidComponents {
+    beforeVariants { variantBuilder ->
+        (variantBuilder as HasUnitTestBuilder).enableUnitTest = variantBuilder.name == "playDebug"
+    }
 }
 
 dependencies {
@@ -160,6 +189,12 @@ dependencies {
     implementation(libs.bouncycastle.prov)
     implementation(libs.slf4j.api)
     implementation(libs.slf4j.android)
+
+    // kotlin-test resolves to its JUnit 4 flavour because junit is on the same
+    // classpath, so @Test comes from JUnit and the assertions from kotlin.test.
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlin.test)
+    testImplementation(libs.kotlinx.coroutines.test)
 
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)

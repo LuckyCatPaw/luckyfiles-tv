@@ -87,13 +87,23 @@ class ImageRepository private constructor(context: Context) {
      */
     fun trimMemory(level: Int) {
         when {
-            level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND ||
-                level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL -> {
+            // Both still delivered on every version: the process has gone on the LRU list,
+            // or the interface it was drawing is no longer on screen.
+            level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND -> {
                 memoryCache.evictAll()
                 negativeCache.evictAll()
             }
 
-            level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW ->
+            level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN ->
+                memoryCache.trimToSize(maxMemoryKb / 2)
+
+            // API 30 to 33 only, see the two constants for why they are still here.
+            level == TRIM_MEMORY_RUNNING_CRITICAL -> {
+                memoryCache.evictAll()
+                negativeCache.evictAll()
+            }
+
+            level >= TRIM_MEMORY_RUNNING_LOW ->
                 memoryCache.trimToSize(maxMemoryKb / 2)
         }
     }
@@ -208,6 +218,29 @@ class ImageRepository private constructor(context: Context) {
         /** Roughly a dozen screens of a grid, at a key and a timestamp per entry. */
         private const val NEGATIVE_CACHE_ENTRIES = 256
         private const val NEGATIVE_TTL_MILLIS = 30_000L
+
+        /**
+         * The two levels a foreground process used to be warned with, kept for API 30 to 33.
+         *
+         * They stopped being delivered in API 34 and were deprecated in 35, and there is
+         * nothing that replaces them: a current system does not warn a visible process at
+         * all, it enforces a per-process memory limit and kills what exceeds it. But
+         * `minSdk` is 30 and a television runs the version it shipped with until it is
+         * replaced. On an Android 11 to 13 box these are the only notice [trimMemory] gets
+         * while the app is still on screen, and without them a set-top box with a gigabyte
+         * of RAM would shrink nothing until the process is already on the LRU list.
+         *
+         * Named here rather than in [trimMemory] so the deprecated reference sits in one
+         * place with its reason, and a later deprecation somewhere in that function is not
+         * swallowed by a suppression that was meant for these two. Both are compile time
+         * constants, so this reads the same value the framework has always inlined. Delete
+         * the pair and the two branches that use them once `minSdk` reaches 34.
+         */
+        @Suppress("DEPRECATION")
+        private val TRIM_MEMORY_RUNNING_CRITICAL = ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL
+
+        @Suppress("DEPRECATION")
+        private val TRIM_MEMORY_RUNNING_LOW = ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW
 
         @Volatile
         private var instance: ImageRepository? = null
