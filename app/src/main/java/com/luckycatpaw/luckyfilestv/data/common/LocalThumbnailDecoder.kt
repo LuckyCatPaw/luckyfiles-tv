@@ -114,6 +114,12 @@ internal object LocalThumbnailDecoder {
      */
     suspend fun decode(context: Context, type: String, path: String): Bitmap? {
         if (type == "apk") {
+            // PackageManager reads a filesystem path, so a share is not one it can be given:
+            // "smb://nas/x.apk" arrives at the parser as "/smb:/nas/x.apk" and fails there,
+            // three log lines deep, once per file in the folder. There is no icon to be had
+            // without downloading the archive first.
+            if (SourcePath.parseOrNull(path)?.isLocal == false) return null
+
             return withContext(imageDecodeDispatcher) { decodeApkIcon(context, path) }
         }
 
@@ -182,11 +188,15 @@ internal object LocalThumbnailDecoder {
         }
 
         offsetsUs.forEach { timeUs ->
-            val frame = frameAt(retriever, timeUs)
-            if (frame != null && !frame.isMostlyBlack()) return frame
+            // A dark frame is worth another timestamp; nothing at all is not. Null means the
+            // decoder produced no image, and the remaining offsets will produce none either
+            // — on a share that is several seeks apiece for a preview that is not coming.
+            val frame = frameAt(retriever, timeUs) ?: return frameAt(retriever, 0L)
+
+            if (!frame.isMostlyBlack()) return frame
         }
 
-        // Everything dark, or seeking failed: better the first frame than no preview.
+        // Everything dark: better the first frame than no preview.
         return frameAt(retriever, 0L)
     }
 

@@ -28,11 +28,35 @@ internal data class TransferItemResult(
     val unreadableDirectories: List<String> = emptyList()
 )
 
+/**
+ * Moving bytes, whichever way round the two sides are.
+ *
+ * An interface because the coordinator above it decides things worth testing that only show
+ * up around a transfer that went wrong — the order of copy, record and delete, and a failure
+ * on item three not taking four and five with it. [FileTransferEngine] is the one that does
+ * the work; a test stands in for it to arrange the failures.
+ */
+internal interface TransferEngine {
+
+    suspend fun copy(
+        source: TransferSource,
+        target: TransferTarget,
+        replace: Boolean,
+        totalBytes: Long,
+        onBytesCopied: suspend (Long) -> Unit
+    ): TransferItemResult
+
+    /** @return `null` when the storage cannot rename and the caller has to copy instead. */
+    suspend fun tryFastMove(source: TransferSource, target: SourcePath, replace: Boolean): TransferItemResult?
+
+    suspend fun delete(source: TransferSource)
+}
+
 internal class FileTransferEngine(
     context: Context,
     private val fileTreeWalker: FileTreeWalker,
     private val sources: FileSourceRegistry
-) {
+) : TransferEngine {
 
     private val appContext = context.applicationContext
     private val replacementTransactionStore = ReplacementTransactionStore(
@@ -40,7 +64,7 @@ internal class FileTransferEngine(
         fileTreeWalker = fileTreeWalker
     )
 
-    suspend fun copy(
+    override suspend fun copy(
         source: TransferSource,
         target: TransferTarget,
         replace: Boolean,
@@ -89,7 +113,11 @@ internal class FileTransferEngine(
      * failed again, several minutes later and with a message from the copy path. They are
      * passed on so the user sees what actually happened and can retry deliberately.
      */
-    suspend fun tryFastMove(source: TransferSource, target: SourcePath, replace: Boolean): TransferItemResult? {
+    override suspend fun tryFastMove(
+        source: TransferSource,
+        target: SourcePath,
+        replace: Boolean
+    ): TransferItemResult? {
         currentCoroutineContext().ensureActive()
 
         if (replace) return null
@@ -111,7 +139,7 @@ internal class FileTransferEngine(
         )
     }
 
-    suspend fun delete(source: TransferSource) {
+    override suspend fun delete(source: TransferSource) {
         withContext(NonCancellable) {
             source.delete()
         }
