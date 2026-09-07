@@ -31,6 +31,7 @@ import com.luckycatpaw.luckyfilestv.ui.main.model.TransferConflictAnswer
 import com.luckycatpaw.luckyfilestv.ui.main.model.TransferMode
 import com.luckycatpaw.luckyfilestv.util.hasAllFilesAccess
 import com.luckycatpaw.luckyfilestv.util.hasLocalNetworkAccess
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -39,6 +40,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 internal class MainViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -49,6 +51,12 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
     internal val events = eventChannel.receiveAsFlow()
     private val volumeRepository = LocalVolumeRepository(appContext)
     private val smbShareRepository = SmbShareRepository(appContext)
+
+    /**
+     * The pool the sources use, held so a changed share can lose its connections. Same
+     * instance the registry hands to SmbFileSource, since `shared` returns one per process.
+     */
+    private val sharedSessions = SmbSessionPool.shared(appContext)
     private val settingsRepository = SettingsRepository(appContext)
     private val sourceMessages = AndroidSourceMessages(appContext)
     private val fileRepository = FileRepository(
@@ -354,7 +362,10 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
     internal fun saveSmbShare(share: SmbShare) {
         viewModelScope.launch {
             runCatching { smbShareRepository.save(share) }
-                .onSuccess { showStorages() }
+                .onSuccess {
+                    smbShareRepository.invalidateSessions(sharedSessions)
+                    showStorages()
+                }
                 .onFailure { failure ->
                     reportFailure(
                         failure,
@@ -380,7 +391,10 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
 
         viewModelScope.launch {
             runCatching { smbShareRepository.remove(configId) }
-                .onSuccess { showStorages() }
+                .onSuccess {
+                    smbShareRepository.invalidateSessions(sharedSessions)
+                    showStorages()
+                }
                 .onFailure { reportFailure(it, R.string.error_generic) }
         }
     }
@@ -397,11 +411,14 @@ internal class MainViewModel(application: Application) : AndroidViewModel(applic
             val sessions = SmbSessionPool()
             val source = SmbFileSource(SmbShareStore { listOf(share) }, sessions)
 
-            val result = runCatching {
-                source.list(share.path, currentSettings.toListOptions())
+            // dispose rather than closeAll, and in a finally: the pool holds an SMBClient, a
+            // scope and a network callback that closeAll leaves behind, and leaving the editor
+            // cancels this coroutine mid-list, which used to close nothing at all.
+            val result = try {
+                runCatching { source.list(share.path, currentSettings.toListOptions()) }
+            } finally {
+                withContext(NonCancellable) { sessions.dispose() }
             }
-
-            sessions.closeAll()
 
             result
                 .onSuccess { onResult(true, appContext.getString(R.string.share_test_success)) }

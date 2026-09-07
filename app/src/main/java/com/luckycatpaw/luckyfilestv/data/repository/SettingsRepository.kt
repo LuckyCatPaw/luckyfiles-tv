@@ -5,13 +5,16 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.luckycatpaw.luckyfilestv.data.common.model.FileManagerSettings
 import com.luckycatpaw.luckyfilestv.data.common.model.FileSortMode
 import com.luckycatpaw.luckyfilestv.util.AppLocaleManager
+import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
@@ -29,19 +32,27 @@ class SettingsRepository(private val context: Context) {
         val foldersFirst = booleanPreferencesKey("folders_first")
     }
 
-    val settings: Flow<FileManagerSettings> = context.settingsDataStore.data.map { preferences ->
-        FileManagerSettings(
-            languageTag = preferences[Keys.languageTag]?.takeIf { it == "en" || it == "de" },
-            hideFolderJpg = preferences[Keys.hideFolderJpg] ?: true,
-            useFolderJpgAsIcon = preferences[Keys.useFolderJpgAsIcon] ?: true,
-            optimizeFileNames = preferences[Keys.optimizeFileNames] ?: true,
-            sortMode = FileSortMode.entries.firstOrNull {
-                it.name == preferences[Keys.sortMode]
-            } ?: FileSortMode.NAME,
-            sortAscending = preferences[Keys.sortAscending] ?: true,
-            foldersFirst = preferences[Keys.foldersFirst] ?: true
-        )
-    }
+    /**
+     * A damaged preferences file arrives here as an IOException, and this flow hangs off
+     * viewModelScope with SharingStarted.Eagerly, so letting it through takes down every
+     * other coroutine of the screen. Defaults are the right answer to a file nothing can
+     * read, and the user can set them again.
+     */
+    val settings: Flow<FileManagerSettings> = context.settingsDataStore.data
+        .catch { failure -> if (failure is IOException) emit(emptyPreferences()) else throw failure }
+        .map { preferences ->
+            FileManagerSettings(
+                languageTag = preferences[Keys.languageTag]?.takeIf { it == "en" || it == "de" },
+                hideFolderJpg = preferences[Keys.hideFolderJpg] ?: true,
+                useFolderJpgAsIcon = preferences[Keys.useFolderJpgAsIcon] ?: true,
+                optimizeFileNames = preferences[Keys.optimizeFileNames] ?: true,
+                sortMode = FileSortMode.entries.firstOrNull {
+                    it.name == preferences[Keys.sortMode]
+                } ?: FileSortMode.NAME,
+                sortAscending = preferences[Keys.sortAscending] ?: true,
+                foldersFirst = preferences[Keys.foldersFirst] ?: true
+            )
+        }
 
     suspend fun setLanguageTag(languageTag: String?) {
         val normalizedTag = languageTag.takeIf {

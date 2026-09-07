@@ -33,9 +33,13 @@ internal class ReplacementTransactionStore(context: Context, private val fileTre
         transactionMutex.withLock {
             recoverPendingLocked()
 
-            require(exists(target))
-            require(!exists(preparedReplacement))
-            require(target.parentFile?.canonicalFile == preparedReplacement.parentFile?.canonicalFile)
+            // Messages rather than bare requires: readableMessage passes an exception's
+            // message straight through, and "Failed requirement." is what the user read.
+            require(exists(target)) { "Nothing to replace at ${target.absolutePath}" }
+            require(!exists(preparedReplacement)) { "Replacement already at ${preparedReplacement.absolutePath}" }
+            require(target.parentFile?.canonicalFile == preparedReplacement.parentFile?.canonicalFile) {
+                "Replacement must sit next to what it replaces"
+            }
 
             val transactionId = UUID.randomUUID().toString()
             val parent = requireNotNull(target.parentFile)
@@ -59,10 +63,12 @@ internal class ReplacementTransactionStore(context: Context, private val fileTre
         }
 
     suspend fun installReplacement(preparation: ReplacementPreparation): Boolean = transactionMutex.withLock {
-        require(preparation.journal.absolutePath in activeJournals)
-        require(preparation.journal.isFile)
-        require(exists(preparation.target))
-        require(exists(preparation.preparedReplacement))
+        require(preparation.journal.absolutePath in activeJournals) { "Replacement was not prepared" }
+        require(preparation.journal.isFile) { "Journal of the replacement is gone" }
+        require(exists(preparation.target)) { "Nothing to replace at ${preparation.target.absolutePath}" }
+        require(exists(preparation.preparedReplacement)) {
+            "Prepared replacement is gone from ${preparation.preparedReplacement.absolutePath}"
+        }
 
         if (!preparation.target.renameTo(preparation.backup)) {
             preparation.journal.delete()
@@ -145,7 +151,7 @@ internal class ReplacementTransactionStore(context: Context, private val fileTre
 
     private fun writeJournal(journal: File, transaction: ReplacementTransaction) {
         val journalDirectoryCreated = !journalDirectory.exists() && journalDirectory.mkdirs()
-        check(journalDirectory.exists())
+        check(journalDirectory.exists()) { "Cannot create the journal directory" }
 
         if (journalDirectoryCreated) {
             DirectorySync.syncParentOf(journalDirectory)
@@ -172,7 +178,7 @@ internal class ReplacementTransactionStore(context: Context, private val fileTre
                 StandardCopyOption.REPLACE_EXISTING
             )
         } catch (_: Exception) {
-            check(journal.exists() || temporary.renameTo(journal))
+            check(journal.exists() || temporary.renameTo(journal)) { "Cannot write the journal" }
         }
 
         // fd.sync() above made the journal contents durable, but not the directory entry that

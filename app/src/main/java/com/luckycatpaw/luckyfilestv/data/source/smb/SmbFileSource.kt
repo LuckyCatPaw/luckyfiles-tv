@@ -24,6 +24,7 @@ import com.luckycatpaw.luckyfilestv.data.source.VolumeKind
 import com.luckycatpaw.luckyfilestv.data.source.entryComparator
 import com.luckycatpaw.luckyfilestv.util.FileUtil
 import com.luckycatpaw.luckyfilestv.util.MimeTypes
+import com.luckycatpaw.luckyfilestv.util.safeAdd
 import java.io.FilterOutputStream
 import java.io.IOException
 import java.io.InputStream
@@ -122,7 +123,9 @@ internal class SmbFileSource(
             fileCount = scan.fileCount,
             folderCount = scan.directoryCount,
             extension = path.extension.takeIf { it.isNotBlank() },
-            mimeType = MimeTypes.forFileName(entry.name),
+            // A directory has no content type; asking anyway answered
+            // application/octet-stream, which the properties overlay then showed for a folder.
+            mimeType = if (entry.isDirectory) null else MimeTypes.forFileName(entry.name),
             unreadableDirectoryCount = scan.unreadableDirectoryCount
         )
     }
@@ -170,7 +173,8 @@ internal class SmbFileSource(
     }
 
     override suspend fun rename(path: SourcePath, newName: String): SourcePath {
-        val cleanName = validName(newName, forDirectory = false)
+        // What is being renamed decides the wording; the folder message exists for this.
+        val cleanName = validName(newName, forDirectory = stat(path)?.isDirectory == true)
         val renamed = path.sibling(cleanName) ?: throw SourceException.ParentMissing(path)
 
         if (cleanName == path.name) return path
@@ -334,7 +338,7 @@ internal class SmbFileSource(
                         pending.addLast(childPath)
                     } else {
                         files++
-                        size += child.endOfFile
+                        size = safeAdd(size, child.endOfFile)
                     }
                 }
         }
