@@ -7,6 +7,7 @@ import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
 import com.luckycatpaw.luckyfilestv.data.source.ListOptions
 import com.luckycatpaw.luckyfilestv.data.source.SortOptions
 import com.luckycatpaw.luckyfilestv.data.source.SourcePath
+import com.luckycatpaw.luckyfilestv.util.safeAdd
 import java.io.File
 import java.io.InputStream
 import java.nio.file.Files
@@ -137,7 +138,7 @@ internal sealed interface TransferSource {
             var size = 0L
 
             walkTree(
-                onFile = { _, entrySize, _ -> size += entrySize },
+                onFile = { _, entrySize, _ -> size = safeAdd(size, entrySize) },
                 onDirectory = { _, _ -> },
                 onDirectoryComplete = { _, _ -> },
                 onUnreadable = { }

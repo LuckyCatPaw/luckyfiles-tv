@@ -4,9 +4,12 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import java.io.IOException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import org.json.JSONArray
@@ -42,9 +45,14 @@ internal class SmbShareRepository(
     @Volatile
     private var decoded: DecodedShares? = null
 
-    val shares: Flow<List<SmbShare>> = context.smbDataStore.data.map { preferences ->
-        preferences[SHARES]?.let(::decodeCached).orEmpty()
-    }
+    /**
+     * A damaged preferences file arrives here as an IOException, and callers of this one sit
+     * on scopes that other work shares. Answering with no shares is what an unreadable store
+     * means; taking the scope down with it is not.
+     */
+    val shares: Flow<List<SmbShare>> = context.smbDataStore.data
+        .catch { failure -> if (failure is IOException) emit(emptyPreferences()) else throw failure }
+        .map { preferences -> preferences[SHARES]?.let(::decodeCached).orEmpty() }
 
     override suspend fun shares(): List<SmbShare> = shares.first()
 
@@ -58,6 +66,22 @@ internal class SmbShareRepository(
 
     suspend fun remove(id: String) {
         update { current -> current.filterNot { it.id == id } }
+    }
+
+    /**
+     * Drops the pooled connections after the stored shares changed.
+     *
+     * The session key is host, share and user, so a corrected password does not change it
+     * and the pooled session keeps serving with the old credentials until the server drops
+     * it. A removed share is worse: its socket and session stay open until the process ends,
+     * to a server the user just took out of the list.
+     *
+     * Called by whoever owns both this and the pool, since a repository that reaches for a
+     * connection pool by itself is a repository that cannot be constructed without one.
+     */
+    suspend fun invalidateSessions(sessions: SmbSessionPool) {
+        decoded = null
+        sessions.closeAll()
     }
 
     private suspend fun update(transform: (List<SmbShare>) -> List<SmbShare>) {

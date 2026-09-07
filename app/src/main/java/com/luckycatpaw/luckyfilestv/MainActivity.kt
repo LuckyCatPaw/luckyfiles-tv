@@ -21,7 +21,13 @@ import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var viewModel: MainViewModel
+    /**
+     * Nullable rather than `lateinit`: the permission launcher below registers during field
+     * initialisation, and a result still outstanding after process death is delivered from
+     * inside `super.onCreate` — before the line that assigns this. DocumentPickerActivity
+     * carries the same shape for a neighbouring reason.
+     */
+    private var viewModel: MainViewModel? = null
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -30,7 +36,7 @@ class MainActivity : AppCompatActivity() {
     private val localNetworkPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) {
-        viewModel.resumeAfterLocalNetworkPermission()
+        viewModel?.resumeAfterLocalNetworkPermission()
     }
 
     /**
@@ -50,7 +56,8 @@ class MainActivity : AppCompatActivity() {
         notificationPermissionRequested =
             savedInstanceState?.getBoolean(STATE_NOTIFICATION_PERMISSION_REQUESTED) == true
 
-        viewModel = ViewModelProvider(this)[MainViewModel::class.java]
+        val viewModel = ViewModelProvider(this)[MainViewModel::class.java]
+        this.viewModel = viewModel
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -70,17 +77,17 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
-        viewModel.startWatchingStorage()
+        viewModel?.startWatchingStorage()
     }
 
     override fun onStop() {
-        viewModel.stopWatchingStorage()
+        viewModel?.stopWatchingStorage()
         super.onStop()
     }
 
     override fun onResume() {
         super.onResume()
-        viewModel.resumeAfterStoragePermission()
+        viewModel?.resumeAfterStoragePermission()
     }
 
     private fun handleEvent(event: MainUiEvent) {

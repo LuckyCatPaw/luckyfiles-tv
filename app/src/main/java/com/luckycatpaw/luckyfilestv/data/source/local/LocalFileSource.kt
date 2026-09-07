@@ -25,6 +25,7 @@ import java.io.RandomAccessFile
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.LinkOption
+import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.BasicFileAttributes
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -134,11 +135,15 @@ internal class LocalFileSource(
         val source = path.canonical(SourceOperation.RENAME)
         val parent = source.parentFile ?: throw SourceException.ParentMissing(path)
 
-        val cleanName = validName(newName, forDirectory = false)
+        // What is being renamed decides the wording; the folder message exists for this.
+        val renamingDirectory = source.isDirectory
+        val cleanName = validName(newName, forDirectory = renamingDirectory)
         if (cleanName == source.name) return@withContext SourcePath.of(source)
 
         val target = File(parent, cleanName).absoluteFile
-        if (target.parentFile?.canonicalFile != parent) throw SourceException.InvalidName(cleanName, false)
+        if (target.parentFile?.canonicalFile != parent) {
+            throw SourceException.InvalidName(cleanName, renamingDirectory)
+        }
 
         try {
             FileUtil.moveWithoutReplacing(source, target)
@@ -238,12 +243,22 @@ internal class LocalFileSource(
 
     override suspend fun openOutput(path: SourcePath, overwrite: Boolean): OutputStream = withContext(dispatcher) {
         val file = path.toFile()
-        if (!overwrite && Files.exists(file.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-            throw SourceException.AlreadyExists(file.name)
-        }
 
         try {
-            FileOutputStream(file)
+            if (overwrite) {
+                FileOutputStream(file)
+            } else {
+                // One call instead of a check and then a create: between the two, something
+                // else can take the name, and FileOutputStream would truncate what it found.
+                // TransferTarget.Local has always done it this way.
+                Files.newOutputStream(
+                    file.toPath(),
+                    StandardOpenOption.CREATE_NEW,
+                    StandardOpenOption.WRITE
+                )
+            }
+        } catch (exists: FileAlreadyExistsException) {
+            throw SourceException.AlreadyExists(file.name, exists)
         } catch (failed: IOException) {
             throw SourceException.Failed(SourceOperation.WRITE, failed)
         }
