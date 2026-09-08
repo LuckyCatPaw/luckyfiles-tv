@@ -40,6 +40,14 @@ internal class FileTransferService : Service() {
             TransferSession.cancel()
         }
 
+        // A start arriving before the pending stopSelf is processed keeps this instance
+        // alive, and the collector below is still the one from last time. Without this the
+        // flag stays set from the previous transfer, the stop never fires again, and the
+        // notification and the dataSync budget both keep running.
+        if (TransferSession.isRunning) {
+            stopping = false
+        }
+
         // Since Android 15 the system refuses to promote the service when the app has used
         // up its six hour dataSync budget. Stopping ourselves here is deliberate: the copy
         // cannot be kept alive reliably, and not calling startForeground() at all would
@@ -177,9 +185,11 @@ internal class FileTransferService : Service() {
         fun start(context: Context) {
             val appContext = context.applicationContext
             ensureNotificationChannel(appContext, CHANNEL_ID, R.string.transfer_channel_name)
-            appContext.startForegroundService(
-                Intent(appContext, FileTransferService::class.java)
-            )
+            // ForegroundServiceStartNotAllowedException is an IllegalStateException and
+            // would take the app down. RemoteAccessService.start guards the same call.
+            runCatching {
+                appContext.startForegroundService(Intent(appContext, FileTransferService::class.java))
+            }
         }
     }
 }

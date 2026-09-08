@@ -242,18 +242,22 @@ class FileContentProvider : ContentProvider() {
         runBlocking { sources.roots() }.any { volume -> location.isSameOrChildOf(volume.path) }
     }.getOrDefault(false)
 
+    /**
+     * Canonicalising is I/O and can fail. An IOException from here would cross Binder into
+     * the calling app, which expects a FileNotFoundException or nothing at all — getType
+     * already guards the same call. A path that cannot be resolved is not one to allow.
+     */
     private fun isAllowedFile(file: File): Boolean {
         val context = context ?: return false
 
         val storageManager =
             context.getSystemService(StorageManager::class.java)
 
-        val filePath = file.canonicalPath
+        val filePath = runCatching { file.canonicalPath }.getOrNull() ?: return false
 
         return storageManager.storageVolumes.any { volume ->
 
-            val root = volume.directory
-                ?.canonicalFile
+            val root = runCatching { volume.directory?.canonicalFile }.getOrNull()
                 ?: return@any false
 
             val rootPath = root.canonicalPath

@@ -48,6 +48,21 @@ class FileNameOptimizerTest {
         assertEquals("Show S01E01\nFirst / Second", FileNameOptimizer.optimize("Show.S01E01.First..Second.mkv"))
     }
 
+    // The case eleven tests missed: every one of them put a real title in front of the
+    // release tail, and a title is what kept the first token from surviving on its own.
+    @Test
+    fun `a name that is nothing but release tokens leaves no title behind`() {
+        assertEquals("Show S01E02", FileNameOptimizer.optimize("Show.S01E02.1080p.BluRay.x264.mkv"))
+        assertEquals("Tatort S01E05", FileNameOptimizer.optimize("Tatort.S01E05.German.DL.1080p.x264.mkv"))
+        assertEquals("Show S01E02", FileNameOptimizer.optimize("Show.S01E02.GERMAN.720p.HDTV.x264.mkv"))
+    }
+
+    @Test
+    fun `a single release token is not a title either`() {
+        assertEquals("Show S01E02", FileNameOptimizer.optimize("Show.S01E02.1080p.mkv"))
+        assertEquals("Show S01E02", FileNameOptimizer.optimize("Show.S01E02.WEB-DL.mkv"))
+    }
+
     @Test
     fun `leaves a name without an episode code untouched`() {
         assertEquals("Some.Movie.2019.1080p.mkv", FileNameOptimizer.optimize("Some.Movie.2019.1080p.mkv"))
