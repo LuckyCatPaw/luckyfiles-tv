@@ -125,8 +125,10 @@ object FileNameOptimizer {
     }
 
     private fun cleanEpisodeTitle(value: String): String {
+        // The suffix pattern needs the separator in front of the first token it matches, so
+        // it has to run before anything trims one off. Trimming first left exactly one token
+        // standing — "Show.S01E02.1080p.BluRay.x264" came out with 1080p as its title.
         val cleaned = value
-            .trimNameSeparators()
             .replace(releaseSuffixRegex, "")
             .trimNameSeparators()
 

@@ -1,5 +1,6 @@
 package com.luckycatpaw.luckyfilestv.data.transfer
 
+import com.luckycatpaw.luckyfilestv.data.common.FileTreeWalker
 import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
 import com.luckycatpaw.luckyfilestv.data.source.SourcePath
 import com.luckycatpaw.luckyfilestv.util.DirectorySync
@@ -43,7 +44,7 @@ internal sealed interface TransferTarget {
     /** Removes what was created, used to clean up after a cancelled or failed transfer. */
     suspend fun deleteTree()
 
-    class Local(val file: File) : TransferTarget {
+    class Local(val file: File, private val fileTreeWalker: FileTreeWalker = FileTreeWalker()) : TransferTarget {
 
         override val pathValue: String get() = file.absolutePath
 
@@ -77,7 +78,11 @@ internal sealed interface TransferTarget {
         }
 
         override suspend fun deleteTree() {
-            resolve("").deleteRecursively()
+            // Not deleteRecursively: that walks on isDirectory, which follows a link, so a
+            // link left in the target by another app would have its contents deleted rather
+            // than itself. The walker recognises links with NOFOLLOW_LINKS and removes them
+            // as entries, which is the rule the rest of the transfer follows.
+            runCatching { fileTreeWalker.delete(resolve("")) }
         }
 
         fun resolve(relativePath: String): File = if (relativePath.isEmpty()) {
