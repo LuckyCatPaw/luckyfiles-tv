@@ -109,6 +109,34 @@ class TransferRunnerTest {
     }
 
     @Test
+    fun `a move with an unreadable directory keeps the source and reports the omission`() = runTest {
+        engine.renames = false
+        engine.unreadable = listOf("smb://nas/media/locked")
+
+        run(item("folder", size = 10L), operation = TransferOperation.MOVE)
+
+        assertEquals(1, engine.copies)
+        assertEquals(0, engine.deletes)
+        assertEquals(listOf("unreadableSkipped"), issues())
+        assertTrue(completed().isEmpty())
+        assertEquals(1, tally.result(cancelled = false).sourceDeleteWarningCount)
+    }
+
+    @Test
+    fun `a partial move warns once per source and still counts a later successful move`() = runTest {
+        engine.unreadable = listOf("smb://nas/media/locked", "smb://nas/media/also-locked")
+        engine.renameOnly = setOf("next.mkv")
+
+        run(item("folder", size = 10L), item("next.mkv", size = 1L), operation = TransferOperation.MOVE)
+
+        assertEquals(1, engine.copies)
+        assertEquals(0, engine.deletes)
+        assertEquals(listOf("smb://nas/target/next.mkv"), completed())
+        assertEquals(listOf("unreadableSkipped", "unreadableSkipped"), issues())
+        assertEquals(1, tally.result(cancelled = false).sourceDeleteWarningCount)
+    }
+
+    @Test
     fun `what the engine could not clean up is counted`() = runTest {
         engine.cleanupWarning = true
 
@@ -142,7 +170,7 @@ class TransferRunnerTest {
     }
 
     @Test
-    fun `a rate is only shown for a copy`() = runTest {
+    fun `a rename has no rate and a copy has one`() = runTest {
         // A rename moves no bytes, so a speed would be a number made up out of nothing.
         engine.renames = true
 
@@ -155,6 +183,28 @@ class TransferRunnerTest {
 
         assertTrue(duringMove.all { it == null })
         assertNotNull(progress.last().bytesPerSecond)
+    }
+
+    @Test
+    fun `a move that copies bytes shows a rate`() = runTest {
+        engine.bytesToReport = 10L
+
+        run(item("a.mkv", size = 10L), operation = TransferOperation.MOVE)
+
+        assertNotNull(progress.last().bytesPerSecond)
+        assertTrue(requireNotNull(progress.last().bytesPerSecond) > 0L)
+    }
+
+    @Test
+    fun `a rename after a copying move does not inherit its rate`() = runTest {
+        engine.bytesToReport = 10L
+        engine.renameOnly = setOf("b.mkv")
+
+        run(item("a.mkv", size = 10L), item("b.mkv", size = 10L), operation = TransferOperation.MOVE)
+
+        assertTrue(progress.any { it.currentName == "a.mkv" && it.bytesPerSecond != null })
+        assertTrue(progress.filter { it.currentName == "b.mkv" }.all { it.bytesPerSecond == null })
+        assertEquals(1, engine.copies)
     }
 
     @Test
@@ -220,6 +270,7 @@ class TransferRunnerTest {
     private class FakeTransferEngine : TransferEngine {
 
         var renames = false
+        var renameOnly: Set<String> = emptySet()
         var deleteFailure: Throwable? = null
         var failCopyOf: String? = null
         var cleanupWarning = false
@@ -229,21 +280,15 @@ class TransferRunnerTest {
         var copies = 0
         var deletes = 0
 
-        override suspend fun copy(
-            source: TransferSource,
-            target: TransferTarget,
-            replace: Boolean,
-            totalBytes: Long,
-            onBytesCopied: suspend (Long) -> Unit
-        ): TransferItemResult {
-            if (source.name == failCopyOf) throw IOException("write failed")
+        override suspend fun copy(request: CopyRequest, onBytesCopied: suspend (Long) -> Unit): TransferItemResult {
+            if (request.source.name == failCopyOf) throw IOException("write failed")
 
             copies++
             if (bytesToReport > 0L) onBytesCopied(bytesToReport)
 
             return TransferItemResult(
                 cleanupWarning = cleanupWarning,
-                bytesTransferred = totalBytes,
+                bytesTransferred = request.totalBytes,
                 unreadableDirectories = unreadable
             )
         }
@@ -252,13 +297,13 @@ class TransferRunnerTest {
             source: TransferSource,
             target: SourcePath,
             replace: Boolean
-        ): TransferItemResult? = if (renames) {
+        ): TransferItemResult? = if (renames || source.name in renameOnly) {
             TransferItemResult(cleanupWarning = false, bytesTransferred = 0L)
         } else {
             null
         }
 
-        override suspend fun delete(source: TransferSource) {
+        override suspend fun delete(source: TransferSource, copiedEntries: List<CopiedEntry>) {
             deletes++
             deleteFailure?.let { throw it }
         }

@@ -43,7 +43,7 @@ internal class TransferTally {
         cleanupWarningCount++
     }
 
-    /** The copy went through, the source it should have replaced is still there. */
+    /** A move left its source behind, either after a partial copy or a failed deletion. */
     fun sourceDeleteWarning() {
         sourceDeleteWarningCount++
     }

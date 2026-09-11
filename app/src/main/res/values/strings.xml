@@ -174,8 +174,8 @@
         <item quantity="other">Transfer completed, but %1$d temporary backups could not be removed.</item>
     </plurals>
     <plurals name="move_source_delete_warning">
-        <item quantity="one">Move completed, but %1$d source item could not be removed.</item>
-        <item quantity="other">Move completed, but %1$d source items could not be removed.</item>
+        <item quantity="one">%1$d source item remains at its original location.</item>
+        <item quantity="other">%1$d source items remain at their original locations.</item>
     </plurals>
     <string name="transfer_multiple_warnings">Transfer completed, but %1$s and %2$s could not be removed.</string>
     <plurals name="transfer_source_warning_count">

@@ -62,7 +62,7 @@ internal class TransferPlanner(
                     is TransferSource.Local ->
                         runCatching { source.file.canonicalPath }.getOrElse { source.pathValue }
 
-                    is TransferSource.Remote -> source.pathValue
+                    is TransferSource.Remote -> source.location.transferIdentity().value
                 }
             }
         )
@@ -111,7 +111,10 @@ internal class TransferPlanner(
             return Decision.NothingToDo
         }
 
-        if (!session.copying && parentOf(source, localSource) == session.canonicalTarget) {
+        if (
+            !session.copying &&
+            parentOf(source, localSource)?.transferIdentity() == session.canonicalTarget.transferIdentity()
+        ) {
             // Moving something into the folder it already sits in is a no-op.
             tally.completed(source.pathValue)
             return Decision.NothingToDo
@@ -142,7 +145,7 @@ internal class TransferPlanner(
         onConflict: suspend (TransferConflict) -> TransferConflictDecision
     ): Decision {
         val directTarget = session.request.targetLocation.child(source.name)
-        val sameTarget = directTarget.value == localFileOf(source)?.absolutePath
+        val sameTarget = directTarget.transferIdentity() == source.location.transferIdentity()
         val taken = targetExists(directTarget) || directTarget.value in session.reservedTargets
         val conflict = taken && (session.copying || !sameTarget)
 
@@ -161,20 +164,25 @@ internal class TransferPlanner(
 
         val replace = conflict && policy == FileConflictPolicy.REPLACE
 
-        val target = if (!conflict || replace) {
-            directTarget
+        return if (replace && session.replacementContainsSource(directTarget)) {
+            tally.failed(source.pathValue, messages.unsafeFileTree())
+            Decision.NothingToDo
         } else {
-            uniqueDestination(
-                parent = session.request.targetLocation,
-                requestedName = source.name,
-                isDirectory = sourceIsDirectory,
-                reservedTargets = session.reservedTargets
+            val target = if (!conflict || replace) {
+                directTarget
+            } else {
+                uniqueDestination(
+                    parent = session.request.targetLocation,
+                    requestedName = source.name,
+                    isDirectory = sourceIsDirectory,
+                    reservedTargets = session.reservedTargets
+                )
+            }
+
+            Decision.Transfer(
+                PlannedTransfer(source = source, target = target, replace = replace, size = null)
             )
         }
-
-        return Decision.Transfer(
-            PlannedTransfer(source = source, target = target, replace = replace, size = null)
-        )
     }
 
     /**
@@ -244,6 +252,10 @@ internal class TransferPlanner(
             ?.let { SourcePath.of(it) }
             ?: request.targetLocation
 
+        // A replacement must not remove this source, or another item still waiting its turn.
+        fun replacementContainsSource(target: SourcePath): Boolean =
+            sources.any { it.location.isSameOrChildEntryOf(target) }
+
         fun containsItsOwnTarget(source: TransferSource, localSource: File?): Boolean = targetIsInsideSource(
             localSource = localSource,
             localTarget = request.localTargetDirectory,
@@ -272,7 +284,10 @@ internal class TransferPlanner(
         target: SourcePath
     ): Boolean = when {
         localSource != null && localTarget != null -> FileUtil.isSameOrChild(localSource, localTarget)
-        localSource == null && !target.isLocal -> target.isSameOrChildOf(source.location)
+
+        localSource == null && !target.isLocal ->
+            target.transferIdentity().isSameOrChildOf(source.location.transferIdentity())
+
         else -> false
     }
 

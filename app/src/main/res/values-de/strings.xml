@@ -174,8 +174,8 @@
         <item quantity="other">Übertragung abgeschlossen, aber %1$d temporäre Sicherungen konnten nicht entfernt werden.</item>
     </plurals>
     <plurals name="move_source_delete_warning">
-        <item quantity="one">Verschieben abgeschlossen, aber %1$d Quellelement konnte nicht entfernt werden.</item>
-        <item quantity="other">Verschieben abgeschlossen, aber %1$d Quellelemente konnten nicht entfernt werden.</item>
+        <item quantity="one">%1$d Quellelement ist am Ursprungsort geblieben.</item>
+        <item quantity="other">%1$d Quellelemente sind am Ursprungsort geblieben.</item>
     </plurals>
     <string name="transfer_multiple_warnings">Übertragung abgeschlossen, aber %1$s und %2$s konnten nicht entfernt werden.</string>
     <plurals name="transfer_source_warning_count">

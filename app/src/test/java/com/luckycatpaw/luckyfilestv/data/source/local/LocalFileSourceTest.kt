@@ -8,6 +8,8 @@ import com.luckycatpaw.luckyfilestv.data.source.SourcePath
 import com.luckycatpaw.luckyfilestv.data.source.Volume
 import com.luckycatpaw.luckyfilestv.data.source.VolumeKind
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.LinkOption
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -93,6 +95,19 @@ class LocalFileSourceTest {
     }
 
     @Test
+    fun `an unfiltered listing includes dot files without changing the browser default`() = runTest {
+        File(temporaryFolder.root, ".nomedia").writeText("hidden")
+        File(temporaryFolder.root, ".config").mkdir()
+        File(temporaryFolder.root, "film.mkv").writeText("film")
+
+        val browser = source.list(path(temporaryFolder.root), options())
+        val transfer = source.list(path(temporaryFolder.root), options().copy(showHidden = true))
+
+        assertEquals(listOf("film.mkv"), browser.entries.map { it.name })
+        assertEquals(setOf(".nomedia", ".config", "film.mkv"), transfer.entries.map { it.name }.toSet())
+    }
+
+    @Test
     fun `list refuses what is not a readable directory`() = runTest {
         val file = File(temporaryFolder.root, "film.mkv").apply { writeText("film") }
         val missing = File(temporaryFolder.root, "gone")
@@ -170,6 +185,35 @@ class LocalFileSourceTest {
     }
 
     @Test
+    fun `renaming a symbolic link leaves its target untouched`() = runTest {
+        val original = File(temporaryFolder.newFolder("elsewhere"), "original.txt").apply { writeText("keep") }
+        val link = File(temporaryFolder.root, "link.txt")
+        assumeTrue(runCatching { Files.createSymbolicLink(link.toPath(), original.toPath()) }.isSuccess)
+
+        val renamed = source.rename(path(link), "renamed.txt").toFile()
+
+        assertEquals(File(temporaryFolder.root, "renamed.txt"), renamed)
+        assertTrue(Files.isSymbolicLink(renamed.toPath()))
+        assertEquals(original.toPath(), Files.readSymbolicLink(renamed.toPath()))
+        assertEquals("keep", original.readText())
+        assertFalse(Files.exists(link.toPath(), LinkOption.NOFOLLOW_LINKS))
+    }
+
+    @Test
+    fun `a dangling symbolic link can be renamed`() = runTest {
+        val missing = File(temporaryFolder.root, "missing.txt")
+        val link = File(temporaryFolder.root, "link.txt")
+        assumeTrue(runCatching { Files.createSymbolicLink(link.toPath(), missing.toPath()) }.isSuccess)
+
+        val renamed = source.rename(path(link), "renamed.txt").toFile()
+
+        assertTrue(Files.isSymbolicLink(renamed.toPath()))
+        assertEquals(missing.toPath(), Files.readSymbolicLink(renamed.toPath()))
+        assertFalse(Files.exists(link.toPath(), LinkOption.NOFOLLOW_LINKS))
+        assertFalse(missing.exists())
+    }
+
+    @Test
     fun `rename onto an occupied name leaves both sides alone`() = runTest {
         val file = File(temporaryFolder.root, "old.txt").apply { writeText("old") }
         val taken = File(temporaryFolder.root, "taken.txt").apply { writeText("taken") }
@@ -178,6 +222,74 @@ class LocalFileSourceTest {
 
         assertEquals("old", file.readText())
         assertEquals("taken", taken.readText())
+    }
+
+    @Test
+    fun `move relocates an entry inside one volume`() = runTest {
+        volumes = listOf(volume(temporaryFolder.root, "Internal storage"))
+        val file = File(temporaryFolder.root, "film.mkv").apply { writeText("film") }
+        val target = File(temporaryFolder.newFolder("Movies"), "film.mkv")
+
+        source.move(path(file), path(target))
+
+        assertFalse(file.exists())
+        assertEquals("film", target.readText())
+    }
+
+    @Test
+    fun `move leaves different volumes to the transfer engine`() = runTest {
+        val internal = temporaryFolder.newFolder("internal")
+        val external = temporaryFolder.newFolder("external")
+        volumes = listOf(volume(internal, "Internal storage"), volume(external, "USB"))
+        val file = File(external, "film.mkv").apply { writeText("film") }
+        val target = File(internal, "film.mkv")
+
+        // Both fixtures live on one host filesystem. The source must still respect the
+        // volume boundary instead of letting Files.move perform an unreported transfer.
+        assertFailsWith<SourceException.Unsupported> { source.move(path(file), path(target)) }
+
+        assertEquals("film", file.readText())
+        assertFalse(target.exists())
+    }
+
+    @Test
+    fun `a link to another volume can move inside its own volume through a parent alias`() = runTest {
+        val internal = temporaryFolder.newFolder("internal")
+        val external = temporaryFolder.newFolder("external")
+        volumes = listOf(volume(internal, "Internal storage"), volume(external, "USB"))
+        val referent = File(external, "film.mkv").apply { writeText("keep") }
+        val link = File(internal, "film.mkv")
+        val alias = File(temporaryFolder.root, "alias")
+        assumeTrue(runCatching { Files.createSymbolicLink(link.toPath(), referent.toPath()) }.isSuccess)
+        assumeTrue(runCatching { Files.createSymbolicLink(alias.toPath(), internal.toPath()) }.isSuccess)
+        val target = File(File(internal, "archive").apply { mkdir() }, "film.mkv")
+        val requested = path(File(alias, link.name))
+
+        assertTrue(source.canMoveWithoutCopy(requested, path(target)))
+        source.move(requested, path(target))
+
+        assertTrue(Files.isSymbolicLink(target.toPath()))
+        assertEquals(referent.toPath(), Files.readSymbolicLink(target.toPath()))
+        assertEquals("keep", referent.readText())
+        assertFalse(Files.exists(link.toPath(), LinkOption.NOFOLLOW_LINKS))
+    }
+
+    @Test
+    fun `a link cannot bypass a volume boundary by pointing into the destination volume`() = runTest {
+        val internal = temporaryFolder.newFolder("internal")
+        val external = temporaryFolder.newFolder("external")
+        volumes = listOf(volume(internal, "Internal storage"), volume(external, "USB"))
+        val referent = File(external, "original.mkv").apply { writeText("keep") }
+        val link = File(internal, "film.mkv")
+        assumeTrue(runCatching { Files.createSymbolicLink(link.toPath(), referent.toPath()) }.isSuccess)
+        val target = File(external, link.name)
+
+        assertFalse(source.canMoveWithoutCopy(path(link), path(target)))
+        assertFailsWith<SourceException.Unsupported> { source.move(path(link), path(target)) }
+
+        assertTrue(Files.isSymbolicLink(link.toPath()))
+        assertFalse(Files.exists(target.toPath(), LinkOption.NOFOLLOW_LINKS))
+        assertEquals("keep", referent.readText())
     }
 
     @Test

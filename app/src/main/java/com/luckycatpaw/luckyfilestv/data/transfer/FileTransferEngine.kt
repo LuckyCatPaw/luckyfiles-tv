@@ -4,6 +4,7 @@ import android.content.Context
 import com.luckycatpaw.luckyfilestv.R
 import com.luckycatpaw.luckyfilestv.data.common.FileTreeWalker
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeEntryType
+import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeReadException
 import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
 import com.luckycatpaw.luckyfilestv.data.source.SourceException
 import com.luckycatpaw.luckyfilestv.data.source.SourcePath
@@ -12,6 +13,8 @@ import com.luckycatpaw.luckyfilestv.util.safeAdd
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 import java.lang.ref.SoftReference
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -25,7 +28,17 @@ internal data class TransferItemResult(
     val cleanupWarning: Boolean,
     val bytesTransferred: Long,
     val sourceDeleteFailure: Throwable? = null,
-    val unreadableDirectories: List<String> = emptyList()
+    val unreadableDirectories: List<String> = emptyList(),
+    val copiedEntries: List<CopiedEntry> = emptyList()
+)
+
+/** One copy, including whether its source must be recorded for a later move cleanup. */
+internal data class CopyRequest(
+    val source: TransferSource,
+    val target: TransferTarget,
+    val replace: Boolean,
+    val totalBytes: Long,
+    val trackSource: Boolean = false
 )
 
 /**
@@ -38,24 +51,19 @@ internal data class TransferItemResult(
  */
 internal interface TransferEngine {
 
-    suspend fun copy(
-        source: TransferSource,
-        target: TransferTarget,
-        replace: Boolean,
-        totalBytes: Long,
-        onBytesCopied: suspend (Long) -> Unit
-    ): TransferItemResult
+    suspend fun copy(request: CopyRequest, onBytesCopied: suspend (Long) -> Unit): TransferItemResult
 
     /** @return `null` when the storage cannot rename and the caller has to copy instead. */
     suspend fun tryFastMove(source: TransferSource, target: SourcePath, replace: Boolean): TransferItemResult?
 
-    suspend fun delete(source: TransferSource)
+    suspend fun delete(source: TransferSource, copiedEntries: List<CopiedEntry>)
 }
 
 internal class FileTransferEngine(
     context: Context,
     private val fileTreeWalker: FileTreeWalker,
-    private val sources: FileSourceRegistry
+    private val sources: FileSourceRegistry,
+    private val messages: TransferMessages = AndroidTransferMessages(context)
 ) : TransferEngine {
 
     private val appContext = context.applicationContext
@@ -64,38 +72,46 @@ internal class FileTransferEngine(
         fileTreeWalker = fileTreeWalker
     )
 
-    override suspend fun copy(
-        source: TransferSource,
-        target: TransferTarget,
-        replace: Boolean,
-        totalBytes: Long,
-        onBytesCopied: suspend (Long) -> Unit
-    ): TransferItemResult {
-        val unreadableDirectories = mutableListOf<String>()
+    override suspend fun copy(request: CopyRequest, onBytesCopied: suspend (Long) -> Unit): TransferItemResult {
+        val source = request.source
+        val target = request.target
+        val state = CopyState(request.totalBytes, onBytesCopied, request.trackSource)
 
-        val cleanupWarning = if (replace) {
+        // The planner normally catches this. Check again before a remote replacement can
+        // delete the source through a different spelling of its host or share name.
+        if (
+            target is TransferTarget.Remote &&
+            source.location.transferIdentity() == target.path.transferIdentity()
+        ) {
+            throw IOException("Source and destination refer to the same entry: ${source.pathValue}")
+        }
+
+        // A remote replacement deletes first. Refuse an ancestor before it can take the
+        // source with it; the same guard keeps a local replacement from consuming its source.
+        if (request.replace && source.location.isSameOrChildEntryOf(SourcePath.parse(target.pathValue))) {
+            throw IOException(messages.unsafeFileTree())
+        }
+
+        val cleanupWarning = if (request.replace) {
             copyReplacing(
                 source = source,
                 target = target,
-                totalBytes = totalBytes,
-                onBytesCopied = onBytesCopied,
-                unreadableDirectories = unreadableDirectories
+                state = state
             )
         } else {
             copyTo(
                 source = source,
                 target = target,
-                totalBytes = totalBytes,
-                onBytesCopied = onBytesCopied,
-                unreadableDirectories = unreadableDirectories
+                state = state
             )
             false
         }
 
         return TransferItemResult(
             cleanupWarning = cleanupWarning,
-            bytesTransferred = totalBytes,
-            unreadableDirectories = unreadableDirectories
+            bytesTransferred = request.totalBytes,
+            unreadableDirectories = state.unreadableDirectories,
+            copiedEntries = state.copiedEntries.orEmpty()
         )
     }
 
@@ -139,19 +155,13 @@ internal class FileTransferEngine(
         )
     }
 
-    override suspend fun delete(source: TransferSource) {
+    override suspend fun delete(source: TransferSource, copiedEntries: List<CopiedEntry>) {
         withContext(NonCancellable) {
-            source.delete()
+            source.deleteCopied(copiedEntries)
         }
     }
 
-    private suspend fun copyReplacing(
-        source: TransferSource,
-        target: TransferTarget,
-        totalBytes: Long,
-        onBytesCopied: suspend (Long) -> Unit,
-        unreadableDirectories: MutableList<String>
-    ): Boolean {
+    private suspend fun copyReplacing(source: TransferSource, target: TransferTarget, state: CopyState): Boolean {
         if (target !is TransferTarget.Local) {
             // No journal and no atomic swap on a share: the old entry has to go before the
             // new one can be written. A transfer interrupted in between leaves the target
@@ -161,9 +171,7 @@ internal class FileTransferEngine(
             copyTo(
                 source = source,
                 target = target,
-                totalBytes = totalBytes,
-                onBytesCopied = onBytesCopied,
-                unreadableDirectories = unreadableDirectories
+                state = state
             )
 
             return false
@@ -182,10 +190,12 @@ internal class FileTransferEngine(
             copyTo(
                 source = source,
                 target = TransferTarget.Local(temporary),
-                totalBytes = totalBytes,
-                onBytesCopied = onBytesCopied,
-                unreadableDirectories = unreadableDirectories
+                state = state
             )
+
+            // The journal protects the old target only until installation. A skipped
+            // directory must leave it in place, even though the readable files were copied.
+            state.unreadableDirectories.firstOrNull()?.let { throw FileTreeReadException(File(it)) }
 
             currentCoroutineContext().ensureActive()
 
@@ -201,123 +211,137 @@ internal class FileTransferEngine(
         }
     }
 
-    private suspend fun copyTo(
-        source: TransferSource,
-        target: TransferTarget,
-        totalBytes: Long,
-        onBytesCopied: suspend (Long) -> Unit,
-        unreadableDirectories: MutableList<String>
-    ) {
-        var copiedBytes = 0L
-        var lastUpdateNanos = 0L
-        var targetOwned = false
+    private suspend fun copyTo(source: TransferSource, target: TransferTarget, state: CopyState) {
         val copyBuffer = CopyBuffers.acquire()
+        val pass = CopyPass(target, state, copyBuffer)
 
         try {
-            check(!target.exists()) {
-                appContext.getString(R.string.already_exists, target.name)
-            }
-
-            onBytesCopied(0L)
+            requireDestinationFree(target, "")
+            state.onBytesCopied(0L)
 
             source.walk(
-                onEntry = { entry ->
-                    val destinationName = entry.relativePath.substringAfterLast('/').ifEmpty { target.name }
-
-                    when (entry.type) {
-                        FileTreeEntryType.DIRECTORY -> {
-                            check(!target.exists(entry.relativePath)) {
-                                appContext.getString(R.string.already_exists, destinationName)
-                            }
-
-                            runCatching {
-                                target.createDirectory(entry.relativePath)
-                            }.getOrElse {
-                                throw IllegalStateException(
-                                    appContext.getString(
-                                        R.string.folder_named_create_failed,
-                                        destinationName
-                                    ),
-                                    it
-                                )
-                            }
-
-                            if (entry.relativePath.isEmpty()) {
-                                targetOwned = true
-                            }
-                        }
-
-                        FileTreeEntryType.SYMBOLIC_LINK -> {
-                            error(appContext.getString(R.string.symbolic_links_not_supported))
-                        }
-
-                        FileTreeEntryType.FILE -> {
-                            check(!target.exists(entry.relativePath)) {
-                                appContext.getString(R.string.already_exists, destinationName)
-                            }
-
-                            entry.openInput().use { input ->
-                                val output = BufferedOutputStream(target.openOutput(entry.relativePath))
-
-                                if (entry.relativePath.isEmpty()) {
-                                    targetOwned = true
-                                }
-
-                                output.use { openOutput ->
-                                    while (true) {
-                                        currentCoroutineContext().ensureActive()
-
-                                        val read = input.read(copyBuffer)
-
-                                        if (read < 0) break
-
-                                        openOutput.write(copyBuffer, 0, read)
-                                        copiedBytes = safeProgressAdd(
-                                            current = copiedBytes,
-                                            addition = read.toLong(),
-                                            total = totalBytes
-                                        )
-
-                                        val now = System.nanoTime()
-
-                                        if (
-                                            now - lastUpdateNanos >= PROGRESS_UPDATE_NANOS ||
-                                            copiedBytes >= totalBytes
-                                        ) {
-                                            lastUpdateNanos = now
-                                            onBytesCopied(copiedBytes)
-                                        }
-                                    }
-
-                                    openOutput.flush()
-                                }
-                            }
-
-                            target.setLastModified(entry.relativePath, entry.lastModified)
-                        }
-                    }
-                },
+                onEntry = { entry -> copyEntry(source, entry, pass) },
                 onDirectoryComplete = { entry ->
                     target.setLastModified(entry.relativePath, entry.lastModified)
                 },
-                onUnreadableDirectory = { directory ->
-                    unreadableDirectories += directory
-                }
+                onUnreadableDirectory = { directory -> state.unreadableDirectories += directory }
             )
 
-            onBytesCopied(totalBytes)
+            state.onBytesCopied(state.totalBytes)
             target.flush()
         } catch (e: Exception) {
-            // Cancellation lands here too — it is an Exception — and wants the same thing: a
-            // half written target is not something to leave behind, whether the copy failed
-            // or the user stopped it.
-            if (targetOwned) {
-                deleteForCleanup(target)
-            }
+            // Cancellation needs the same cleanup as a failed write. Ownership is recorded
+            // as soon as the root is created, before copying bytes or reporting progress.
+            if (pass.targetOwned) deleteForCleanup(target)
             throw e
         } finally {
             CopyBuffers.release(copyBuffer)
         }
+    }
+
+    /** Records an entry only after its destination has been written successfully. */
+    private suspend fun copyEntry(source: TransferSource, entry: TransferEntry, pass: CopyPass) {
+        // A link reported by the walker is unsupported, not evidence of a source changing.
+        if (entry.type == FileTreeEntryType.SYMBOLIC_LINK) error(messages.symbolicLinksNotSupported())
+
+        val copiedEntry = if (pass.state.copiedEntries != null) source.captureEntry(entry) else null
+
+        if (entry.type == FileTreeEntryType.DIRECTORY) {
+            copyDirectory(entry, pass)
+        } else {
+            copyFile(entry, pass)
+        }
+
+        if (copiedEntry != null) {
+            source.requireUnchanged(copiedEntry)
+            pass.state.copiedEntries?.add(copiedEntry)
+        }
+    }
+
+    private suspend fun copyDirectory(entry: TransferEntry, pass: CopyPass) {
+        requireDestinationFree(pass.target, entry.relativePath)
+
+        runCatching {
+            pass.target.createDirectory(entry.relativePath)
+        }.getOrElse {
+            throw IllegalStateException(
+                appContext.getString(
+                    R.string.folder_named_create_failed,
+                    destinationName(pass.target, entry.relativePath)
+                ),
+                it
+            )
+        }
+
+        pass.createdEntry(entry.relativePath)
+    }
+
+    private suspend fun copyFile(entry: TransferEntry, pass: CopyPass) {
+        requireDestinationFree(pass.target, entry.relativePath)
+
+        entry.openInput().use { input ->
+            val output = BufferedOutputStream(pass.target.openOutput(entry.relativePath))
+            pass.createdEntry(entry.relativePath)
+
+            output.use { openOutput -> copyBytes(input, openOutput, pass) }
+        }
+
+        pass.target.setLastModified(entry.relativePath, entry.lastModified)
+    }
+
+    /** Stream ownership stays with copyFile, so a failed read or callback still closes both ends. */
+    private suspend fun copyBytes(input: InputStream, output: OutputStream, pass: CopyPass) {
+        while (true) {
+            currentCoroutineContext().ensureActive()
+            val read = input.read(pass.buffer)
+            if (read < 0) break
+
+            output.write(pass.buffer, 0, read)
+            pass.recordBytes(read)
+        }
+
+        output.flush()
+    }
+
+    private suspend fun requireDestinationFree(target: TransferTarget, relativePath: String) {
+        check(!target.exists(relativePath)) {
+            appContext.getString(R.string.already_exists, destinationName(target, relativePath))
+        }
+    }
+
+    private fun destinationName(target: TransferTarget, relativePath: String): String =
+        relativePath.substringAfterLast('/').ifEmpty { target.name }
+
+    /** One destination and buffer, including the ownership needed if the walk fails halfway through. */
+    private class CopyPass(val target: TransferTarget, val state: CopyState, val buffer: ByteArray) {
+
+        var targetOwned = false
+            private set
+
+        private var copiedBytes = 0L
+        private var lastUpdateNanos = 0L
+
+        fun createdEntry(relativePath: String) {
+            if (relativePath.isEmpty()) targetOwned = true
+        }
+
+        suspend fun recordBytes(count: Int) {
+            val total = state.totalBytes
+            val sum = safeAdd(copiedBytes, count.toLong())
+            copiedBytes = if (total > 0L) sum.coerceAtMost(total) else sum
+
+            val now = System.nanoTime()
+            if (now - lastUpdateNanos >= PROGRESS_UPDATE_NANOS || copiedBytes >= total) {
+                lastUpdateNanos = now
+                state.onBytesCopied(copiedBytes)
+            }
+        }
+    }
+
+    /** Shared by the copy and replacement paths, so both record the same outcome. */
+    private class CopyState(val totalBytes: Long, val onBytesCopied: suspend (Long) -> Unit, trackSource: Boolean) {
+        val unreadableDirectories = mutableListOf<String>()
+        val copiedEntries = if (trackSource) mutableListOf<CopiedEntry>() else null
     }
 
     private fun syncDirectory(directory: File?) {
@@ -338,11 +362,6 @@ internal class FileTransferEngine(
         } while (Files.exists(candidate.toPath(), LinkOption.NOFOLLOW_LINKS))
 
         return candidate
-    }
-
-    private fun safeProgressAdd(current: Long, addition: Long, total: Long): Long {
-        val result = safeAdd(current, addition)
-        return if (total > 0L) result.coerceAtMost(total) else result
     }
 
     /**

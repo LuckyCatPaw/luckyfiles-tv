@@ -40,15 +40,19 @@ internal interface FileSource {
     /** @return the location of the created directory. */
     suspend fun createDirectory(parent: SourcePath, name: String): SourcePath
 
-    /** @return the new location. Never replaces an existing entry. */
+    /**
+     * @return the new location. An occupied name is a conflict; protection against
+     * concurrent writers depends on the source implementation.
+     */
     suspend fun rename(path: SourcePath, newName: String): SourcePath
 
     /**
      * Moves inside one source without copying the data.
      *
      * Unlike [rename] this crosses directories, which is what a move within a volume or a
-     * share is. Never replaces an existing entry: an occupied target has to surface as a
-     * conflict. Sources that cannot do it leave this alone and are copied instead.
+     * share is. An occupied target has to surface as a conflict; protection against
+     * concurrent writers depends on the source implementation. Sources that cannot do it
+     * leave this alone and are copied instead.
      */
     suspend fun move(from: SourcePath, to: SourcePath): Unit =
         throw SourceException.Unsupported("Moving inside the source")
@@ -67,6 +71,13 @@ internal interface FileSource {
 
     /** Removes a file, or a directory including its contents. */
     suspend fun delete(path: SourcePath)
+
+    /**
+     * Removes one entry only. A directory must be empty; this must never descend into it.
+     * Used after a copying move so files added since the copy cannot be swept up by cleanup.
+     */
+    suspend fun deleteEntry(path: SourcePath, isDirectory: Boolean): Unit =
+        throw SourceException.Unsupported("Deleting a single entry")
 
     /** Caller closes the stream. [offset] is only honoured with [SourceCapabilities.randomAccessRead]. */
     suspend fun openInput(path: SourcePath, offset: Long = 0L): InputStream
@@ -119,7 +130,12 @@ internal data class DirectoryListing(
     val entries: List<FileEntry>
 )
 
-internal data class ListOptions(val sort: SortOptions, val hideFolderJpg: Boolean)
+internal data class ListOptions(
+    val sort: SortOptions,
+    val hideFolderJpg: Boolean,
+    /** Transfers need entries the browser hides, including whole directories starting with a dot. */
+    val showHidden: Boolean = false
+)
 
 internal data class SortOptions(
     val mode: FileSortMode = FileSortMode.NAME,

@@ -3,6 +3,7 @@ package com.luckycatpaw.luckyfilestv.data.transfer
 import com.luckycatpaw.luckyfilestv.data.common.FileTreeWalker
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeEntry
 import com.luckycatpaw.luckyfilestv.data.common.model.FileTreeEntryType
+import com.luckycatpaw.luckyfilestv.data.source.FileEntry
 import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
 import com.luckycatpaw.luckyfilestv.data.source.ListOptions
 import com.luckycatpaw.luckyfilestv.data.source.SortOptions
@@ -11,6 +12,9 @@ import com.luckycatpaw.luckyfilestv.util.safeAdd
 import java.io.File
 import java.io.InputStream
 import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.NoSuchFileException
+import java.nio.file.attribute.BasicFileAttributes
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -21,7 +25,9 @@ internal data class TransferEntry(
     val relativePath: String,
     val type: FileTreeEntryType,
     val lastModified: Long,
-    private val open: suspend () -> InputStream
+    private val open: suspend () -> InputStream,
+    /** Remote listings already carry this snapshot; local entries are checked with lstat. */
+    val listedState: TransferEntryState? = null
 ) {
 
     suspend fun openInput(): InputStream = open()
@@ -57,6 +63,17 @@ internal sealed interface TransferSource {
 
     suspend fun isDirectory(): Boolean
 
+    /** Current metadata of one entry, without following a local symbolic link. */
+    suspend fun readState(relativePath: String): TransferEntryState?
+
+    /** Check the whole copied set before deletion; remote sources can batch sibling metadata. */
+    suspend fun verifyCopiedEntries(entries: List<CopiedEntry>) {
+        for (entry in entries) requireUnchanged(entry)
+    }
+
+    /** Deletes one copied entry; a directory must be empty. */
+    suspend fun deleteEntry(relativePath: String, isDirectory: Boolean)
+
     suspend fun scan(): TransferScan
 
     suspend fun walk(
@@ -80,6 +97,31 @@ internal sealed interface TransferSource {
         override suspend fun delete() = fileTreeWalker.delete(file)
 
         override suspend fun isDirectory(): Boolean = file.isDirectory
+
+        override suspend fun readState(relativePath: String): TransferEntryState? = try {
+            val attributes = Files.readAttributes(
+                resolve(relativePath).toPath(),
+                BasicFileAttributes::class.java,
+                LinkOption.NOFOLLOW_LINKS
+            )
+            TransferEntryState(
+                isDirectory = attributes.isDirectory,
+                isSymbolicLink = attributes.isSymbolicLink,
+                size = attributes.size(),
+                modified = attributes.lastModifiedTime().toString(),
+                identity = attributes.fileKey()?.toString()
+            )
+        } catch (_: NoSuchFileException) {
+            null
+        }
+
+        override suspend fun deleteEntry(relativePath: String, isDirectory: Boolean) {
+            // Files.delete removes an entry and refuses a nonempty directory, even if the
+            // entry changed type after the metadata check. It never starts a second walk.
+            Files.delete(resolve(relativePath).toPath())
+        }
+
+        private fun resolve(relativePath: String): File = if (relativePath.isEmpty()) file else File(file, relativePath)
 
         override suspend fun scan(): TransferScan = fileTreeWalker.scan(file).let {
             TransferScan(size = it.size, symbolicLinkCount = it.symbolicLinkCount)
@@ -113,9 +155,9 @@ internal sealed interface TransferSource {
     /**
      * A tree on a share.
      *
-     * Every directory level costs a request, so the walk reuses the listings it already
-     * fetched instead of asking for sizes and dates a second time. Symbolic links do not
-     * exist here: a share reports plain files and directories.
+     * Listings supply the metadata used before copying. A copying move checks it again
+     * after writing, batches its deletion preflight by parent directory, and checks each
+     * entry once more immediately before removal. A share reports plain files and directories.
      */
     class Remote(val path: SourcePath, private val sources: FileSourceRegistry) : TransferSource {
 
@@ -133,6 +175,37 @@ internal sealed interface TransferSource {
         override suspend fun delete() = sources.source(path).delete(path)
 
         override suspend fun isDirectory(): Boolean = sources.source(path).stat(path)?.isDirectory == true
+
+        override suspend fun readState(relativePath: String): TransferEntryState? =
+            sources.source(path).stat(childOf(relativePath))?.toTransferState()
+
+        override suspend fun verifyCopiedEntries(entries: List<CopiedEntry>) {
+            entries.firstOrNull { it.relativePath.isEmpty() }?.let { requireUnchanged(it) }
+            val siblings = entries.filter { it.relativePath.isNotEmpty() }
+                .groupBy { it.relativePath.substringBeforeLast('/', "") }
+
+            // These are fresh listings, not the ones retained from copying. A missing or
+            // unreadable parent aborts the preflight before any source entry is removed.
+            for ((parent, copied) in siblings) {
+                val current = sources.source(path).list(childOf(parent), LIST_EVERYTHING).entries
+                    .associateBy { it.name }
+                for (entry in copied) {
+                    val state = current[entry.relativePath.substringAfterLast('/')]?.toTransferState()
+                    entry.requireUnchanged(state, pathValue)
+                }
+            }
+        }
+
+        private fun FileEntry.toTransferState() = TransferEntryState(
+            isDirectory = isDirectory,
+            isSymbolicLink = false,
+            size = size,
+            modified = lastModified.toString()
+        )
+
+        override suspend fun deleteEntry(relativePath: String, isDirectory: Boolean) {
+            sources.source(path).deleteEntry(childOf(relativePath), isDirectory)
+        }
 
         override suspend fun scan(): TransferScan {
             var size = 0L
@@ -153,8 +226,8 @@ internal sealed interface TransferSource {
             onUnreadableDirectory: suspend (String) -> Unit
         ) {
             walkTree(
-                onFile = { relative, _, lastModified ->
-                    onEntry(entry(relative, FileTreeEntryType.FILE, lastModified))
+                onFile = { relative, size, lastModified ->
+                    onEntry(entry(relative, FileTreeEntryType.FILE, lastModified, size))
                 },
                 onDirectory = { relative, lastModified ->
                     onEntry(entry(relative, FileTreeEntryType.DIRECTORY, lastModified))
@@ -166,12 +239,19 @@ internal sealed interface TransferSource {
             )
         }
 
-        private fun entry(relativePath: String, type: FileTreeEntryType, lastModified: Long) = TransferEntry(
-            relativePath = relativePath,
-            type = type,
-            lastModified = lastModified,
-            open = { sources.source(path).openInput(childOf(relativePath)) }
-        )
+        private fun entry(relativePath: String, type: FileTreeEntryType, lastModified: Long, size: Long = 0L) =
+            TransferEntry(
+                relativePath = relativePath,
+                type = type,
+                lastModified = lastModified,
+                open = { sources.source(path).openInput(childOf(relativePath)) },
+                listedState = TransferEntryState(
+                    isDirectory = type == FileTreeEntryType.DIRECTORY,
+                    isSymbolicLink = false,
+                    size = size,
+                    modified = lastModified.toString()
+                )
+            )
 
         private fun childOf(relativePath: String): SourcePath = if (relativePath.isEmpty()) {
             path
@@ -250,7 +330,7 @@ internal sealed interface TransferSource {
         private companion object {
 
             /** A copy takes everything, including what the browser hides. */
-            val LIST_EVERYTHING = ListOptions(sort = SortOptions(), hideFolderJpg = false)
+            val LIST_EVERYTHING = ListOptions(sort = SortOptions(), hideFolderJpg = false, showHidden = true)
 
             /** Deeper than any folder structure a user builds, shallow enough to stop a loop. */
             const val MAX_DEPTH = 64

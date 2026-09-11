@@ -2,13 +2,9 @@ package com.luckycatpaw.luckyfilestv.util
 
 import java.io.File
 import java.io.IOException
-import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.LinkOption
-import java.nio.file.Path
-import java.nio.file.StandardCopyOption
-import java.nio.file.attribute.BasicFileAttributes
 import kotlinx.coroutines.CancellationException
 
 /**
@@ -134,66 +130,27 @@ object FileUtil {
         }
 
     /**
-     * Moves [source] to [target] without ever replacing existing data.
+     * Moves [source] to [target] without requesting replacement of an existing entry.
      *
-     * Both [File.renameTo] and [Files.move] with [StandardCopyOption.ATOMIC_MOVE] map to
-     * `rename(2)`, which replaces an existing target atomically and silently. A preceding
-     * existence check only narrows the race window (TOCTOU), it does not close it.
+     * Plain Files.move reports an occupied name as a conflict; moving an entry onto itself
+     * is a no-op. ATOMIC_MOVE is deliberately absent because it ignores the other options
+     * and may replace a destination even without REPLACE_EXISTING.
      *
-     * Therefore the target name is first reserved with an atomic, exclusive create
-     * (`O_CREAT | O_EXCL` for files, `mkdir(2)` for directories). Both fail with `EEXIST`
-     * if anything at all occupies the name — including a dangling symbolic link, which
-     * `File.exists()` would not report. Only afterwards is the atomic move performed, and it
-     * can then merely replace the placeholder this method owns itself.
+     * This is not an atomic no-replace guarantee against concurrent writers: a filesystem
+     * provider may check the target before renaming. No placeholder is created or cleaned
+     * up, so a failed move cannot remove another writer's entry through reservation cleanup.
      *
-     * @throws FileAlreadyExistsException if the target name is already taken.
-     * @throws AtomicMoveNotSupportedException if source and target live on different volumes.
+     * Across filesystems the provider may copy a file and then delete its source, blocking
+     * until that work finishes. It does not recursively copy a nonempty directory. Callers
+     * needing rename-only behaviour must establish the volume boundary before calling.
+     * This method does not promise AtomicMoveNotSupportedException for a cross-volume move.
+     *
+     * @throws FileAlreadyExistsException if the provider reports an occupied target.
      * @throws IOException on any other failure.
      */
     @Throws(IOException::class)
     fun moveWithoutReplacing(source: File, target: File) {
-        val sourcePath = source.toPath()
-        val targetPath = target.toPath()
-
-        val sourceIsDirectory = Files
-            .readAttributes(sourcePath, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
-            .isDirectory
-
-        if (sourceIsDirectory) {
-            Files.createDirectory(targetPath)
-        } else {
-            Files.createFile(targetPath)
-        }
-
-        try {
-            Files.move(sourcePath, targetPath, StandardCopyOption.ATOMIC_MOVE)
-        } catch (atomicUnsupported: AtomicMoveNotSupportedException) {
-            releaseReservation(targetPath)
-            throw atomicUnsupported
-        } catch (moveFailed: IOException) {
-            // Some filesystems refuse rename(2) onto an existing name even when the entry is an
-            // empty directory. Hand the reservation back and retry without it: Files.move without
-            // REPLACE_EXISTING still refuses an occupied target, so no foreign data is overwritten.
-            // A cross-volume move can never reach this branch, it surfaces as
-            // AtomicMoveNotSupportedException above.
-            releaseReservation(targetPath)
-
-            try {
-                Files.move(sourcePath, targetPath)
-            } catch (fallbackFailed: IOException) {
-                fallbackFailed.addSuppressed(moveFailed)
-                throw fallbackFailed
-            }
-        }
-    }
-
-    /**
-     * Removes a placeholder created by [moveWithoutReplacing]. Deleting a directory only
-     * succeeds while it is still empty, so a target that meanwhile received content is kept.
-     * Must never run after the reservation has been given up.
-     */
-    private fun releaseReservation(target: Path) {
-        runCatching { Files.deleteIfExists(target) }
+        Files.move(source.toPath(), target.toPath())
     }
 
     /**
@@ -211,8 +168,8 @@ object FileUtil {
     /**
      * Common logic to determine if a file should be hidden (e.g. folder.jpg).
      */
-    fun isHiddenFile(name: String, hideFolderJpg: Boolean): Boolean {
-        if (name.startsWith('.')) return true
+    fun isHiddenFile(name: String, hideFolderJpg: Boolean, showHidden: Boolean = false): Boolean {
+        if (!showHidden && name.startsWith('.')) return true
         if (hideFolderJpg && name.equals("folder.jpg", ignoreCase = true)) return true
         return false
     }

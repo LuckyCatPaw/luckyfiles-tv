@@ -101,7 +101,9 @@ internal class TransferRunner(
                 }
             }
 
-            if (!result.completionRecorded) run.tally.completed(item.target.value)
+            val partialMove = run.request.operation == TransferOperation.MOVE &&
+                result.value.unreadableDirectories.isNotEmpty()
+            if (!result.completionRecorded && !partialMove) run.tally.completed(item.target.value)
 
             result.value.unreadableDirectories.forEach { path ->
                 run.tally.failed(path, messages.unreadableSkipped(File(path).name))
@@ -126,10 +128,12 @@ internal class TransferRunner(
         onBytesCopied: suspend (Long) -> Unit
     ): ItemOutcome = ItemOutcome(
         value = engine.copy(
-            source = item.source,
-            target = targetFor(item.target),
-            replace = item.replace,
-            totalBytes = totalBytes,
+            request = CopyRequest(
+                source = item.source,
+                target = targetFor(item.target),
+                replace = item.replace,
+                totalBytes = totalBytes
+            ),
             onBytesCopied = onBytesCopied
         ),
         completionRecorded = false
@@ -162,12 +166,22 @@ internal class TransferRunner(
         }
 
         val copied = engine.copy(
-            source = item.source,
-            target = targetFor(item.target),
-            replace = item.replace,
-            totalBytes = itemSize,
+            request = CopyRequest(
+                source = item.source,
+                target = targetFor(item.target),
+                replace = item.replace,
+                totalBytes = itemSize,
+                trackSource = true
+            ),
             onBytesCopied = onBytesCopied
         )
+
+        // A skipped directory leaves a partial copy, not a tree that can replace its source.
+        // Keep the source intact; transferOne reports each unreadable directory afterwards.
+        if (copied.unreadableDirectories.isNotEmpty()) {
+            run.tally.sourceDeleteWarning()
+            return MoveOutcome(ItemOutcome(copied, completionRecorded = false), itemSize)
+        }
 
         // The target is complete at this point. Recorded before the source is removed, so
         // neither cancellation nor a failed cleanup can turn a copy that did go through
@@ -179,7 +193,7 @@ internal class TransferRunner(
                 value = TransferItemResult(
                     cleanupWarning = copied.cleanupWarning,
                     bytesTransferred = itemSize,
-                    sourceDeleteFailure = deleteSource(item),
+                    sourceDeleteFailure = deleteSource(item, copied.copiedEntries),
                     unreadableDirectories = copied.unreadableDirectories
                 ),
                 completionRecorded = true
@@ -194,8 +208,8 @@ internal class TransferRunner(
      * A source left behind is a warning, not a failure: the copy went through, and telling
      * the user the move failed would send them looking for files that are already there.
      */
-    private suspend fun deleteSource(item: PlannedTransfer): Throwable? = try {
-        engine.delete(item.source)
+    private suspend fun deleteSource(item: PlannedTransfer, copiedEntries: List<CopiedEntry>): Throwable? = try {
+        engine.delete(item.source, copiedEntries)
         null
     } catch (cancelled: CancellationException) {
         throw cancelled
@@ -219,12 +233,12 @@ internal class TransferRunner(
         return scan.size
     }
 
-    /** Only shown for a copy: a rename moves no bytes, so a rate would be meaningless. */
+    /** A MOVE can copy bytes too. Only a current item's byte progress earns a rate. */
     private fun speed(run: Run, copied: Long): Long? {
         val elapsedNanos = System.nanoTime() - run.startedNanos
         val transferred = safeAdd(run.transferredBytes, copied)
 
-        if (run.request.operation != TransferOperation.COPY || elapsedNanos <= 0L || transferred <= 0L) return null
+        if (copied <= 0L || elapsedNanos <= 0L) return null
 
         return (transferred.toDouble() * 1_000_000_000.0 / elapsedNanos.toDouble()).toLong()
     }

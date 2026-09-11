@@ -107,10 +107,11 @@ value class SourcePath private constructor(val value: String) {
          *   layer should run inside [FileRepository], which turns this into a failed result.
          */
         fun parse(value: String): SourcePath {
-            val trimmed = value.trim()
-            require(trimmed.isNotEmpty()) { "Empty location" }
+            require(value.isNotBlank()) { "Empty location" }
 
-            val normalised = normalise(trimmed)
+            // This is an existing location, not text from an input field. Trimming it can
+            // turn "Film.mkv " into "Film.mkv" and send a delete to a different entry.
+            val normalised = normalise(value)
             require(normalised.startsWith(ROOT) || normalised.contains(SCHEME_SEPARATOR)) {
                 "Neither an absolute path nor a source location: $value"
             }

@@ -70,10 +70,31 @@ class SourcePathTest {
     }
 
     @Test
-    fun `parse normalises trailing separators and surrounding space`() {
-        assertEquals("/storage/emulated/0", SourcePath.parse("  /storage/emulated/0/  ").value)
+    fun `parse normalises trailing separators`() {
+        assertEquals("/storage/emulated/0", SourcePath.parse("/storage/emulated/0/").value)
         assertEquals("smb://nas", SourcePath.parse("smb://nas/").value)
         assertEquals("/", SourcePath.parse("/").value)
+    }
+
+    @Test
+    fun `parse preserves whitespace in local and remote entry names`() {
+        for (prefix in listOf("/storage/Movies", "smb://nas/media")) {
+            for (name in listOf("Film.mkv ", "Film.mkv  ", "Film.mkv\t", "Film.mkv\n", " ")) {
+                val path = SourcePath.parse(prefix).child(name)
+
+                assertEquals(path, SourcePath.parse(path.value))
+                assertEquals(name, SourcePath.parse(path.value).name)
+            }
+        }
+    }
+
+    @Test
+    fun `a local file path survives serialisation with trailing whitespace`() {
+        assumeTrue(File.separatorChar == '/')
+        val path = SourcePath.of(File("/storage/Movies/Film.mkv "))
+
+        assertEquals(path, SourcePath.parse(path.value))
+        assertEquals("/storage/Movies/Film.mkv ", SourcePath.parse(path.value).toFile().path)
     }
 
     @Test
@@ -81,6 +102,7 @@ class SourcePathTest {
         assertFailsWith<IllegalArgumentException> { SourcePath.parse("") }
         assertFailsWith<IllegalArgumentException> { SourcePath.parse("   ") }
         assertFailsWith<IllegalArgumentException> { SourcePath.parse("Movies/Trailer.mkv") }
+        assertFailsWith<IllegalArgumentException> { SourcePath.parse("  /storage/Movies") }
         assertNull(SourcePath.parseOrNull("Movies/Trailer.mkv"))
     }
 
