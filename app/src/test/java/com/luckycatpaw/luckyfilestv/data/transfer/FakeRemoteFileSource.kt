@@ -10,6 +10,7 @@ import com.luckycatpaw.luckyfilestv.data.source.SourceException
 import com.luckycatpaw.luckyfilestv.data.source.SourceOperation
 import com.luckycatpaw.luckyfilestv.data.source.SourcePath
 import com.luckycatpaw.luckyfilestv.data.source.Volume
+import com.luckycatpaw.luckyfilestv.util.FileUtil
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
@@ -42,6 +43,9 @@ internal class FakeRemoteFileSource(override val id: String = "smb") : FileSourc
     val created = mutableListOf<String>()
     val deleted = mutableListOf<String>()
 
+    val statRequests = mutableListOf<String>()
+    val listRequests = mutableListOf<String>()
+
     /** Set to have every listing answer with one directory child, however deep the walk goes. */
     var endlessChildName: String? = null
 
@@ -57,17 +61,21 @@ internal class FakeRemoteFileSource(override val id: String = "smb") : FileSourc
 
     override suspend fun roots(): List<Volume> = emptyList()
 
-    override suspend fun stat(path: SourcePath): FileEntry? = nodes[path.value]?.let { node ->
-        FileEntry(
-            path = path,
-            name = path.name,
-            isDirectory = node.isDirectory,
-            size = node.content.size.toLong(),
-            lastModified = node.lastModified
-        )
+    override suspend fun stat(path: SourcePath): FileEntry? {
+        statRequests += path.value
+        return nodes[path.value]?.let { node ->
+            FileEntry(
+                path = path,
+                name = path.name,
+                isDirectory = node.isDirectory,
+                size = node.content.size.toLong(),
+                lastModified = node.lastModified
+            )
+        }
     }
 
     override suspend fun list(path: SourcePath, options: ListOptions): DirectoryListing {
+        listRequests += path.value
         if (path.value in unlistable) throw SourceException.AccessDenied(path, SourceOperation.LIST)
 
         endlessChildName?.let { name ->
@@ -87,6 +95,7 @@ internal class FakeRemoteFileSource(override val id: String = "smb") : FileSourc
                     lastModified = node.lastModified
                 )
             }
+            .filterNot { FileUtil.isHiddenFile(it.name, options.hideFolderJpg, options.showHidden) }
             .sortedBy { it.name }
 
         return listing(path, children)
@@ -104,6 +113,14 @@ internal class FakeRemoteFileSource(override val id: String = "smb") : FileSourc
 
     override suspend fun delete(path: SourcePath) {
         if (path.value !in nodes) throw SourceException.NotFound(path, SourceOperation.DELETE)
+        deleted += path.value
+        nodes.keys.removeAll { it == path.value || it.startsWith("${path.value}/") }
+    }
+
+    override suspend fun deleteEntry(path: SourcePath, isDirectory: Boolean) {
+        val node = nodes[path.value] ?: throw SourceException.NotFound(path, SourceOperation.DELETE)
+        check(node.isDirectory == isDirectory)
+        check(nodes.keys.none { it.startsWith("${path.value}/") }) { "Directory is not empty" }
         deleted += path.value
         nodes.remove(path.value)
     }

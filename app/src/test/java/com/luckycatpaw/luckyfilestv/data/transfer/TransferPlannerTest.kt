@@ -106,6 +106,32 @@ class TransferPlannerTest {
     }
 
     @Test
+    fun `moving into the same local folder through an alias plans nothing`() = runTest {
+        assumeTrue(File.separatorChar == '/')
+        val real = temporaryFolder.newFolder("real")
+        val original = File(real, "film.mkv").apply { writeText("keep") }
+        val alias = File(temporaryFolder.root, "alias")
+        assumeTrue(runCatching { Files.createSymbolicLink(alias.toPath(), real.toPath()) }.isSuccess)
+        val routes = listOf(original to alias, File(alias, original.name) to real)
+
+        for ((file, target) in routes) {
+            val plan = plan(
+                sources = listOf(TransferSource.Local(file, FileTreeWalker())),
+                targetLocation = target.absolutePath,
+                operation = TransferOperation.MOVE,
+                // TransferCoordinator.requireDirectory resolves the target before planning.
+                localTargetDirectory = target.canonicalFile
+            )
+
+            assertTrue(plan.items.isEmpty())
+        }
+
+        assertTrue(conflicts.isEmpty())
+        assertEquals(routes.map { it.first.absolutePath }, tally.result(cancelled = false).completedPaths)
+        assertEquals("keep", original.readText())
+    }
+
+    @Test
     fun `a folder cannot be copied into itself`() = runTest {
         // A copy into its own subtree never ends: every file written is one the walk still
         // has to visit.
@@ -139,6 +165,142 @@ class TransferPlannerTest {
 
         assertEquals("smb://nas/target/Film.mkv", plan.items.single().target.value)
         assertTrue(plan.items.single().replace)
+    }
+
+    @Test
+    fun `replacing a remote file with itself plans no writes`() = runTest {
+        val path = "smb://nas/target/Film.mkv"
+        taken += path
+        decision = decisionOf(FileConflictPolicy.REPLACE)
+
+        val plan = plan(source(path))
+
+        assertTrue(plan.items.isEmpty())
+        assertEquals(listOf(path), tally.result(cancelled = false).completedPaths)
+    }
+
+    @Test
+    fun `remote self replacement ignores host and share case`() = runTest {
+        val original = "smb://NAS/TARGET/Film.mkv"
+        taken += "smb://nas/target/Film.mkv"
+        decision = decisionOf(FileConflictPolicy.REPLACE)
+
+        val plan = plan(source(original))
+
+        assertTrue(plan.items.isEmpty())
+        assertEquals(listOf(original), tally.result(cancelled = false).completedPaths)
+    }
+
+    @Test
+    fun `remote moves into the same folder ignore host and share case`() = runTest {
+        val original = "smb://NAS/TARGET/Film.mkv"
+
+        val plan = plan(listOf(source(original)), operation = TransferOperation.MOVE)
+
+        assertTrue(plan.items.isEmpty())
+        assertTrue(conflicts.isEmpty())
+        assertEquals(listOf(original), tally.result(cancelled = false).completedPaths)
+    }
+
+    @Test
+    fun `remote paths below the share keep their case`() = runTest {
+        taken += "smb://nas/media/movies/Film.mkv"
+        decision = decisionOf(FileConflictPolicy.REPLACE)
+
+        val plan = plan(
+            listOf(source("smb://nas/media/Movies/Film.mkv")),
+            targetLocation = "smb://nas/media/movies"
+        )
+
+        assertTrue(plan.items.single().replace)
+    }
+
+    @Test
+    fun `a remote folder cannot be copied into itself through host and share case aliases`() = runTest {
+        val plan = plan(
+            listOf(source("smb://NAS/MEDIA/folder", isDirectory = true)),
+            targetLocation = "smb://nas/media/folder/inside"
+        )
+
+        assertTrue(plan.items.isEmpty())
+        assertEquals(listOf("transferIntoSelf"), messagesOf(tally))
+    }
+
+    @Test
+    fun `keeping both when copying a remote file into its own folder finds a new name`() = runTest {
+        val path = "smb://nas/target/Film.mkv"
+        taken += path
+
+        val plan = plan(source(path))
+
+        assertEquals("smb://nas/target/Film (1).mkv", plan.items.single().target.value)
+        assertFalse(plan.items.single().replace)
+    }
+
+    @Test
+    fun `replacing a remote ancestor is refused for copies and moves`() = runTest {
+        taken += "smb://nas/media/A"
+        decision = decisionOf(FileConflictPolicy.REPLACE)
+
+        for (operation in TransferOperation.entries) {
+            val plan = plan(
+                sources = listOf(source("smb://NAS/MEDIA/A/A", isDirectory = true)),
+                targetLocation = "smb://nas/media",
+                operation = operation
+            )
+
+            assertTrue(plan.items.isEmpty())
+        }
+
+        assertEquals(listOf("unsafeFileTree", "unsafeFileTree"), messagesOf(tally))
+    }
+
+    @Test
+    fun `keeping both beside an ancestor remains allowed`() = runTest {
+        taken += "smb://nas/media/A"
+
+        val plan = plan(
+            sources = listOf(source("smb://nas/media/A/A", isDirectory = true)),
+            targetLocation = "smb://nas/media"
+        )
+
+        assertEquals("smb://nas/media/A (1)", plan.items.single().target.value)
+        assertFalse(plan.items.single().replace)
+    }
+
+    @Test
+    fun `replacement cannot remove another selected source`() = runTest {
+        taken += "smb://nas/target/A"
+        decision = decisionOf(FileConflictPolicy.REPLACE)
+
+        val plan = plan(
+            source("smb://nas/other/A", isDirectory = true),
+            source("smb://nas/target/A/keep.txt")
+        )
+
+        assertEquals("smb://nas/target/keep.txt", plan.items.single().target.value)
+        assertEquals(listOf("unsafeFileTree"), messagesOf(tally))
+    }
+
+    @Test
+    fun `a local ancestor is protected through a linked parent`() = runTest {
+        assumeTrue(File.separatorChar == '/')
+        val real = temporaryFolder.newFolder("real")
+        val original = File(real, "A/A").apply { mkdirs() }
+        val alias = File(temporaryFolder.root, "alias")
+        assumeTrue(runCatching { Files.createSymbolicLink(alias.toPath(), real.toPath()) }.isSuccess)
+        taken += File(alias, "A").absolutePath
+        decision = decisionOf(FileConflictPolicy.REPLACE)
+
+        val plan = plan(
+            sources = listOf(TransferSource.Local(original, FileTreeWalker())),
+            targetLocation = alias.absolutePath,
+            localTargetDirectory = real
+        )
+
+        assertTrue(plan.items.isEmpty())
+        assertTrue(original.isDirectory)
+        assertEquals(listOf("unsafeFileTree"), messagesOf(tally))
     }
 
     @Test
@@ -201,12 +363,13 @@ class TransferPlannerTest {
     private suspend fun plan(
         sources: List<TransferSource>,
         targetLocation: String = "smb://nas/target",
-        operation: TransferOperation = TransferOperation.COPY
+        operation: TransferOperation = TransferOperation.COPY,
+        localTargetDirectory: File? = null
     ): TransferPlan = planner.plan(
         request = PlanRequest(
             sources = sources,
             targetLocation = SourcePath.parse(targetLocation),
-            localTargetDirectory = null,
+            localTargetDirectory = localTargetDirectory,
             operation = operation
         ),
         tally = tally,

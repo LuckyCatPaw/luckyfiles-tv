@@ -7,8 +7,10 @@ import com.luckycatpaw.luckyfilestv.data.source.FileEntry
 import com.luckycatpaw.luckyfilestv.data.source.FileSource
 import com.luckycatpaw.luckyfilestv.data.source.FileSourceRegistry
 import com.luckycatpaw.luckyfilestv.data.source.ListOptions
+import com.luckycatpaw.luckyfilestv.data.source.SourceException
 import com.luckycatpaw.luckyfilestv.data.source.SourcePath
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -140,6 +142,25 @@ class TransferSourceTest {
     }
 
     @Test
+    fun `a remote transfer includes hidden files directories and folder artwork`() = runTest {
+        remoteSource
+            .directory("smb://nas/media")
+            .file("smb://nas/media/.nomedia", content = "a")
+            .directory("smb://nas/media/.config")
+            .file("smb://nas/media/.config/settings", content = "bb")
+            .file("smb://nas/media/folder.jpg", content = "ccc")
+
+        val source = remote("smb://nas/media")
+        val entries = source.collect()
+
+        assertEquals(
+            setOf("", ".nomedia", ".config", ".config/settings", "folder.jpg"),
+            entries.map { it.relativePath }.toSet()
+        )
+        assertEquals(6L, source.scan().size)
+    }
+
+    @Test
     fun `a directory that will not answer is reported and the walk carries on`() = runTest {
         remoteTree()
         remoteSource.unlistable += "smb://nas/media/Season 1"
@@ -201,6 +222,95 @@ class TransferSourceTest {
         assertEquals("smb://nas/media", source.pathValue)
         assertFalse(remote("smb://nas/media/gone").exists())
     }
+
+    @Test
+    fun `capture reuses the listing without another stat for each child`() = runTest {
+        val source = copiedTree()
+        val copied = copiedSnapshot(source)
+
+        assertEquals(listOf("", "a.txt", "b.txt"), copied.map { it.relativePath })
+        assertEquals(listOf(source.pathValue), remoteSource.statRequests)
+        assertEquals(listOf(source.pathValue), remoteSource.listRequests)
+    }
+
+    @Test
+    fun `a changed child aborts the batched preflight before any deletion`() = runTest {
+        val source = copiedTree()
+        val copied = copiedSnapshot(source)
+        remoteSource.file("${source.pathValue}/a.txt", content = "changed")
+
+        assertFailsWith<IOException> { source.deleteCopied(copied) }
+
+        assertTrue(remoteSource.deleted.isEmpty())
+        assertEquals("changed", copiedContent(source, "a.txt"))
+        assertEquals("b", copiedContent(source, "b.txt"))
+    }
+
+    @Test
+    fun `a standalone file needs only its final metadata check before deletion`() = runTest {
+        val source = copiedTree()
+        val file = remote("${source.pathValue}/a.txt")
+        val copied = copiedSnapshot(file)
+        remoteSource.statRequests.clear()
+
+        file.deleteCopied(copied)
+
+        assertEquals(listOf(file.pathValue), remoteSource.statRequests)
+        assertEquals(listOf(file.pathValue), remoteSource.deleted)
+        assertEquals("b", copiedContent(source, "b.txt"))
+    }
+
+    @Test
+    fun `an unreadable parent aborts preflight without deleting its copied children`() = runTest {
+        val source = copiedTree()
+        val copied = copiedSnapshot(source)
+        remoteSource.unlistable += source.pathValue
+
+        assertFailsWith<SourceException.AccessDenied> { source.deleteCopied(copied) }
+
+        assertTrue(remoteSource.deleted.isEmpty())
+        assertEquals("a", copiedContent(source, "a.txt"))
+        assertEquals("b", copiedContent(source, "b.txt"))
+    }
+
+    @Test
+    fun `a child changed after preflight is checked again immediately before deletion`() = runTest {
+        val source = copiedTree()
+        val changing = object : FileSource by remoteSource {
+            override suspend fun deleteEntry(path: SourcePath, isDirectory: Boolean) {
+                remoteSource.deleteEntry(path, isDirectory)
+                remoteSource.file("${source.pathValue}/a.txt", content = "changed")
+            }
+        }
+        val tracked = TransferSource.Remote(source.location, FileSourceRegistry(listOf(changing)))
+        val copied = copiedSnapshot(tracked)
+
+        assertFailsWith<IOException> { tracked.deleteCopied(copied) }
+
+        assertEquals(listOf("${source.pathValue}/b.txt"), remoteSource.deleted)
+        assertEquals("changed", copiedContent(source, "a.txt"))
+    }
+
+    private fun copiedTree(): TransferSource.Remote {
+        val location = "smb://nas/media/copied"
+        remoteSource.directory(location)
+            .file("$location/a.txt", content = "a")
+            .file("$location/b.txt", content = "b")
+        return remote(location)
+    }
+
+    private suspend fun copiedSnapshot(source: TransferSource): List<CopiedEntry> {
+        val entries = mutableListOf<CopiedEntry>()
+        source.walk(
+            onEntry = { entries += source.captureEntry(it) },
+            onDirectoryComplete = { },
+            onUnreadableDirectory = { error(it) }
+        )
+        return entries
+    }
+
+    private suspend fun copiedContent(source: TransferSource, name: String): String =
+        remoteSource.openInput(source.location.child(name)).use { it.readBytes().decodeToString() }
 
     private fun local(root: File) = TransferSource.Local(root, FileTreeWalker())
 

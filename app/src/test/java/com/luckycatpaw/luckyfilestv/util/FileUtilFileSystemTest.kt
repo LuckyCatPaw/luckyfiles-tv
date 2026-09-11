@@ -129,8 +129,8 @@ class FileUtilFileSystemTest {
 
     @Test
     fun `moveWithoutReplacing refuses a target name held by a dangling symbolic link`() {
-        // This is the case the whole reservation detour exists for. An existence check
-        // would call the name free, and rename would then replace the link without a word.
+        // The link itself occupies the name even when its target is gone. A check with
+        // File.exists would miss it, so the move must recognise the entry itself.
         val source = File(temporaryFolder.root, "source.txt").apply { writeText("content") }
         val link = danglingLink("target.txt")
 
@@ -138,6 +138,30 @@ class FileUtilFileSystemTest {
 
         assertEquals("content", source.readText())
         assertTrue(Files.isSymbolicLink(link.toPath()))
+    }
+
+    @Test
+    fun `moveWithoutReplacing preserves an existing empty directory`() {
+        val source = temporaryFolder.newFolder("source")
+        File(source, "inside.txt").writeText("source")
+        val target = temporaryFolder.newFolder("target")
+
+        assertFailsWith<FileAlreadyExistsException> { FileUtil.moveWithoutReplacing(source, target) }
+
+        assertEquals("source", File(source, "inside.txt").readText())
+        assertTrue(target.isDirectory)
+        assertTrue(target.listFiles().orEmpty().isEmpty())
+    }
+
+    @Test
+    fun `moveWithoutReplacing keeps Unicode file names intact`() {
+        val source = File(temporaryFolder.root, "Film 🎬.mkv").apply { writeText("film") }
+        val target = File(temporaryFolder.root, "Neu 🎬.mkv")
+
+        FileUtil.moveWithoutReplacing(source, target)
+
+        assertFalse(source.exists())
+        assertEquals("film", target.readText())
     }
 
     /** A symbolic link in the temporary folder pointing at something that is not there. */

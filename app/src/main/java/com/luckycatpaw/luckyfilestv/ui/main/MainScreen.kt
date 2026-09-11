@@ -191,7 +191,11 @@ internal fun MainScreen(viewModel: MainViewModel) {
                 operationCancelledPartialText
 
             result.issues.isNotEmpty() || result.skippedCount > 0 ->
-                transferSummaryText
+                if (result.sourceDeleteWarningCount > 0) {
+                    "$transferSummaryText\n$moveSourceDeleteWarningText"
+                } else {
+                    transferSummaryText
+                }
 
             result.sourceDeleteWarningCount > 0 && result.cleanupWarningCount > 0 ->
                 transferMultipleWarningsText.format(

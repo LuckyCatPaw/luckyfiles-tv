@@ -50,7 +50,8 @@ internal class LocalFileSource(
     override val capabilities: SourceCapabilities = SourceCapabilities(
         writable = true,
         randomAccessRead = true,
-        atomicMove = true,
+        // Files.move does not guarantee an atomic no-replace operation.
+        atomicMove = false,
         cheapMetadata = true,
         requiresNetwork = false
     )
@@ -72,7 +73,7 @@ internal class LocalFileSource(
 
         val entries = children
             .mapNotNull { child ->
-                if (FileUtil.isHiddenFile(child.name, options.hideFolderJpg)) return@mapNotNull null
+                if (FileUtil.isHiddenFile(child.name, options.hideFolderJpg, options.showHidden)) return@mapNotNull null
                 child.toEntry(readSize = options.sort.needsSize)
             }
             .sortedWith(entryComparator(options.sort))
@@ -132,7 +133,10 @@ internal class LocalFileSource(
     }
 
     override suspend fun rename(path: SourcePath, newName: String): SourcePath = withContext(dispatcher) {
-        val source = path.canonical(SourceOperation.RENAME)
+        // Resolve the parent, not the entry: canonicalising a link here would rename the
+        // file it points to and leave the link behind with a destination that no longer exists.
+        val requested = path.normalized()
+        val source = requested.parentFile?.canonicalFile?.resolve(requested.name) ?: requested
         val parent = source.parentFile ?: throw SourceException.ParentMissing(path)
 
         // What is being renamed decides the wording; the folder message exists for this.
@@ -158,6 +162,10 @@ internal class LocalFileSource(
 
     override suspend fun move(from: SourcePath, to: SourcePath) {
         withContext(dispatcher) {
+            // Files.move may copy between filesystems. Leave that work to the transfer
+            // engine, where byte progress, cancellation and free-space checks are available.
+            if (!sameVolume(from, to)) throw SourceException.Unsupported("Moving between volumes")
+
             try {
                 FileUtil.moveWithoutReplacing(from.normalized(), to.normalized())
             } catch (exists: FileAlreadyExistsException) {
@@ -178,13 +186,17 @@ internal class LocalFileSource(
      * with no total behind it.
      */
     override suspend fun canMoveWithoutCopy(from: SourcePath, to: SourcePath): Boolean = withContext(dispatcher) {
-        if (!from.isLocal || !to.isLocal) return@withContext false
+        sameVolume(from, to)
+    }
 
+    /** Both callers already run on the source dispatcher. Recheck when the move actually starts. */
+    private suspend fun sameVolume(from: SourcePath, to: SourcePath): Boolean {
+        if (!from.isLocal || !to.isLocal) return false
         val mounted = roots()
-        val sourceVolume = volumeOf(from, mounted) ?: return@withContext false
-        val targetVolume = volumeOf(to, mounted) ?: return@withContext false
+        val sourceVolume = volumeOf(from, mounted) ?: return false
+        val targetVolume = volumeOf(to, mounted) ?: return false
 
-        sourceVolume.path == targetVolume.path
+        return sourceVolume.path == targetVolume.path
     }
 
     /**
@@ -194,9 +206,12 @@ internal class LocalFileSource(
      * so a plain "first match" would report everything as being on the same volume.
      */
     private fun volumeOf(path: SourcePath, mounted: List<Volume>): Volume? {
-        // The target of a transfer does not exist yet. canonicalPath resolves the part that
-        // does and normalises the rest, which is exactly what is needed here.
-        val canonical = runCatching { path.toFile().canonicalPath }.getOrNull() ?: return null
+        // A link is renamed on its parent's volume, wherever its referent happens to live.
+        // Other entries retain their own volume, including a directory that is a mount root.
+        val canonical = runCatching {
+            val file = path.toFile()
+            if (Files.isSymbolicLink(file.toPath())) file.absoluteFile.parentFile?.canonicalPath else file.canonicalPath
+        }.getOrNull() ?: return null
 
         return canonicalRoots(mounted)
             .filterKeys { root -> FileUtil.isSameOrChildPath(root, canonical) }

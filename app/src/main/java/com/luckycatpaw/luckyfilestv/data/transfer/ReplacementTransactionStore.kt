@@ -46,9 +46,9 @@ internal class ReplacementTransactionStore(context: Context, private val fileTre
             val backup = File(parent, ".luckyfiles-$transactionId.backup")
             val journal = File(journalDirectory, "$transactionId.txn")
             val transaction = ReplacementTransaction(
-                target = target.canonicalFile,
-                preparedReplacement = preparedReplacement.canonicalFile,
-                backup = backup.canonicalFile
+                target = entryPath(target),
+                preparedReplacement = entryPath(preparedReplacement),
+                backup = entryPath(backup)
             )
 
             writeJournal(journal, transaction)
@@ -191,9 +191,9 @@ internal class ReplacementTransactionStore(context: Context, private val fileTre
         DataInputStream(FileInputStream(journal)).use { input ->
             check(input.readInt() == JOURNAL_VERSION)
             ReplacementTransaction(
-                target = File(input.readUTF()).canonicalFile,
-                preparedReplacement = File(input.readUTF()).canonicalFile,
-                backup = File(input.readUTF()).canonicalFile
+                target = entryPath(File(input.readUTF())),
+                preparedReplacement = entryPath(File(input.readUTF())),
+                backup = entryPath(File(input.readUTF()))
             )
         }
     }.getOrNull()
@@ -204,6 +204,16 @@ internal class ReplacementTransactionStore(context: Context, private val fileTre
         return runCatching {
             fileTreeWalker.delete(file)
         }.isSuccess
+    }
+
+    /**
+     * Resolve the directory, not the entry being replaced. Following a target or backup
+     * link here would install over its referent, or delete that referent during recovery.
+     */
+    private fun entryPath(file: File): File {
+        val absolute = file.absoluteFile
+        val parent = requireNotNull(absolute.parentFile).canonicalFile
+        return File(parent, absolute.name)
     }
 
     private fun exists(file: File): Boolean = Files.exists(file.toPath(), LinkOption.NOFOLLOW_LINKS)

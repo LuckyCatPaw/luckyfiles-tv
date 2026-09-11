@@ -80,7 +80,7 @@ internal class SmbFileSource(
             diskShare.list(target.relativePath)
                 .asSequence()
                 .filterNot { it.fileName == CURRENT_DIRECTORY || it.fileName == PARENT_DIRECTORY }
-                .filterNot { FileUtil.isHiddenFile(it.fileName, options.hideFolderJpg) }
+                .filterNot { FileUtil.isHiddenFile(it.fileName, options.hideFolderJpg, options.showHidden) }
                 .map { it.toEntry(path) }
                 .toList()
         }
@@ -245,6 +245,18 @@ internal class SmbFileSource(
         execute(SourceOperation.DELETE, path, target, SmbCallKind.MUTATING) { diskShare ->
             if (diskShare.folderExists(target.relativePath)) {
                 diskShare.rmdir(target.relativePath, true)
+            } else {
+                diskShare.rm(target.relativePath)
+            }
+        }
+    }
+
+    override suspend fun deleteEntry(path: SourcePath, isDirectory: Boolean) {
+        val target = resolve(path, SourceOperation.DELETE)
+
+        execute(SourceOperation.DELETE, path, target, SmbCallKind.MUTATING) { diskShare ->
+            if (isDirectory) {
+                diskShare.rmdir(target.relativePath, false)
             } else {
                 diskShare.rm(target.relativePath)
             }
